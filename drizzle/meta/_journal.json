@@ -8,6 +8,20 @@
       "when": 1773118875035,
       "tag": "0000_wild_emma_frost",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1773233800039,
+      "tag": "0001_magical_dark_phoenix",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773237489074,
+      "tag": "0002_dashing_kylun",
+      "breakpoints": true
     }
   ]
 }

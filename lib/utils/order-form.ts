@@ -1,5 +1,5 @@
 // lib/utils/order-form.ts
-import { Customer, Soap, Pewangi, ServicePricing } from "@/lib/db/schema";
+import { Soap, Pewangi, ServicePricing } from "@/lib/db/schema";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

@@ -167,7 +167,7 @@ export function ServiceStep({ services, servicePricingId, weightKg, onChange, er
             style={{ color: "#94a3b8" }}
           >
             <Search size={22} />
-            <p className="text-sm font-semibold">No services match "{search}"</p>
+            <p className="text-sm font-semibold">No services match &quot;{search}&quot;</p>
           </div>
         )}
 

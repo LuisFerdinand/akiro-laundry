@@ -346,6 +346,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
         customerPhone={order.customerPhone}
         totalPrice={order.totalPrice}
         serviceName={order.serviceName}
+        paymentStatus={order.paymentStatus}
       />
     </div>
   );

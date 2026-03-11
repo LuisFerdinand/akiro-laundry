@@ -5,22 +5,23 @@ import { useState, useTransition } from "react";
 import {
   CheckCircle2, Loader2, RefreshCw,
   Clock, Waves, PackageCheck, ShoppingBag,
-  MessageCircle, Save,
+  MessageCircle, Save, CreditCard, BadgeCheck, AlertTriangle,
 } from "lucide-react";
 import { updateOrderStatus } from "@/lib/actions/orders";
 import { ORDER_STATUS_LABELS, formatUSD } from "@/lib/utils/order-form";
 import type { Order } from "@/lib/db/schema";
+import { PaymentModal } from "./PaymentModal";
 
 // ── Status config ──────────────────────────────────────────────────────────────
 const STATUSES: {
-  value:       Order["status"];
-  label:       string;
-  Icon:        React.ElementType;
-  activeBg:    string;
-  activeBorder:string;
-  activeText:  string;
-  activeIcon:  string;
-  activeBar:   string;
+  value:        Order["status"];
+  label:        string;
+  Icon:         React.ElementType;
+  activeBg:     string;
+  activeBorder: string;
+  activeText:   string;
+  activeIcon:   string;
+  activeBar:    string;
 }[] = [
   {
     value:        "pending",
@@ -66,35 +67,48 @@ const STATUSES: {
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 interface OrderStatusUpdaterProps {
-  orderId:       number;
-  currentStatus: Order["status"];
-  // Pass order info for WA message
-  orderNumber:   string;
-  customerName:  string;
-  customerPhone: string;
-  totalPrice:    string | number;
-  serviceName:   string;
+  orderId:        number;
+  currentStatus:  Order["status"];
+  paymentStatus:  "unpaid" | "paid";
+  orderNumber:    string;
+  customerName:   string;
+  customerPhone:  string;
+  totalPrice:     string | number;
+  serviceName:    string;
 }
 
 export function OrderStatusUpdater({
   orderId,
   currentStatus,
+  paymentStatus:  initialPaymentStatus,
   orderNumber,
   customerName,
   customerPhone,
   totalPrice,
   serviceName,
 }: OrderStatusUpdaterProps) {
-  const [status,    setStatus]       = useState(currentStatus);
-  const [isPending, startTransition] = useTransition();
-  const [error,     setError]        = useState<string | null>(null);
-  const [saved,     setSaved]        = useState(false);
+  const [status,         setStatus]         = useState(currentStatus);
+  const [paymentStatus,  setPaymentStatus]  = useState(initialPaymentStatus);
+  const [isPending,      startTransition]   = useTransition();
+  const [error,          setError]          = useState<string | null>(null);
+  const [saved,          setSaved]          = useState(false);
+  const [showPayModal,   setShowPayModal]   = useState(false);
+  const [changeGiven,    setChangeGiven]    = useState<number | null>(null);
 
-  const isDirty = status !== currentStatus;
+  const totalPriceNum = typeof totalPrice === "string" ? parseFloat(totalPrice) : totalPrice;
+  const isDirty       = status !== currentStatus;
+  const isPaid        = paymentStatus === "paid";
 
   const handleSave = () => {
     setError(null);
     setSaved(false);
+
+    // Optimistically warn if trying to set picked_up while unpaid
+    if (status === "picked_up" && !isPaid) {
+      setError("Order must be paid before it can be marked as picked up.");
+      return;
+    }
+
     startTransition(async () => {
       const result = await updateOrderStatus(orderId, status);
       if (result.success) setSaved(true);
@@ -103,9 +117,8 @@ export function OrderStatusUpdater({
   };
 
   const handleWhatsApp = () => {
-    const statusLabel = ORDER_STATUS_LABELS[status];
-    const price = typeof totalPrice === "string" ? parseFloat(totalPrice) : totalPrice;
-    const formattedPrice = formatUSD(isNaN(price) ? 0 : price);
+    const statusLabel    = ORDER_STATUS_LABELS[status];
+    const formattedPrice = formatUSD(isNaN(totalPriceNum) ? 0 : totalPriceNum);
 
     const message = [
       `Halo *${customerName}*! 👋`,
@@ -120,194 +133,286 @@ export function OrderStatusUpdater({
       `Terima kasih telah menggunakan layanan kami! 🙏`,
     ].join("\n");
 
-    // Normalize phone: strip non-digits, replace leading 0 with 62
-    const normalized = customerPhone
-      .replace(/\D/g, "")
-      .replace(/^0/, "62");
-
+    const normalized = customerPhone.replace(/\D/g, "").replace(/^0/, "62");
     const url = `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
     window.open(url, "_blank");
   };
 
+  const handlePaymentSuccess = (change: number) => {
+    setPaymentStatus("paid");
+    setChangeGiven(change);
+    setShowPayModal(false);
+    setError(null);
+  };
+
   return (
-    <div
-      style={{
-        background: "white",
-        borderRadius: "8px",
-        border: "1.5px solid #e2e8f0",
-        boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
-        padding: "16px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "14px",
-      }}
-    >
-      {/* Header */}
-      <div className="flex items-center gap-2.5">
-        <div
-          className="flex items-center justify-center"
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: "6px",
-            background: "linear-gradient(135deg, #edf7fd 0%, #c8e9f8 100%)",
-            border: "1.5px solid #b6def5",
-          }}
-        >
-          <RefreshCw size={12} style={{ color: "#1a7fba" }} />
-        </div>
-        <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#94a3b8" }}>
-          Update Status
-        </p>
-      </div>
-
-      {/* Status grid */}
-      <div className="grid grid-cols-2 gap-2">
-        {STATUSES.map((s) => {
-          const active = status === s.value;
-          return (
-            <button
-              key={s.value}
-              type="button"
-              onClick={() => { setStatus(s.value); setSaved(false); }}
-              className="transition-all duration-150 active:scale-[0.97]"
-              style={{
-                display: "flex",
-                alignItems: "stretch",
-                borderRadius: "7px",
-                borderWidth: "2px",
-                borderStyle: "solid",
-                borderColor: active ? s.activeBorder : "#e2e8f0",
-                background: active ? s.activeBg : "white",
-                boxShadow: active ? `0 2px 10px ${s.activeBorder}22` : "0 1px 3px rgba(0,0,0,0.04)",
-                overflow: "hidden",
-                textAlign: "left",
-              }}
-              onMouseEnter={(e) => {
-                if (!active) {
-                  e.currentTarget.style.borderColor = s.activeBorder + "66";
-                  e.currentTarget.style.background = s.activeBg + "88";
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!active) {
-                  e.currentTarget.style.borderColor = "#e2e8f0";
-                  e.currentTarget.style.background = "white";
-                }
-              }}
-            >
-              {/* Left accent bar */}
-              <div
-                style={{
-                  width: "3px",
-                  flexShrink: 0,
-                  background: active ? s.activeBar : "transparent",
-                  transition: "background 0.15s",
-                }}
-              />
-              <div className="flex items-center gap-2.5 px-3 py-2.5 flex-1">
-                <div
-                  className="shrink-0 flex items-center justify-center"
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: "6px",
-                    background: active ? s.activeBorder + "18" : "#f8fafc",
-                    border: `1.5px solid ${active ? s.activeBorder + "44" : "#e2e8f0"}`,
-                  }}
-                >
-                  <s.Icon size={13} style={{ color: active ? s.activeIcon : "#94a3b8" }} />
-                </div>
-                <span
-                  className="text-sm font-bold"
-                  style={{ color: active ? s.activeText : "#94a3b8" }}
-                >
-                  {s.label}
-                </span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div
-          style={{
-            background: "#fff1f2",
-            border: "1.5px solid #fda4af",
-            borderRadius: "6px",
-            padding: "8px 12px",
-          }}
-        >
-          <p className="text-xs font-semibold" style={{ color: "#be123c" }}>{error}</p>
-        </div>
+    <>
+      {/* Payment modal */}
+      {showPayModal && (
+        <PaymentModal
+          orderId={orderId}
+          orderNumber={orderNumber}
+          customerName={customerName}
+          totalPrice={totalPriceNum}
+          onClose={() => setShowPayModal(false)}
+          onSuccess={handlePaymentSuccess}
+        />
       )}
 
-      {/* Action buttons row */}
-      <div className="flex gap-2">
-        {/* WhatsApp button */}
-        <button
-          type="button"
-          onClick={handleWhatsApp}
-          className="flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.97]"
+      <div
+        style={{
+          background: "white",
+          borderRadius: "8px",
+          border: "1.5px solid #e2e8f0",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+          padding: "16px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "14px",
+        }}
+      >
+        {/* ── Payment status badge ───────────────────────────── */}
+        <div
           style={{
-            height: 44,
-            paddingLeft: 14,
-            paddingRight: 14,
-            borderRadius: "7px",
-            borderWidth: "1.5px",
-            borderStyle: "solid",
-            borderColor: "#86efac",
-            background: "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
-            color: "#16a34a",
-            fontWeight: 800,
-            fontSize: "13px",
-            whiteSpace: "nowrap",
-            flexShrink: 0,
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "#4ade80";
-            e.currentTarget.style.boxShadow = "0 2px 10px rgba(22,163,74,0.15)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "#86efac";
-            e.currentTarget.style.boxShadow = "none";
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "10px 14px",
+            borderRadius: "8px",
+            background: isPaid
+              ? "linear-gradient(135deg,#f0fdf4,#dcfce7)"
+              : "linear-gradient(135deg,#fff7ed,#ffedd5)",
+            border: `1.5px solid ${isPaid ? "#86efac" : "#fed7aa"}`,
           }}
         >
-          <MessageCircle size={14} />
-          WA
-        </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            {isPaid ? (
+              <BadgeCheck size={15} style={{ color: "#16a34a" }} />
+            ) : (
+              <AlertTriangle size={15} style={{ color: "#d97706" }} />
+            )}
+            <span style={{ fontSize: "12px", fontWeight: 800, color: isPaid ? "#14532d" : "#92400e" }}>
+              {isPaid ? "Payment received" : "Payment pending"}
+            </span>
+          </div>
 
-        {/* Save button */}
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={isPending || !isDirty}
-          className="flex flex-1 items-center justify-center gap-2 font-black text-sm text-white transition-all duration-150 active:scale-[0.97]"
-          style={{
-            height: 44,
-            borderRadius: "7px",
-            background: isPending || !isDirty
-              ? "#94a3b8"
-              : "linear-gradient(135deg, #1a7fba 0%, #2496d6 55%, #0f5a85 100%)",
-            boxShadow: isPending || !isDirty
-              ? "none"
-              : "0 4px 14px rgba(26,127,186,0.35)",
-            border: "none",
-            cursor: isPending || !isDirty ? "not-allowed" : "pointer",
-            opacity: isPending || !isDirty ? 0.6 : 1,
-          }}
-        >
-          {isPending ? (
-            <><Loader2 size={14} className="animate-spin" /> Saving…</>
-          ) : saved ? (
-            <><CheckCircle2 size={14} /> Saved!</>
-          ) : (
-            <><Save size={14} /> Save Status</>
+          {!isPaid && (
+            <button
+              onClick={() => setShowPayModal(true)}
+              style={{
+                display: "flex", alignItems: "center", gap: "5px",
+                padding: "5px 11px",
+                borderRadius: "6px",
+                border: "1.5px solid #86efac",
+                background: "linear-gradient(135deg,#f0fdf4,#dcfce7)",
+                color: "#16a34a",
+                fontSize: "11px", fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              <CreditCard size={11} />
+              Pay now
+            </button>
           )}
-        </button>
+        </div>
+
+        {/* Change given confirmation */}
+        {changeGiven !== null && changeGiven > 0 && (
+          <div
+            style={{
+              display: "flex", alignItems: "center", gap: "8px",
+              padding: "8px 12px",
+              borderRadius: "6px",
+              background: "#f0fdf4",
+              border: "1.5px solid #86efac",
+            }}
+          >
+            <CheckCircle2 size={13} style={{ color: "#16a34a" }} />
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#14532d" }}>
+              Change to return: <strong>{formatUSD(changeGiven)}</strong>
+            </span>
+          </div>
+        )}
+
+        {/* Header */}
+        <div className="flex items-center gap-2.5">
+          <div
+            className="flex items-center justify-center"
+            style={{
+              width: 28, height: 28,
+              borderRadius: "6px",
+              background: "linear-gradient(135deg, #edf7fd 0%, #c8e9f8 100%)",
+              border: "1.5px solid #b6def5",
+            }}
+          >
+            <RefreshCw size={12} style={{ color: "#1a7fba" }} />
+          </div>
+          <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#94a3b8" }}>
+            Update Status
+          </p>
+        </div>
+
+        {/* Status grid */}
+        <div className="grid grid-cols-2 gap-2">
+          {STATUSES.map((s) => {
+            const active   = status === s.value;
+            // Dim picked_up if not paid
+            const disabled = s.value === "picked_up" && !isPaid;
+
+            return (
+              <button
+                key={s.value}
+                type="button"
+                onClick={() => {
+                  if (disabled) {
+                    setError("Order must be paid before marking as picked up.");
+                    return;
+                  }
+                  setStatus(s.value);
+                  setSaved(false);
+                  setError(null);
+                }}
+                title={disabled ? "Pay first to unlock this status" : undefined}
+                className="transition-all duration-150 active:scale-[0.97]"
+                style={{
+                  display: "flex",
+                  alignItems: "stretch",
+                  borderRadius: "7px",
+                  borderWidth: "2px",
+                  borderStyle: "solid",
+                  borderColor: active ? s.activeBorder : "#e2e8f0",
+                  background: active ? s.activeBg : "white",
+                  boxShadow: active ? `0 2px 10px ${s.activeBorder}22` : "0 1px 3px rgba(0,0,0,0.04)",
+                  overflow: "hidden",
+                  textAlign: "left",
+                  opacity: disabled ? 0.45 : 1,
+                  cursor: disabled ? "not-allowed" : "pointer",
+                }}
+                onMouseEnter={(e) => {
+                  if (!active && !disabled) {
+                    e.currentTarget.style.borderColor = s.activeBorder + "66";
+                    e.currentTarget.style.background = s.activeBg + "88";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!active && !disabled) {
+                    e.currentTarget.style.borderColor = "#e2e8f0";
+                    e.currentTarget.style.background = "white";
+                  }
+                }}
+              >
+                {/* Left accent bar */}
+                <div
+                  style={{
+                    width: "3px", flexShrink: 0,
+                    background: active ? s.activeBar : "transparent",
+                    transition: "background 0.15s",
+                  }}
+                />
+                <div className="flex items-center gap-2.5 px-3 py-2.5 flex-1">
+                  <div
+                    className="shrink-0 flex items-center justify-center"
+                    style={{
+                      width: 28, height: 28,
+                      borderRadius: "6px",
+                      background: active ? s.activeBorder + "18" : "#f8fafc",
+                      border: `1.5px solid ${active ? s.activeBorder + "44" : "#e2e8f0"}`,
+                    }}
+                  >
+                    <s.Icon size={13} style={{ color: active ? s.activeIcon : "#94a3b8" }} />
+                  </div>
+                  <div>
+                    <span
+                      className="text-sm font-bold"
+                      style={{ color: active ? s.activeText : "#94a3b8" }}
+                    >
+                      {s.label}
+                    </span>
+                    {disabled && (
+                      <p style={{ fontSize: "9px", color: "#d97706", fontWeight: 700, marginTop: "1px" }}>
+                        Pay first
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div
+            style={{
+              background: "#fff1f2",
+              border: "1.5px solid #fda4af",
+              borderRadius: "6px",
+              padding: "8px 12px",
+            }}
+          >
+            <p className="text-xs font-semibold" style={{ color: "#be123c" }}>{error}</p>
+          </div>
+        )}
+
+        {/* Action buttons row */}
+        <div className="flex gap-2">
+          {/* WhatsApp button */}
+          <button
+            type="button"
+            onClick={handleWhatsApp}
+            className="flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.97]"
+            style={{
+              height: 44, paddingLeft: 14, paddingRight: 14,
+              borderRadius: "7px",
+              borderWidth: "1.5px", borderStyle: "solid",
+              borderColor: "#86efac",
+              background: "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
+              color: "#16a34a", fontWeight: 800, fontSize: "13px",
+              whiteSpace: "nowrap", flexShrink: 0,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "#4ade80";
+              e.currentTarget.style.boxShadow = "0 2px 10px rgba(22,163,74,0.15)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "#86efac";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          >
+            <MessageCircle size={14} />
+            WA
+          </button>
+
+          {/* Save button */}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isPending || !isDirty}
+            className="flex flex-1 items-center justify-center gap-2 font-black text-sm text-white transition-all duration-150 active:scale-[0.97]"
+            style={{
+              height: 44,
+              borderRadius: "7px",
+              background: isPending || !isDirty
+                ? "#94a3b8"
+                : "linear-gradient(135deg, #1a7fba 0%, #2496d6 55%, #0f5a85 100%)",
+              boxShadow: isPending || !isDirty
+                ? "none"
+                : "0 4px 14px rgba(26,127,186,0.35)",
+              border: "none",
+              cursor: isPending || !isDirty ? "not-allowed" : "pointer",
+              opacity: isPending || !isDirty ? 0.6 : 1,
+            }}
+          >
+            {isPending ? (
+              <><Loader2 size={14} className="animate-spin" /> Saving…</>
+            ) : saved ? (
+              <><CheckCircle2 size={14} /> Saved!</>
+            ) : (
+              <><Save size={14} /> Save Status</>
+            )}
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

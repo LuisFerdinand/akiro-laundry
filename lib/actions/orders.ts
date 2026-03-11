@@ -98,7 +98,28 @@ export async function updateOrderStatus(
   status: Order["status"],
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await db.update(orders).set({ status, updatedAt: new Date() }).where(eq(orders.id, id));
+    // Guard: cannot move to picked_up unless the order is paid
+    if (status === "picked_up") {
+      const [order] = await db
+        .select({ paymentStatus: orders.paymentStatus })
+        .from(orders)
+        .where(eq(orders.id, id))
+        .limit(1);
+
+      if (!order) return { success: false, error: "Order not found." };
+      if (order.paymentStatus !== "paid") {
+        return {
+          success: false,
+          error: "Order must be paid before it can be marked as picked up.",
+        };
+      }
+    }
+
+    await db
+      .update(orders)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(orders.id, id));
+
     revalidatePath("/employee/orders");
     return { success: true };
   } catch (err) {
@@ -106,6 +127,7 @@ export async function updateOrderStatus(
     return { success: false, error: "Failed to update order status." };
   }
 }
+
 
 // ─── Create Order ─────────────────────────────────────────────────────────────
 
