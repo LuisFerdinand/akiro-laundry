@@ -3,42 +3,45 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, PlusCircle, ClipboardList, History } from "lucide-react";
+import { type LucideIcon, LayoutDashboard, PlusCircle, ClipboardList, History } from "lucide-react";
 
-const NAV_ITEMS = [
-  { href: "/employee",             label: "Dashboard", icon: LayoutDashboard, exact: true },
-  { href: "/employee/orders/new",  label: "New Order", icon: PlusCircle,      exact: false },
-  { href: "/employee/orders",      label: "Orders",    icon: ClipboardList,   exact: false },
-  { href: "/employee/history",     label: "History",   icon: History,         exact: false },
-] as const;
+type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  exact: boolean;
+  isCTA?: boolean;
+};
+
+const NAV_ITEMS: NavItem[] = [
+  { href: "/employee",            label: "Home",    icon: LayoutDashboard, exact: true  },
+  { href: "/employee/orders/new", label: "New",     icon: PlusCircle,      exact: false, isCTA: true },
+  { href: "/employee/orders",     label: "Orders",  icon: ClipboardList,   exact: false },
+  { href: "/employee/history",    label: "History", icon: History,         exact: false },
+];
 
 export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-border">
-      <div className="flex items-stretch h-16 max-w-lg mx-auto">
-        {NAV_ITEMS.map(({ href, label, icon: Icon, exact }) => {
-          const isActive = exact
-            ? pathname === href
-            : pathname.startsWith(href);
+    <nav className="akiro-bottom-nav">
+      <div className="flex items-end h-20 max-w-lg mx-auto px-2 pb-3">
+        {NAV_ITEMS.map(({ href, label, icon: Icon, exact, isCTA }) => {
+          const isActive = exact ? pathname === href : pathname.startsWith(href);
 
-          if (label === "New Order") {
+          if (isCTA) {
             return (
               <Link
                 key={href}
                 href={href}
-                className="flex-1 flex flex-col items-center justify-center gap-1"
+                className="flex-1 flex flex-col items-center justify-end pb-1"
               >
-                <div
-                  className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-md -mt-4 transition-transform active:scale-95 ${
-                    isActive
-                      ? "bg-brand-dark"
-                      : "brand-gradient shadow-[0_4px_12px_rgba(21,83,126,0.4)]"
-                  }`}
-                >
-                  <Icon size={22} className="text-white" strokeWidth={2} />
+                <div className={`akiro-cta-btn ${isActive ? "akiro-cta-btn--active" : ""}`}>
+                  <Icon size={22} className="text-white" strokeWidth={2.5} />
                 </div>
+                <span className="text-[9px] font-bold mt-1.5 tracking-wide text-brand">
+                  {label}
+                </span>
               </Link>
             );
           }
@@ -47,16 +50,18 @@ export function BottomNav() {
             <Link
               key={href}
               href={href}
-              className="flex-1 flex flex-col items-center justify-center gap-1 pt-1"
+              className="flex-1 flex flex-col items-center justify-end pb-1 gap-1"
             >
-              <Icon
-                size={20}
-                className={isActive ? "text-brand" : "text-muted-foreground"}
-                strokeWidth={isActive ? 2.5 : 1.8}
-              />
+              <div className={`akiro-nav-icon-wrap ${isActive ? "akiro-nav-icon-wrap--active" : ""}`}>
+                <Icon
+                  size={19}
+                  className={isActive ? "text-brand" : "text-slate-400"}
+                  strokeWidth={isActive ? 2.5 : 1.8}
+                />
+              </div>
               <span
-                className={`text-[10px] font-semibold tracking-wide ${
-                  isActive ? "text-brand" : "text-muted-foreground"
+                className={`text-[9px] font-bold tracking-wide ${
+                  isActive ? "text-brand" : "text-slate-400"
                 }`}
               >
                 {label}

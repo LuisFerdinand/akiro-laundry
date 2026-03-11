@@ -1,65 +1,87 @@
 // app/employee/orders/page.tsx
 import { getOrders } from "@/lib/actions/orders";
 import { Badge }     from "@/components/ui/badge";
-import { formatUSD } from "@/lib/utils/order-form";
-import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from "@/lib/utils/order-form";
+import { formatUSD, ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from "@/lib/utils/order-form";
 import Link from "next/link";
-import { ChevronRight, Package } from "lucide-react";
+import { ChevronRight, Package, Sparkles } from "lucide-react";
 
 export default async function OrdersPage() {
   const orders = await getOrders(50);
 
   return (
-    <div className="px-4 py-5">
-      <div className="mb-5">
-        <h1 className="text-lg font-bold">Orders</h1>
-        <p className="text-sm text-muted-foreground">{orders.length} orders found</p>
+    <div className="space-y-4">
+
+      {/* ── Header ───────────────────────────────────────────── */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="font-extrabold text-xl text-foreground" style={{ fontFamily: "Sora, sans-serif" }}>
+            Orders
+          </h1>
+          <p className="text-xs text-muted-foreground font-semibold mt-0.5">
+            {orders.length} {orders.length === 1 ? "order" : "orders"} found
+          </p>
+        </div>
+        <Link
+          href="/employee/orders/new"
+          className="flex items-center gap-1.5 bg-brand text-white text-xs font-bold px-3.5 py-2 rounded-full shadow-md shadow-brand/30 hover:bg-brand-dark transition-colors"
+        >
+          <Sparkles size={12} />
+          New
+        </Link>
       </div>
 
+      {/* ── Empty state ──────────────────────────────────────── */}
       {orders.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-            <Package size={20} className="text-muted-foreground" />
+        <div className="flex flex-col items-center justify-center py-24 text-center gap-4">
+          <div className="w-16 h-16 rounded-3xl bg-brand-soft border-2 border-brand-muted flex items-center justify-center">
+            <Package size={24} className="text-brand" />
           </div>
-          <p className="text-sm text-muted-foreground">No orders yet.</p>
+          <div>
+            <p className="font-bold text-foreground text-sm">No orders yet</p>
+            <p className="text-xs text-muted-foreground mt-1">Orders you create will appear here</p>
+          </div>
           <Link
             href="/employee/orders/new"
-            className="text-sm text-brand font-semibold hover:underline"
+            className="mt-1 bg-brand text-white text-sm font-bold px-5 py-2.5 rounded-full shadow-md shadow-brand/30 hover:bg-brand-dark transition-colors"
           >
-            Create the first order →
+            Create first order →
           </Link>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {orders.map((order) => (
             <Link
               key={order.id}
               href={`/employee/orders/${order.id}`}
-              className="flex items-center gap-3 p-4 rounded-lg border bg-white hover:border-brand/30 transition-colors"
+              className="akiro-order-row group"
             >
-              {/* Avatar */}
-              <div className="w-10 h-10 rounded-full bg-brand-muted flex items-center justify-center shrink-0">
-                <span className="text-brand font-bold text-sm">{order.customerName[0]}</span>
+              <div className="akiro-avatar akiro-avatar--brand">
+                <span>{order.customerName[0].toUpperCase()}</span>
               </div>
-
-              {/* Details */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
-                  <p className="font-semibold text-sm truncate">{order.customerName}</p>
-                  <Badge className={`text-[10px] px-1.5 py-0 ${ORDER_STATUS_COLORS[order.status]}`} variant="outline">
+                  <p className="font-bold text-sm truncate">{order.customerName}</p>
+                  <Badge
+                    className={`text-[9px] px-2 py-0.5 font-bold shrink-0 ${ORDER_STATUS_COLORS[order.status]}`}
+                    variant="outline"
+                  >
                     {ORDER_STATUS_LABELS[order.status]}
                   </Badge>
                 </div>
-                <p className="text-xs text-muted-foreground font-mono">{order.orderNumber}</p>
-                <p className="text-xs text-muted-foreground">{order.serviceName} · {order.weightKg} kg</p>
+                <p className="text-[10px] text-muted-foreground font-mono">{order.orderNumber}</p>
+                <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">
+                  {order.serviceName} · {order.weightKg} kg
+                </p>
               </div>
-
-              {/* Price + chevron */}
-              <div className="text-right shrink-0">
-                <p className="font-bold text-sm">{formatUSD(parseFloat(order.totalPrice))}</p>
-                <p className="text-[10px] text-muted-foreground">{new Date(order.createdAt).toLocaleDateString()}</p>
+              <div className="text-right shrink-0 ml-2">
+                <p className="font-extrabold text-sm text-foreground">
+                  {formatUSD(parseFloat(order.totalPrice))}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {new Date(order.createdAt).toLocaleDateString()}
+                </p>
               </div>
-              <ChevronRight size={15} className="text-muted-foreground shrink-0" />
+              <ChevronRight size={14} className="text-muted-foreground/50 shrink-0 ml-1 group-hover:text-brand transition-colors" />
             </Link>
           ))}
         </div>

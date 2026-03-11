@@ -3,8 +3,7 @@
 
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, ChevronLeft, Check, Loader2, CheckCircle2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ChevronRight, ChevronLeft, Check, Loader2, CheckCircle2, Sparkles } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { StepProgress }  from "@/components/employee/StepProgress";
 import { CustomerStep }  from "@/components/employee/order-steps/CustomerStep";
@@ -38,11 +37,11 @@ const EMPTY_FORM: OrderFormData = {
   notes:            "",
 };
 
-const STEP_TITLES: Record<OrderFormStep, { title: string; subtitle: string }> = {
-  customer: { title: "Customer",         subtitle: "Find or register the customer"           },
-  service:  { title: "Select Service",   subtitle: "Choose a service and enter laundry weight" },
-  addons:   { title: "Detergent & Fragrance", subtitle: "Add extras to the order (optional)" },
-  review:   { title: "Confirm Order",    subtitle: "Review everything before submitting"      },
+const STEP_TITLES: Record<OrderFormStep, { title: string; subtitle: string; emoji: string }> = {
+  customer: { title: "Customer Info",        subtitle: "Find or register the customer",            emoji: "👤" },
+  service:  { title: "Pick a Service",       subtitle: "Choose a service and enter laundry weight", emoji: "🧺" },
+  addons:   { title: "Extras",               subtitle: "Add detergent or fragrance (optional)",     emoji: "✨" },
+  review:   { title: "Confirm Order",        subtitle: "Review everything before submitting",        emoji: "📋" },
 };
 
 export default function NewOrderPage() {
@@ -101,57 +100,85 @@ export default function NewOrderPage() {
     });
   };
 
-  // ── Success screen ───────────────────────────────────────────────────────
+  // ── Success screen ──────────────────────────────────────────────────────
   if (success) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center gap-4">
-        <div className="w-16 h-16 rounded-full brand-gradient flex items-center justify-center shadow-lg">
-          <CheckCircle2 size={32} className="text-white" />
+      <div className="flex flex-col items-center justify-center min-h-[65vh] px-6 text-center gap-5">
+        {/* Confetti-like icon */}
+        <div className="relative">
+          <div className="w-24 h-24 rounded-[32px] flex items-center justify-center shadow-xl shadow-brand/25"
+            style={{ background: "linear-gradient(135deg, #1a7fba 0%, #2496d6 55%, #0f5a85 100%)" }}>
+            <CheckCircle2 size={44} className="text-white" />
+          </div>
+          <span className="absolute -top-2 -right-2 text-2xl">🎉</span>
         </div>
+
         <div>
-          <h2 className="text-xl font-bold">Order Created!</h2>
-          <p className="text-muted-foreground text-sm mt-1">Order has been saved successfully.</p>
+          <h2 className="font-extrabold text-2xl text-foreground" style={{ fontFamily: "Sora, sans-serif" }}>
+            Order Created!
+          </h2>
+          <p className="text-muted-foreground text-sm mt-1.5 font-medium">
+            The order has been saved successfully.
+          </p>
         </div>
-        <div className="bg-brand-soft rounded-lg px-6 py-3 text-center">
-          <p className="text-xs text-muted-foreground mb-1">Order Number</p>
-          <p className="font-mono font-bold text-brand text-lg tracking-widest">{success.orderNumber}</p>
+
+        {/* Order number pill */}
+        <div className="bg-brand-soft border-2 border-brand-muted rounded-3xl px-8 py-4 text-center">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-brand/50 mb-1">Order Number</p>
+          <p className="font-mono font-extrabold text-brand text-2xl tracking-widest">{success.orderNumber}</p>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Total: <span className="font-bold text-foreground">{formatUSD(success.total)}</span>
+
+        <p className="text-sm text-muted-foreground font-medium">
+          Total:{" "}
+          <span className="font-extrabold text-foreground text-base">{formatUSD(success.total)}</span>
         </p>
-        <div className="flex gap-3 w-full max-w-xs mt-2">
-          <Button
-            variant="outline"
-            className="flex-1"
+
+        <div className="flex gap-3 w-full max-w-xs mt-1">
+          <button
+            className="flex-1 py-3 rounded-2xl border-2 border-border text-sm font-bold text-foreground bg-white hover:border-brand/30 transition-colors"
             onClick={() => { setFormData(EMPTY_FORM); setStep("customer"); setSuccess(null); }}
           >
             New Order
-          </Button>
-          <Button className="flex-1 brand-gradient border-0" onClick={() => router.push("/employee/orders")}>
+          </button>
+          <button
+            className="flex-1 py-3 rounded-2xl text-sm font-bold text-white shadow-lg shadow-brand/30 transition-all active:scale-95"
+            style={{ background: "linear-gradient(135deg, #1a7fba 0%, #2496d6 55%, #0f5a85 100%)" }}
+            onClick={() => router.push("/employee/orders")}
+          >
             View Orders
-          </Button>
+          </button>
         </div>
       </div>
     );
   }
 
-  const { title, subtitle } = STEP_TITLES[step];
+  const { title, subtitle, emoji } = STEP_TITLES[step];
 
   return (
     <div>
       <StepProgress current={step} />
 
-      <div className="px-4 pb-6 space-y-5">
+      {/* Scrollable content — extra bottom padding for the floating bar */}
+      <div className="px-4 pb-36 space-y-5">
+
         {/* Page heading */}
-        <div>
-          <h1 className="text-lg font-bold">{title}</h1>
-          <p className="text-sm text-muted-foreground">{subtitle}</p>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-brand-soft border border-brand-muted flex items-center justify-center text-xl shrink-0">
+            {emoji}
+          </div>
+          <div>
+            <h1 className="font-extrabold text-lg text-foreground leading-tight" style={{ fontFamily: "Sora, sans-serif" }}>
+              {title}
+            </h1>
+            <p className="text-xs text-muted-foreground font-medium mt-0.5">{subtitle}</p>
+          </div>
         </div>
 
-        {/* Step content */}
+        {/* Loading */}
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 size={24} className="text-brand animate-spin" />
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 size={28} className="text-brand animate-spin" />
+            <p className="text-sm text-muted-foreground font-medium">Loading…</p>
           </div>
         ) : (
           <>
@@ -193,44 +220,58 @@ export default function NewOrderPage() {
           </>
         )}
 
-        {/* Estimated total pill */}
+        {submitError && (
+          <Alert variant="destructive" className="rounded-2xl">
+            <AlertDescription className="font-medium">{submitError}</AlertDescription>
+          </Alert>
+        )}
+      </div>
+
+      {/* ── Floating action bar ──────────────────────────────────
+          Sits above the bottom nav (bottom nav is 80px tall,
+          we add 8px gap so: bottom-[88px])                    */}
+      <div className="akiro-floating-bar">
+
+        {/* Estimated total — show on service & addons steps */}
         {(step === "service" || step === "addons") && breakdown.totalPrice > 0 && (
-          <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-brand-soft border border-brand/10">
-            <span className="text-sm text-brand/80 font-medium">Estimated Total</span>
-            <span className="font-bold text-brand">{formatUSD(breakdown.totalPrice)}</span>
+          <div className="flex items-center justify-between px-1 mb-3">
+            <span className="text-xs font-bold text-muted-foreground">Estimated Total</span>
+            <span className="font-extrabold text-brand text-sm" style={{ fontFamily: "Sora, sans-serif" }}>
+              {formatUSD(breakdown.totalPrice)}
+            </span>
           </div>
         )}
 
-        {/* Submit error */}
-        {submitError && (
-          <Alert variant="destructive">
-            <AlertDescription>{submitError}</AlertDescription>
-          </Alert>
-        )}
-
-        {/* Navigation buttons */}
-        <div className="flex gap-3 pt-1">
+        <div className="flex gap-3">
           {step !== "customer" && (
-            <Button variant="outline" onClick={handleBack} className="gap-1.5">
-              <ChevronLeft size={16} /> Back
-            </Button>
+            <button
+              onClick={handleBack}
+              className="akiro-back-btn"
+            >
+              <ChevronLeft size={18} />
+            </button>
           )}
+
           {step !== "review" ? (
-            <Button className="flex-1 brand-gradient border-0 gap-1.5" onClick={handleNext}>
-              Continue <ChevronRight size={16} />
-            </Button>
+            <button
+              className="akiro-continue-btn"
+              onClick={handleNext}
+            >
+              Continue
+              <ChevronRight size={17} strokeWidth={2.5} />
+            </button>
           ) : (
-            <Button
-              className="flex-1 brand-gradient border-0 gap-2"
+            <button
+              className="akiro-continue-btn"
               onClick={handleSubmit}
               disabled={isPending}
             >
               {isPending ? (
-                <><Loader2 size={15} className="animate-spin" /> Submitting…</>
+                <><Loader2 size={16} className="animate-spin" /> Submitting…</>
               ) : (
-                <><Check size={15} /> Confirm Order</>
+                <><Sparkles size={16} /> Confirm Order</>
               )}
-            </Button>
+            </button>
           )}
         </div>
       </div>
