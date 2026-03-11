@@ -3,8 +3,12 @@
 
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, ChevronLeft, Check, Loader2, CheckCircle2, Sparkles } from "lucide-react";
+import {
+  ChevronRight, ChevronLeft, Loader2, CheckCircle2,
+  Sparkles, User, ShoppingBag, PackagePlus, ClipboardList,
+} from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { StepProgress }  from "@/components/employee/StepProgress";
 import { CustomerStep }  from "@/components/employee/order-steps/CustomerStep";
 import { ServiceStep }   from "@/components/employee/order-steps/ServiceStep";
@@ -37,11 +41,41 @@ const EMPTY_FORM: OrderFormData = {
   notes:            "",
 };
 
-const STEP_TITLES: Record<OrderFormStep, { title: string; subtitle: string; emoji: string }> = {
-  customer: { title: "Customer Info",        subtitle: "Find or register the customer",            emoji: "👤" },
-  service:  { title: "Pick a Service",       subtitle: "Choose a service and enter laundry weight", emoji: "🧺" },
-  addons:   { title: "Extras",               subtitle: "Add detergent or fragrance (optional)",     emoji: "✨" },
-  review:   { title: "Confirm Order",        subtitle: "Review everything before submitting",        emoji: "📋" },
+const STEP_TITLES: Record<OrderFormStep, {
+  title:     string;
+  subtitle:  string;
+  Icon:      React.ElementType;
+  iconBg:    string;
+  iconColor: string;
+}> = {
+  customer: {
+    title:     "Customer Info",
+    subtitle:  "Find or register the customer",
+    Icon:      User,
+    iconBg:    "bg-blue-50 border-blue-100",
+    iconColor: "text-blue-500",
+  },
+  service: {
+    title:     "Pick a Service",
+    subtitle:  "Choose a service and enter laundry weight",
+    Icon:      ShoppingBag,
+    iconBg:    "bg-violet-50 border-violet-100",
+    iconColor: "text-violet-500",
+  },
+  addons: {
+    title:     "Extras",
+    subtitle:  "Add detergent or fragrance (optional)",
+    Icon:      PackagePlus,
+    iconBg:    "bg-emerald-50 border-emerald-100",
+    iconColor: "text-emerald-500",
+  },
+  review: {
+    title:     "Confirm Order",
+    subtitle:  "Review everything before submitting",
+    Icon:      ClipboardList,
+    iconBg:    "bg-amber-50 border-amber-100",
+    iconColor: "text-amber-500",
+  },
 };
 
 export default function NewOrderPage() {
@@ -100,85 +134,111 @@ export default function NewOrderPage() {
     });
   };
 
-  // ── Success screen ──────────────────────────────────────────────────────
+  // ── Success screen ──────────────────────────────────────────
   if (success) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[65vh] px-6 text-center gap-5">
-        {/* Confetti-like icon */}
+      <div className="flex flex-col items-center justify-center min-h-[65vh] px-6 text-center gap-6">
+        {/* Success icon */}
         <div className="relative">
-          <div className="w-24 h-24 rounded-[32px] flex items-center justify-center shadow-xl shadow-brand/25"
-            style={{ background: "linear-gradient(135deg, #1a7fba 0%, #2496d6 55%, #0f5a85 100%)" }}>
-            <CheckCircle2 size={44} className="text-white" />
+          <div
+            className="w-20 h-20 flex items-center justify-center"
+            style={{
+              borderRadius: "14px",
+              background: "linear-gradient(135deg, #1a7fba 0%, #2496d6 100%)",
+              boxShadow: "0 8px 32px rgba(26,127,186,0.35)",
+            }}
+          >
+            <CheckCircle2 size={38} className="text-white" />
           </div>
-          <span className="absolute -top-2 -right-2 text-2xl">🎉</span>
+          <div
+            className="absolute -top-2 -right-2 w-7 h-7 border-2 border-white flex items-center justify-center text-xs shadow-md"
+            style={{ borderRadius: "8px", background: "#ffcc00" }}
+          >
+            🎉
+          </div>
         </div>
 
-        <div>
-          <h2 className="font-extrabold text-2xl text-foreground" style={{ fontFamily: "Sora, sans-serif" }}>
-            Order Created!
-          </h2>
-          <p className="text-muted-foreground text-sm mt-1.5 font-medium">
-            The order has been saved successfully.
+        <div className="space-y-1">
+          <h2 className="font-black text-xl text-slate-800 tracking-tight">Order Created!</h2>
+          <p className="text-slate-400 text-sm font-medium">The order has been saved successfully.</p>
+        </div>
+
+        {/* Order number */}
+        <div
+          className="px-8 py-5 text-center w-full max-w-xs"
+          style={{
+            background: "linear-gradient(135deg, #edf7fd 0%, #dff0fb 100%)",
+            border: "1.5px solid #b6def5",
+            borderRadius: "10px",
+          }}
+        >
+          <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: "#1a7fba" }}>
+            Order Number
+          </p>
+          <p className="font-mono font-black text-xl tracking-widest" style={{ color: "#0f5a85" }}>
+            {success.orderNumber}
           </p>
         </div>
 
-        {/* Order number pill */}
-        <div className="bg-brand-soft border-2 border-brand-muted rounded-3xl px-8 py-4 text-center">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-brand/50 mb-1">Order Number</p>
-          <p className="font-mono font-extrabold text-brand text-2xl tracking-widest">{success.orderNumber}</p>
-        </div>
-
-        <p className="text-sm text-muted-foreground font-medium">
+        <p className="text-sm text-slate-400 font-medium">
           Total:{" "}
-          <span className="font-extrabold text-foreground text-base">{formatUSD(success.total)}</span>
+          <span className="font-black text-slate-800 text-base">{formatUSD(success.total)}</span>
         </p>
 
-        <div className="flex gap-3 w-full max-w-xs mt-1">
-          <button
-            className="flex-1 py-3 rounded-2xl border-2 border-border text-sm font-bold text-foreground bg-white hover:border-brand/30 transition-colors"
+        <div className="flex gap-3 w-full max-w-xs">
+          <Button
+            variant="outline"
+            size="lg"
+            className="flex-1 h-11 rounded-md font-bold"
             onClick={() => { setFormData(EMPTY_FORM); setStep("customer"); setSuccess(null); }}
           >
             New Order
-          </button>
-          <button
-            className="flex-1 py-3 rounded-2xl text-sm font-bold text-white shadow-lg shadow-brand/30 transition-all active:scale-95"
-            style={{ background: "linear-gradient(135deg, #1a7fba 0%, #2496d6 55%, #0f5a85 100%)" }}
+          </Button>
+          <Button
+            variant="default"
+            size="lg"
+            className="flex-1 h-11 rounded-md font-bold"
+            style={{
+              background: "linear-gradient(135deg, #1a7fba 0%, #2496d6 55%, #0f5a85 100%)",
+              boxShadow: "0 4px 16px rgba(26,127,186,0.35)",
+            }}
             onClick={() => router.push("/employee/orders")}
           >
             View Orders
-          </button>
+          </Button>
         </div>
       </div>
     );
   }
 
-  const { title, subtitle, emoji } = STEP_TITLES[step];
+  const { title, subtitle, Icon, iconBg, iconColor } = STEP_TITLES[step];
 
   return (
     <div>
       <StepProgress current={step} />
 
-      {/* Scrollable content — extra bottom padding for the floating bar */}
-      <div className="px-4 pb-36 space-y-5">
+      {/* Scrollable content with bottom padding for floating bar */}
+      <div className="px-2 pb-36 space-y-5">
 
         {/* Page heading */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-brand-soft border border-brand-muted flex items-center justify-center text-xl shrink-0">
-            {emoji}
+        <div className="flex items-center gap-3 pt-1">
+          <div
+            className={`w-10 h-10 border flex items-center justify-center shrink-0 ${iconBg}`}
+            style={{ borderRadius: "8px" }}
+          >
+            <Icon size={18} className={iconColor} />
           </div>
           <div>
-            <h1 className="font-extrabold text-lg text-foreground leading-tight" style={{ fontFamily: "Sora, sans-serif" }}>
-              {title}
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium mt-0.5">{subtitle}</p>
+            <h1 className="font-black text-lg text-slate-800 leading-tight tracking-tight">{title}</h1>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">{subtitle}</p>
           </div>
         </div>
 
         {/* Loading */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <Loader2 size={28} className="text-brand animate-spin" />
-            <p className="text-sm text-muted-foreground font-medium">Loading…</p>
+            <Loader2 size={28} className="animate-spin" style={{ color: "#1a7fba" }} />
+            <p className="text-sm text-slate-400 font-medium">Loading…</p>
           </div>
         ) : (
           <>
@@ -221,57 +281,82 @@ export default function NewOrderPage() {
         )}
 
         {submitError && (
-          <Alert variant="destructive" className="rounded-2xl">
-            <AlertDescription className="font-medium">{submitError}</AlertDescription>
+          <Alert variant="destructive" className="rounded-md border-red-200 bg-red-50">
+            <AlertDescription className="font-medium text-red-700">{submitError}</AlertDescription>
           </Alert>
         )}
       </div>
 
-      {/* ── Floating action bar ──────────────────────────────────
-          Sits above the bottom nav (bottom nav is 80px tall,
-          we add 8px gap so: bottom-[88px])                    */}
-      <div className="akiro-floating-bar">
-
-        {/* Estimated total — show on service & addons steps */}
+      {/* ── Floating action bar ─────────────────────────────── */}
+      <div
+        className="fixed bottom-[88px] left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-[calc(512px-32px)] z-40"
+        style={{
+          background: "rgba(255,255,255,0.92)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          border: "1.5px solid hsl(210 25% 91%)",
+          borderRadius: "14px",
+          padding: "12px 14px",
+          boxShadow: "0 -2px 20px rgba(26,127,186,0.07), 0 8px 32px rgba(0,0,0,0.10)",
+        }}
+      >
+        {/* Estimated total */}
         {(step === "service" || step === "addons") && breakdown.totalPrice > 0 && (
-          <div className="flex items-center justify-between px-1 mb-3">
-            <span className="text-xs font-bold text-muted-foreground">Estimated Total</span>
-            <span className="font-extrabold text-brand text-sm" style={{ fontFamily: "Sora, sans-serif" }}>
+          <div className="flex items-center justify-between px-1 mb-3 pb-3 border-b border-slate-100">
+            <span className="text-xs font-bold text-slate-400">Estimated Total</span>
+            <span className="font-black text-sm" style={{ color: "#1a7fba" }}>
               {formatUSD(breakdown.totalPrice)}
             </span>
           </div>
         )}
 
-        <div className="flex gap-3">
+        <div className="flex gap-2.5">
+          {/* Back button */}
           {step !== "customer" && (
-            <button
+            <Button
+              variant="outline"
+              size="icon"
+              className="shrink-0 rounded-md border-2"
+              style={{ width: 46, height: 46 }}
               onClick={handleBack}
-              className="akiro-back-btn"
             >
               <ChevronLeft size={18} />
-            </button>
+            </Button>
           )}
 
+          {/* Continue / Confirm */}
           {step !== "review" ? (
-            <button
-              className="akiro-continue-btn"
+            <Button
+              variant="default"
+              className="flex-1 h-[46px] rounded-md font-black text-sm gap-1.5"
+              style={{
+                background: "linear-gradient(135deg, #1a7fba 0%, #2496d6 55%, #0f5a85 100%)",
+                boxShadow: "0 4px 16px rgba(26,127,186,0.35)",
+              }}
               onClick={handleNext}
             >
               Continue
-              <ChevronRight size={17} strokeWidth={2.5} />
-            </button>
+              <ChevronRight size={15} strokeWidth={3} />
+            </Button>
           ) : (
-            <button
-              className="akiro-continue-btn"
+            <Button
+              variant="default"
+              className="flex-1 h-[46px] rounded-md font-black text-sm gap-1.5"
+              style={{
+                background: isPending
+                  ? "linear-gradient(135deg, #1a7fba 0%, #2496d6 100%)"
+                  : "linear-gradient(135deg, #1a7fba 0%, #2496d6 55%, #0f5a85 100%)",
+                boxShadow: "0 4px 16px rgba(26,127,186,0.35)",
+              }}
               onClick={handleSubmit}
               disabled={isPending}
             >
               {isPending ? (
-                <><Loader2 size={16} className="animate-spin" /> Submitting…</>
+                <><Loader2 size={14} className="animate-spin" /> Submitting…</>
               ) : (
-                <><Sparkles size={16} /> Confirm Order</>
+                <><Sparkles size={14} /> Confirm Order</>
               )}
-            </button>
+            </Button>
           )}
         </div>
       </div>

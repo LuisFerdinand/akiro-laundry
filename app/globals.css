@@ -493,32 +493,6 @@ body {
   z-index: 40;
 }
 
-/* ── Continue button ─────────────────────────────────── */
-.akiro-continue-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 14px 20px;
-  border-radius: 18px;
-  font-size: 15px;
-  font-weight: 800;
-  color: white;
-  background: linear-gradient(135deg, #1a7fba 0%, #2496d6 55%, #0f5a85 100%);
-  box-shadow: 0 4px 16px rgba(26, 127, 186, 0.40);
-  transition: opacity 0.15s, transform 0.12s, box-shadow 0.15s;
-  font-family: "Sora", sans-serif;
-}
-.akiro-continue-btn:disabled {
-  opacity: 0.45;
-  box-shadow: none;
-}
-.akiro-continue-btn:not(:disabled):active {
-  transform: scale(0.97);
-  box-shadow: 0 2px 8px rgba(26, 127, 186, 0.25);
-}
-
 /* ── Back button ─────────────────────────────────────── */
 .akiro-back-btn {
   width: 52px;

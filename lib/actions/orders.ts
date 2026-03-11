@@ -176,6 +176,25 @@ export async function createOrder(formData: OrderFormData): Promise<CreateOrderR
   }
 }
 
+export async function searchCustomersByPhone(query: string): Promise<Customer[]> {
+  if (!query.trim()) return [];
+  // Strip non-digits from query for comparison, then match phones starting with or containing the digits
+  const normalized = query.replace(/\D/g, "");
+  if (!normalized) return [];
+
+  // ilike match against stripped digits — Postgres: translate to remove spaces/dashes then match
+  // We use a simple ilike with the raw normalized query, relying on phones being stored without spaces
+  const results = await db
+    .select()
+    .from(customers)
+    .where(ilike(customers.phone, `%${normalized}%`))
+    .orderBy(customers.phone)   // consistent, ordered by phone number ascending
+    .limit(3);
+
+  return results;
+}
+
+
 // ─── Dashboard Stats ──────────────────────────────────────────────────────────
 
 export interface DashboardStats {

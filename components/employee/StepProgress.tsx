@@ -11,7 +11,7 @@ export function StepProgress({ current }: StepProgressProps) {
   const currentIdx = getStepIndex(current);
 
   return (
-    <div className="flex items-center px-5 pt-4 pb-2">
+    <div className="flex items-center px-2 pt-4 pb-2">
       {ORDER_FORM_STEPS.map((step, i) => {
         const done   = i < currentIdx;
         const active = i === currentIdx;

@@ -1,12 +1,10 @@
 // components/employee/order-steps/CustomerStep.tsx
 "use client";
 
-import { useState, useCallback } from "react";
-import { User, Phone, MapPin, Search, Loader2, X } from "lucide-react";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
+import { useState, useRef } from "react";
+import { User, Phone, MapPin, Loader2, X, CheckCircle2 } from "lucide-react";
 import { CustomerFormData } from "@/lib/utils/order-form";
-import { lookupCustomerByPhone, searchCustomersByName } from "@/lib/actions/orders";
+import { searchCustomersByPhone } from "@/lib/actions/orders";
 import type { Customer } from "@/lib/db/schema";
 
 interface CustomerStepProps {
@@ -15,214 +13,399 @@ interface CustomerStepProps {
   errors: Record<string, string>;
 }
 
-export function CustomerStep({ data, onChange, errors }: CustomerStepProps) {
-  const [tab, setTab]                     = useState<"new" | "existing">(data.existingCustomerId ? "existing" : "new");
-  const [phoneQuery, setPhoneQuery]       = useState(data.existingCustomerId ? data.phone : "");
-  const [nameQuery, setNameQuery]         = useState("");
-  const [searchResults, setSearchResults] = useState<Customer[]>([]);
-  const [searching, setSearching]         = useState(false);
-  const [noResult, setNoResult]           = useState(false);
+function Field({
+  label,
+  error,
+  children,
+}: {
+  label: string;
+  error?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-[11px] font-black uppercase tracking-widest text-slate-400">
+        {label}
+      </label>
+      {children}
+      {error && (
+        <p className="text-xs font-semibold px-1" style={{ color: "#e05252" }}>
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
 
-  const handlePhoneLookup = async () => {
-    if (!phoneQuery.trim()) return;
-    setSearching(true);
-    setNoResult(false);
-    const found = await lookupCustomerByPhone(phoneQuery);
-    setSearching(false);
-    if (found) {
-      onChange({ existingCustomerId: found.id, name: found.name, phone: found.phone, address: found.address ?? "" });
-    } else {
-      setNoResult(true);
-      onChange({ name: "", phone: "", address: "" });
+function IconInput({
+  icon: Icon,
+  error,
+  ...props
+}: {
+  icon: React.ElementType;
+  error?: string;
+} & React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <div className="relative flex items-center">
+      <div
+        className="absolute left-3.5 pointer-events-none flex items-center justify-center w-8 h-8 rounded"
+        style={{
+          background: "linear-gradient(135deg, #edf7fd 0%, #c8e9f8 100%)",
+          border: "1.5px solid #b6def5",
+        }}
+      >
+        <Icon size={14} style={{ color: "#1a7fba" }} />
+      </div>
+      <input
+        className="w-full h-12 pl-14 pr-4 rounded-md border-2 text-sm font-medium text-slate-800 placeholder:text-slate-300 placeholder:font-normal bg-white outline-none transition-all duration-150"
+        style={{ borderColor: error ? "#fca5a5" : "#e2e8f0" }}
+        onFocus={(e) => {
+          if (!error) e.currentTarget.style.borderColor = "#1a7fba";
+          e.currentTarget.style.boxShadow = error
+            ? "0 0 0 3.5px rgba(239,68,68,0.12)"
+            : "0 0 0 3.5px rgba(26,127,186,0.12)";
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.borderColor = error ? "#fca5a5" : "#e2e8f0";
+          e.currentTarget.style.boxShadow = "none";
+        }}
+        {...props}
+      />
+    </div>
+  );
+}
+
+// Highlight the matching portion of the phone number
+function HighlightMatch({ text, query }: { text: string; query: string }) {
+  if (!query) return <span>{text}</span>;
+  const normalText = text.replace(/\s/g, "");
+  const normalQuery = query.replace(/\s/g, "");
+  const idx = normalText.indexOf(normalQuery);
+  if (idx === -1) return <span>{text}</span>;
+
+  // Map back to original string positions (with spaces)
+  let matchStart = -1;
+  let matchEnd = -1;
+  let stripped = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== " ") {
+      if (stripped === idx) matchStart = i;
+      if (stripped === idx + normalQuery.length - 1) matchEnd = i + 1;
+      stripped++;
     }
-  };
+  }
 
-  const handleNameSearch = useCallback(async (q: string) => {
-    setNameQuery(q);
-    if (!q.trim()) { setSearchResults([]); return; }
-    setSearching(true);
-    const results = await searchCustomersByName(q);
-    setSearchResults(results);
-    setSearching(false);
-  }, []);
+  if (matchStart === -1) return <span>{text}</span>;
+
+  return (
+    <span>
+      {text.slice(0, matchStart)}
+      <span
+        className="font-black rounded px-0.5"
+        style={{ color: "#1a7fba", background: "#dff0fb" }}
+      >
+        {text.slice(matchStart, matchEnd)}
+      </span>
+      {text.slice(matchEnd)}
+    </span>
+  );
+}
+
+export function CustomerStep({ data, onChange, errors }: CustomerStepProps) {
+  const [phoneRaw, setPhoneRaw]         = useState(data.phone || "");
+  const [lookupState, setLookupState]   = useState<"idle" | "loading" | "found" | "not-found">("idle");
+  const [suggestions, setSuggestions]   = useState<Customer[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const debounceRef                     = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const isExistingSelected = !!data.existingCustomerId;
+
+  const handlePhoneChange = (value: string) => {
+    setPhoneRaw(value);
+
+    // Reset if user edits after a selection
+    if (data.existingCustomerId) {
+      onChange({ name: "", phone: value, address: "" });
+      setLookupState("idle");
+      setSuggestions([]);
+      setShowDropdown(false);
+    } else {
+      onChange({ ...data, phone: value });
+    }
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    const normalized = value.replace(/\D/g, "");
+    if (normalized.length < 3) {
+      setLookupState("idle");
+      setSuggestions([]);
+      setShowDropdown(false);
+      return;
+    }
+
+    setLookupState("loading");
+
+    debounceRef.current = setTimeout(async () => {
+      const results = await searchCustomersByPhone(normalized);
+      if (results.length > 0) {
+        setSuggestions(results);
+        setShowDropdown(true);
+        setLookupState("found");
+      } else {
+        setSuggestions([]);
+        setShowDropdown(false);
+        setLookupState("not-found");
+      }
+    }, 300);
+  };
 
   const selectCustomer = (c: Customer) => {
-    setSearchResults([]);
-    setNameQuery(c.name);
-    onChange({ existingCustomerId: c.id, name: c.name, phone: c.phone, address: c.address ?? "" });
+    setShowDropdown(false);
+    setLookupState("found");
+    setPhoneRaw(c.phone);
+    onChange({
+      existingCustomerId: c.id,
+      name: c.name,
+      phone: c.phone,
+      address: c.address ?? "",
+    });
   };
 
-  const clearSelected = () => {
+  const clearAll = () => {
+    setPhoneRaw("");
+    setLookupState("idle");
+    setSuggestions([]);
+    setShowDropdown(false);
     onChange({ name: "", phone: "", address: "" });
-    setPhoneQuery("");
-    setNameQuery("");
-    setNoResult(false);
   };
 
   return (
-    <Tabs value={tab} onValueChange={(v) => { setTab(v as "new" | "existing"); clearSelected(); }}>
-      <TabsList className="w-full mb-5 h-11 rounded-2xl bg-muted p-1">
-        <TabsTrigger value="new"      className="flex-1 rounded-xl text-xs font-bold data-[state=active]:shadow-sm">
-          New Customer
-        </TabsTrigger>
-        <TabsTrigger value="existing" className="flex-1 rounded-xl text-xs font-bold data-[state=active]:shadow-sm">
-          Existing Customer
-        </TabsTrigger>
-      </TabsList>
+    <div className="space-y-5">
 
-      {/* ── New Customer ────────────────────────────────────────── */}
-      <TabsContent value="new" className="space-y-4 mt-0">
-        <div className="space-y-1.5">
-          <label className="field-label" htmlFor="name">Full Name</label>
-          <div className="relative">
-            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-xl bg-brand-soft border border-brand-muted flex items-center justify-center">
-              <User size={13} className="text-brand" />
-            </div>
-            <input
-              id="name"
-              className="field-input pl-14"
-              placeholder="John Doe"
-              value={data.name}
-              onChange={(e) => onChange({ ...data, name: e.target.value })}
-            />
-          </div>
-          {errors.name && <p className="text-xs text-destructive font-semibold">{errors.name}</p>}
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="field-label" htmlFor="phone">Phone Number</label>
-          <div className="relative">
-            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-xl bg-brand-soft border border-brand-muted flex items-center justify-center">
-              <Phone size={13} className="text-brand" />
-            </div>
-            <input
-              id="phone"
-              className="field-input pl-14"
-              placeholder="+62 812 3456 7890"
-              value={data.phone}
-              onChange={(e) => onChange({ ...data, phone: e.target.value })}
-            />
-          </div>
-          {errors.phone && <p className="text-xs text-destructive font-semibold">{errors.phone}</p>}
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="field-label" htmlFor="address">Address</label>
-          <div className="relative">
-            <div className="absolute left-3.5 top-4 w-7 h-7 rounded-xl bg-brand-soft border border-brand-muted flex items-center justify-center">
-              <MapPin size={13} className="text-brand" />
-            </div>
-            <textarea
-              id="address"
-              className="field-input pl-14 resize-none"
-              placeholder="123 Main St, Apt 4B…"
-              rows={3}
-              value={data.address}
-              onChange={(e) => onChange({ ...data, address: e.target.value })}
-            />
-          </div>
-          {errors.address && <p className="text-xs text-destructive font-semibold">{errors.address}</p>}
-        </div>
-      </TabsContent>
-
-      {/* ── Existing Customer ────────────────────────────────────── */}
-      <TabsContent value="existing" className="space-y-4 mt-0">
-        {/* Phone lookup */}
-        <div className="space-y-1.5">
-          <label className="field-label">Search by Phone</label>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-xl bg-brand-soft border border-brand-muted flex items-center justify-center">
-                <Phone size={13} className="text-brand" />
-              </div>
-              <input
-                className="field-input pl-14"
-                placeholder="08123456789"
-                value={phoneQuery}
-                onChange={(e) => { setPhoneQuery(e.target.value); setNoResult(false); }}
-                onKeyDown={(e) => e.key === "Enter" && handlePhoneLookup()}
-              />
-            </div>
-            <button
-              onClick={handlePhoneLookup}
-              disabled={searching}
-              className="w-12 h-12 rounded-2xl bg-brand text-white flex items-center justify-center shrink-0 shadow-md shadow-brand/25 hover:bg-brand-dark transition-colors disabled:opacity-50"
+      {/* Phone search field */}
+      <Field label="Phone Number" error={errors.phone}>
+        <div className="relative">
+          <div className="relative flex items-center">
+            <div
+              className="absolute left-3.5 z-10 pointer-events-none flex items-center justify-center w-8 h-8 rounded"
+              style={{
+                background: "linear-gradient(135deg, #edf7fd 0%, #c8e9f8 100%)",
+                border: "1.5px solid #b6def5",
+              }}
             >
-              {searching ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
-            </button>
-          </div>
-          {noResult && (
-            <p className="text-xs text-muted-foreground font-medium bg-muted px-3 py-2 rounded-xl">
-              No customer found with that number.
-            </p>
-          )}
-        </div>
-
-        {/* Name search */}
-        <div className="space-y-1.5 relative">
-          <label className="field-label">Or Search by Name</label>
-          <div className="relative">
-            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-xl bg-brand-soft border border-brand-muted flex items-center justify-center">
-              <User size={13} className="text-brand" />
+              <Phone size={14} style={{ color: "#1a7fba" }} />
             </div>
+
             <input
-              className="field-input pl-14"
-              placeholder="Type a name…"
-              value={nameQuery}
-              onChange={(e) => handleNameSearch(e.target.value)}
+              className="w-full h-12 pl-14 pr-16 rounded-md border-2 text-sm font-medium text-slate-800 placeholder:text-slate-300 placeholder:font-normal bg-white outline-none transition-all duration-150"
+              style={{ borderColor: errors.phone ? "#fca5a5" : isExistingSelected ? "#b6def5" : "#e2e8f0" }}
+              placeholder="Start typing a number..."
+              value={phoneRaw}
+              onChange={(e) => handlePhoneChange(e.target.value)}
+              onFocus={(e) => {
+                if (!errors.phone && !isExistingSelected) e.currentTarget.style.borderColor = "#1a7fba";
+                e.currentTarget.style.boxShadow = "0 0 0 3.5px rgba(26,127,186,0.12)";
+                if (suggestions.length > 0 && !isExistingSelected) setShowDropdown(true);
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.borderColor = errors.phone
+                  ? "#fca5a5"
+                  : isExistingSelected
+                  ? "#b6def5"
+                  : "#e2e8f0";
+                e.currentTarget.style.boxShadow = "none";
+                // Delay hide so click on dropdown registers
+                setTimeout(() => setShowDropdown(false), 150);
+              }}
+              readOnly={isExistingSelected}
             />
-            {searching && (
-              <Loader2 size={13} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground animate-spin" />
-            )}
+
+            <div className="absolute right-3.5 flex items-center gap-1">
+              {lookupState === "loading" && (
+                <Loader2 size={15} className="animate-spin" style={{ color: "#1a7fba" }} />
+              )}
+              {isExistingSelected && (
+                <CheckCircle2 size={15} style={{ color: "#3ecb9a" }} />
+              )}
+              {(isExistingSelected || (phoneRaw.length > 0 && lookupState !== "idle")) && (
+                <button
+                  type="button"
+                  className="w-6 h-6 rounded-sm flex items-center justify-center transition-colors"
+                  style={{ color: "#94a3b8" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#f87171")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+                  onClick={clearAll}
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
           </div>
-          {searchResults.length > 0 && (
-            <div className="absolute z-20 left-0 right-0 bg-white rounded-2xl shadow-xl border border-border overflow-hidden">
-              {searchResults.map((c) => (
+
+          {/* Live search dropdown */}
+          {showDropdown && suggestions.length > 0 && !isExistingSelected && (
+            <div
+              className="absolute z-20 left-0 right-0 top-full mt-1.5 rounded-md overflow-hidden"
+              style={{
+                background: "white",
+                border: "1.5px solid #c8e9f8",
+                boxShadow: "0 8px 32px rgba(26,127,186,0.14), 0 2px 8px rgba(0,0,0,0.06)",
+              }}
+            >
+              <div
+                className="px-4 py-2"
+                style={{
+                  background: "linear-gradient(135deg, #edf7fd 0%, #dff0fb 100%)",
+                  borderBottom: "1px solid #c8e9f8",
+                }}
+              >
+                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#1a7fba" }}>
+                  {suggestions.length} match{suggestions.length > 1 ? "es" : ""} found
+                </p>
+              </div>
+
+              {suggestions.map((c, i) => (
                 <button
                   key={c.id}
-                  onClick={() => selectCustomer(c)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-brand-soft text-left transition-colors border-b border-border/40 last:border-0"
+                  type="button"
+                  onMouseDown={() => selectCustomer(c)}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors"
+                  style={{ borderBottom: i < suggestions.length - 1 ? "1px solid #f1f5f9" : "none" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fcff")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "white")}
                 >
-                  <div className="akiro-avatar akiro-avatar--brand akiro-avatar--sm">
-                    <span>{c.name[0].toUpperCase()}</span>
+                  {/* Avatar */}
+                  <div
+                    className="w-9 h-9 rounded flex items-center justify-center font-bold text-sm shrink-0"
+                    style={{
+                      background: "linear-gradient(135deg, #edf7fd 0%, #c8e9f8 100%)",
+                      border: "1.5px solid #b6def5",
+                      color: "#1a7fba",
+                    }}
+                  >
+                    {c.name[0].toUpperCase()}
                   </div>
-                  <div>
-                    <p className="text-sm font-bold">{c.name}</p>
-                    <p className="text-xs text-muted-foreground font-medium">{c.phone}</p>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-800 truncate">{c.name}</p>
+                    <p className="text-xs font-mono font-semibold" style={{ color: "#607080" }}>
+                      <HighlightMatch text={c.phone} query={phoneRaw} />
+                    </p>
+                  </div>
+
+                  {/* Select pill */}
+                  <div
+                    className="shrink-0 text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-sm"
+                    style={{ background: "#edf7fd", color: "#1a7fba", border: "1px solid #b6def5" }}
+                  >
+                    Select
                   </div>
                 </button>
               ))}
             </div>
           )}
         </div>
+      </Field>
 
-        {errors.existingCustomerId && (
-          <p className="text-xs text-destructive font-semibold">{errors.existingCustomerId}</p>
-        )}
-
-        {/* Selected customer card */}
-        {data.existingCustomerId && (
-          <div className="flex items-center gap-3 p-4 rounded-2xl bg-brand-soft border-2 border-brand-muted">
-            <div className="akiro-avatar akiro-avatar--brand">
-              <span>{data.name[0]?.toUpperCase()}</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="font-bold truncate text-sm">{data.name}</p>
-                <Badge variant="secondary" className="text-[9px] font-bold shrink-0">Existing</Badge>
-              </div>
-              <p className="text-xs text-muted-foreground font-medium">{data.phone}</p>
-              {data.address && <p className="text-xs text-muted-foreground truncate mt-0.5">{data.address}</p>}
-            </div>
-            <button
-              onClick={clearSelected}
-              className="w-8 h-8 rounded-xl bg-white border border-border flex items-center justify-center shrink-0 text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors"
-            >
-              <X size={14} />
-            </button>
+      {/* Selected existing customer card */}
+      {isExistingSelected && (
+        <div
+          className="flex items-center gap-3 p-4 rounded-md"
+          style={{
+            background: "linear-gradient(135deg, #edf7fd 0%, #dff5f0 100%)",
+            border: "2px solid #b6def5",
+          }}
+        >
+          <div
+            className="w-11 h-11 rounded flex items-center justify-center font-bold text-white text-base shrink-0"
+            style={{
+              background: "linear-gradient(135deg, #1a7fba 0%, #2496d6 100%)",
+              boxShadow: "0 4px 12px rgba(26,127,186,0.3)",
+            }}
+          >
+            {data.name[0]?.toUpperCase()}
           </div>
-        )}
-      </TabsContent>
-    </Tabs>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="font-bold text-sm text-slate-800 truncate">{data.name}</p>
+              <span
+                className="text-[9px] font-black px-2 py-0.5 rounded-sm uppercase tracking-wide shrink-0"
+                style={{ background: "#c8e9f8", color: "#0f5a85" }}
+              >
+                Existing
+              </span>
+            </div>
+            <p className="text-xs font-medium text-slate-500">{data.phone}</p>
+            {data.address && (
+              <p className="text-xs text-slate-400 truncate mt-0.5">{data.address}</p>
+            )}
+          </div>
+          <CheckCircle2 size={18} style={{ color: "#3ecb9a", flexShrink: 0 }} />
+        </div>
+      )}
+
+      {/* No match hint */}
+      {lookupState === "not-found" && !isExistingSelected && phoneRaw.length >= 3 && (
+        <div
+          className="flex items-start gap-2.5 px-3.5 py-2.5 rounded"
+          style={{
+            background: "linear-gradient(135deg, #fff8ed 0%, #fff3e0 100%)",
+            border: "1.5px solid #fcd9a0",
+          }}
+        >
+          <span className="text-base mt-0.5">👤</span>
+          <p className="text-xs font-semibold" style={{ color: "#92601a" }}>
+            No customer found. Fill in the details below to create a new one.
+          </p>
+        </div>
+      )}
+
+      {/* Name & Address — always visible unless existing customer is selected */}
+      {!isExistingSelected && (
+        <div className="space-y-4">
+          <Field label="Full Name" error={errors.name}>
+            <IconInput
+              icon={User}
+              placeholder="John Doe"
+              value={data.name}
+              onChange={(e) => onChange({ ...data, name: e.target.value })}
+              error={errors.name}
+            />
+          </Field>
+
+          <Field label="Address" error={errors.address}>
+            <div className="relative">
+              <div
+                className="absolute left-3.5 top-3.5 pointer-events-none flex items-center justify-center w-8 h-8 rounded"
+                style={{
+                  background: "linear-gradient(135deg, #edf7fd 0%, #c8e9f8 100%)",
+                  border: "1.5px solid #b6def5",
+                }}
+              >
+                <MapPin size={14} style={{ color: "#1a7fba" }} />
+              </div>
+              <textarea
+                className="w-full pl-14 pr-4 pt-3.5 pb-3.5 rounded-md border-2 text-sm font-medium text-slate-800 placeholder:text-slate-300 placeholder:font-normal bg-white resize-none outline-none transition-all duration-150"
+                style={{ borderColor: errors.address ? "#fca5a5" : "#e2e8f0" }}
+                placeholder="123 Main St, City..."
+                rows={3}
+                value={data.address}
+                onChange={(e) => onChange({ ...data, address: e.target.value })}
+                onFocus={(e) => {
+                  if (!errors.address) e.currentTarget.style.borderColor = "#1a7fba";
+                  e.currentTarget.style.boxShadow = "0 0 0 3.5px rgba(26,127,186,0.12)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = errors.address ? "#fca5a5" : "#e2e8f0";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              />
+            </div>
+          </Field>
+        </div>
+      )}
+
+    </div>
   );
 }
