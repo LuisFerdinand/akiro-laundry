@@ -31,6 +31,11 @@ export const paymentMethodEnum = pgEnum("payment_method", [
   "qris",
 ]);
 
+export const transactionDirectionEnum = pgEnum("transaction_direction", [
+  "income",
+  "outcome",
+]);
+
 // ─── Role Enum + Roles Table ──────────────────────────────────────────────────
 export const userRoleEnum = pgEnum("user_role", ["admin", "employee", "user"]);
 
@@ -157,11 +162,33 @@ export const cashRegister = pgTable("cash_register", {
   notes:         text("notes"),
 });
 
+export const expenseCategories = pgTable("expense_categories", {
+  id:          serial("id").primaryKey(),
+  name:        text("name").notNull().unique(),       // e.g. "Store Improvement", "Supplies"
+  description: text("description"),
+  color:       text("color").default("#64748b"),      // hex for UI badge coloring
+  // No isActive — categories are hard-deleted. Past transactions retain categoryId
+  // which resolves to null via ON DELETE SET NULL on the FK.
+  createdAt:   timestamp("created_at").defaultNow().notNull(),
+});
+
 // ─── Cash Register Transactions ───────────────────────────────────────────────
 export const cashRegisterTransactions = pgTable("cash_register_transactions", {
   id:           serial("id").primaryKey(),
-  amount:       numeric("amount",        { precision: 12, scale: 2 }).notNull(),
-  type:         text("type").notNull(),  // "payment_in" | "change_out" | "manual_adjustment" | "initial"
+ 
+  // ✦ NEW — direction: income (money in) or outcome (money out)
+  direction:    transactionDirectionEnum("direction").notNull().default("income"),
+ 
+  amount:       numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  // amount is always stored as POSITIVE; direction field tells you in/out
+ 
+  type: text("type").notNull(),
+  // "payment_in" | "change_out" | "manual_adjustment" | "initial" | "manual_income" | "manual_outcome"
+ 
+  // ✦ NEW — category (required for manual_outcome type, null for payment_in/change_out/adjustments)
+  // ON DELETE SET NULL so hard-deleting a category doesn't break ledger history
+  categoryId:   integer("category_id").references(() => expenseCategories.id, { onDelete: "set null" }),
+ 
   orderId:      integer("order_id").references(() => orders.id),
   description:  text("description").notNull(),
   balanceAfter: numeric("balance_after", { precision: 12, scale: 2 }).notNull(),
@@ -200,12 +227,22 @@ export const orderItemsRelations = relations(orderItems, ({ one }) => ({
   }),
 }));
 
+export const expenseCategoriesRelations = relations(expenseCategories, ({ many }) => ({
+  transactions: many(cashRegisterTransactions),
+}));
+ 
+// ✦ UPDATED — extend your existing cashRegisterTransactionsRelations
 export const cashRegisterTransactionsRelations = relations(
   cashRegisterTransactions,
   ({ one }) => ({
     order: one(orders, {
       fields:     [cashRegisterTransactions.orderId],
       references: [orders.id],
+    }),
+    // ✦ NEW
+    category: one(expenseCategories, {
+      fields:     [cashRegisterTransactions.categoryId],
+      references: [expenseCategories.id],
     }),
   }),
 );
@@ -229,4 +266,6 @@ export type NewOrder           = typeof orders.$inferInsert;
 export type OrderItem          = typeof orderItems.$inferSelect;
 export type NewOrderItem       = typeof orderItems.$inferInsert;
 export type CashRegister            = typeof cashRegister.$inferSelect;
+export type ExpenseCategory    = typeof expenseCategories.$inferSelect;
+export type NewExpenseCategory = typeof expenseCategories.$inferInsert;
 export type CashRegisterTransaction = typeof cashRegisterTransactions.$inferSelect;

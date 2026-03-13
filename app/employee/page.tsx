@@ -4,7 +4,7 @@ import { formatUSD, ORDER_STATUS_COLORS, ORDER_STATUS_LABELS } from "@/lib/utils
 import { Badge }   from "@/components/ui/badge";
 import Link        from "next/link";
 import {
-  ShoppingBag, Clock, CheckCircle2, TrendingUp, ChevronRight, Sparkles,
+  ShoppingBag, Clock, CheckCircle2, TrendingUp, ChevronRight, Sparkles, AlertCircle,
 } from "lucide-react";
 
 export default async function EmployeeDashboard() {
@@ -20,7 +20,6 @@ export default async function EmployeeDashboard() {
       icon: ShoppingBag,
       iconBg: "bg-blue-50",
       iconColor: "text-blue-500",
-      accent: "#3b82f6",
     },
     {
       label: "In Progress",
@@ -28,7 +27,6 @@ export default async function EmployeeDashboard() {
       icon: Clock,
       iconBg: "bg-amber-50",
       iconColor: "text-amber-500",
-      accent: "#f59e0b",
     },
     {
       label: "Ready to Pickup",
@@ -36,15 +34,13 @@ export default async function EmployeeDashboard() {
       icon: CheckCircle2,
       iconBg: "bg-emerald-50",
       iconColor: "text-emerald-500",
-      accent: "#10b981",
     },
     {
-      label: "Today's Revenue",
-      value: formatUSD(stats.todayRevenue),
-      icon: TrendingUp,
-      iconBg: "bg-brand-soft",
-      iconColor: "text-brand",
-      accent: "#1a7fba",
+      label: "Unpaid Orders",
+      value: formatUSD(stats.pendingRevenue),
+      icon: AlertCircle,
+      iconBg: "bg-rose-50",
+      iconColor: "text-rose-500",
     },
   ];
 
@@ -68,6 +64,8 @@ export default async function EmployeeDashboard() {
           </h1>
           <p className="text-white/60 text-xs mt-1 font-medium">Here&apos;s what&apos;s happening today</p>
         </div>
+
+        {/* ── 4-stat grid ── */}
         <div className="relative z-10 mt-5 grid grid-cols-2 gap-3">
           {statCards.map(({ label, value, icon: Icon, iconBg, iconColor }) => (
             <div key={label} className="akiro-stat-chip">
@@ -80,6 +78,33 @@ export default async function EmployeeDashboard() {
               <p className="text-white/55 text-[10px] font-semibold mt-0.5 leading-tight">{label}</p>
             </div>
           ))}
+        </div>
+
+        {/* ── Wide revenue bubble (full width, spans 2 cols) ── */}
+        <div className="relative z-10 mt-3 akiro-revenue-bubble">
+          {/* Subtle shine line */}
+          <div className="akiro-revenue-shine" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="akiro-revenue-icon">
+                <TrendingUp size={15} className="text-white" />
+              </div>
+              <div>
+                <p className="text-white/55 text-[10px] font-bold uppercase tracking-wider leading-none">
+                  Paid Today
+                </p>
+                <p className="text-white/40 text-[9px] font-medium mt-0.5">
+                  Confirmed payments only
+                </p>
+              </div>
+            </div>
+            <p
+              className="text-white font-extrabold text-2xl leading-none"
+              style={{ fontFamily: "Sora, sans-serif", letterSpacing: "-0.03em" }}
+            >
+              {formatUSD(stats.todayRevenue)}
+            </p>
+          </div>
         </div>
       </div>
 

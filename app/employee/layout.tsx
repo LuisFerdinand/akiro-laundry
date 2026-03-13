@@ -1,6 +1,6 @@
 // app/employee/layout.tsx
-import { TopBar }    from "@/components/employee/TopBar";
-import { BottomNav } from "@/components/employee/BottomNav";
+import { TopBar }    from "@/components/employee/layout/TopBar";
+import { BottomNav } from "@/components/employee/layout/BottomNav";
 
 export default function EmployeeLayout({ children }: { children: React.ReactNode }) {
   return (
