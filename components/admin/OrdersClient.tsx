@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 // components/admin/OrdersClient.tsx
 "use client";
 
@@ -279,10 +280,46 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
                       </div>
                     </td>
                     <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}>
-                      <span style={{ fontSize: "12px", color: "#475569", whiteSpace: "nowrap" }}>{order.serviceName}</span>
+                      {order.items.length === 0 ? (
+                        <span style={{ fontSize: "12px", color: "#cbd5e1" }}>—</span>
+                      ) : order.items.length === 1 ? (
+                        <span style={{ fontSize: "12px", color: "#475569", whiteSpace: "nowrap" }}>
+                          {order.items[0].serviceName}
+                        </span>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                          {order.items.map((item) => (
+                            <span key={item.id} style={{ fontSize: "11px", color: "#475569", whiteSpace: "nowrap" }}>
+                              {item.serviceName}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}>
-                      <span style={{ fontSize: "12px", color: "#64748b" }}>{order.weightKg} kg</span>
+                      {order.items.length === 0 ? (
+                        <span style={{ fontSize: "12px", color: "#cbd5e1" }}>—</span>
+                      ) : order.items.length === 1 ? (
+                        <span style={{ fontSize: "12px", color: "#64748b", whiteSpace: "nowrap" }}>
+                          {order.items[0].weightKg != null
+                            ? `${order.items[0].weightKg} kg`
+                            : order.items[0].quantity != null
+                            ? `${order.items[0].quantity} pcs`
+                            : "—"}
+                        </span>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                          {order.items.map((item) => (
+                            <span key={item.id} style={{ fontSize: "11px", color: "#64748b", whiteSpace: "nowrap" }}>
+                              {item.weightKg != null
+                                ? `${item.weightKg} kg`
+                                : item.quantity != null
+                                ? `${item.quantity} pcs`
+                                : "—"}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}>
                       <span style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap" }}>

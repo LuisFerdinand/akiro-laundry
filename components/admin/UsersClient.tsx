@@ -70,7 +70,7 @@ function ConfirmDeleteModal({
         </div>
         <div>
           <p style={{ fontFamily: "Sora,sans-serif", fontWeight: 800, fontSize: "16px", color: "#0f172a", marginBottom: "6px" }}>
-            Delete "{user.name}"?
+            Delete &quot;{user.name}&quot;?
           </p>
           <p style={{ fontSize: "13px", color: "#64748b", lineHeight: 1.5 }}>
             This will permanently delete the account for <strong>{user.email}</strong>. This action cannot be undone.

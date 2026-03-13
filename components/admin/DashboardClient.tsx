@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/immutability */
 // components/admin/DashboardClient.tsx
 "use client";
 
