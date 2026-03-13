@@ -17,12 +17,34 @@ import {
   calculateOrderPrice,
   OrderFormData,
 } from "@/lib/utils/order-form";
+import { buildE164, parseE164, stripTrunkPrefix, DEFAULT_COUNTRY } from "@/lib/utils/phone";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Normalise any phone string to E.164 for storage.
+ * - If it already starts with "+", trust it as-is (already E.164).
+ * - Otherwise assume Timor-Leste (+670) as the default country.
+ */
+function normalizeForStorage(raw: string): string {
+  if (!raw?.trim()) return raw;
+  if (raw.startsWith("+")) {
+    // Validate it parses to a known country; if not, store as-is
+    return parseE164(raw) ? raw : raw;
+  }
+  // Assume TL for legacy unformatted numbers
+  return buildE164(DEFAULT_COUNTRY, raw) ?? raw;
+}
 
 // ─── Lookups ──────────────────────────────────────────────────────────────────
 
 export async function lookupCustomerByPhone(phone: string): Promise<Customer | null> {
-  const normalised = phone.replace(/\s/g, "");
-  const result = await db.select().from(customers).where(eq(customers.phone, normalised)).limit(1);
+  // phone is already E.164 from the form
+  const result = await db
+    .select()
+    .from(customers)
+    .where(eq(customers.phone, phone))
+    .limit(1);
   return result[0] ?? null;
 }
 
@@ -54,10 +76,10 @@ export interface OrderWithCustomer extends Order {
 export async function getOrders(limit = 50): Promise<OrderWithCustomer[]> {
   const rows = await db
     .select({
-      order:        orders,
-      customerName: customers.name,
+      order:         orders,
+      customerName:  customers.name,
       customerPhone: customers.phone,
-      serviceName:  servicePricing.name,
+      serviceName:   servicePricing.name,
     })
     .from(orders)
     .leftJoin(customers,      eq(orders.customerId,       customers.id))
@@ -88,7 +110,12 @@ export async function getOrderById(id: number): Promise<OrderWithCustomer | null
     .limit(1);
 
   if (!rows[0]) return null;
-  return { ...rows[0].order, customerName: rows[0].customerName ?? "Unknown", customerPhone: rows[0].customerPhone ?? "—", serviceName: rows[0].serviceName ?? "—" };
+  return {
+    ...rows[0].order,
+    customerName:  rows[0].customerName  ?? "Unknown",
+    customerPhone: rows[0].customerPhone ?? "—",
+    serviceName:   rows[0].serviceName   ?? "—",
+  };
 }
 
 // ─── Update Status ────────────────────────────────────────────────────────────
@@ -98,7 +125,6 @@ export async function updateOrderStatus(
   status: Order["status"],
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // Guard: cannot move to picked_up unless the order is paid
     if (status === "picked_up") {
       const [order] = await db
         .select({ paymentStatus: orders.paymentStatus })
@@ -128,7 +154,6 @@ export async function updateOrderStatus(
   }
 }
 
-
 // ─── Create Order ─────────────────────────────────────────────────────────────
 
 export interface CreateOrderResult {
@@ -151,26 +176,40 @@ export async function createOrder(formData: OrderFormData): Promise<CreateOrderR
     if (customer.existingCustomerId) {
       customerId = customer.existingCustomerId;
     } else {
-      const existing = await lookupCustomerByPhone(customer.phone);
+      // phone from the form is already E.164 (built by buildE164 in the UI)
+      const phoneE164 = normalizeForStorage(customer.phone);
+      const existing  = await lookupCustomerByPhone(phoneE164);
       if (existing) {
         customerId = existing.id;
       } else {
         const [newCustomer] = await db
           .insert(customers)
-          .values({ name: customer.name.trim(), phone: customer.phone.replace(/\s/g, ""), address: customer.address.trim() })
+          .values({
+            name:    customer.name.trim(),
+            phone:   phoneE164,
+            address: customer.address.trim(),
+          })
           .returning({ id: customers.id });
         customerId = newCustomer.id;
       }
     }
 
-    const [serviceRow] = await db.select().from(servicePricing).where(eq(servicePricing.id, servicePricingId)).limit(1);
+    const [serviceRow] = await db
+      .select()
+      .from(servicePricing)
+      .where(eq(servicePricing.id, servicePricingId))
+      .limit(1);
     if (!serviceRow) return { success: false, error: "Service not found." };
 
-    const soapRow    = soapId    ? (await db.select().from(soaps).where(eq(soaps.id, soapId)).limit(1))[0]       ?? null : null;
-    const pewangiRow = pewangiId ? (await db.select().from(pewangi).where(eq(pewangi.id, pewangiId)).limit(1))[0] ?? null : null;
+    const soapRow    = soapId
+      ? (await db.select().from(soaps).where(eq(soaps.id, soapId)).limit(1))[0] ?? null
+      : null;
+    const pewangiRow = pewangiId
+      ? (await db.select().from(pewangi).where(eq(pewangi.id, pewangiId)).limit(1))[0] ?? null
+      : null;
 
-    const breakdown    = calculateOrderPrice(serviceRow, weightKg, soapRow, pewangiRow);
-    const orderNumber  = generateOrderNumber();
+    const breakdown   = calculateOrderPrice(serviceRow, weightKg, soapRow, pewangiRow);
+    const orderNumber = generateOrderNumber();
 
     const [newOrder] = await db
       .insert(orders)
@@ -198,32 +237,32 @@ export async function createOrder(formData: OrderFormData): Promise<CreateOrderR
   }
 }
 
+/**
+ * Search customers by the subscriber digits portion of their phone number.
+ *
+ * The DB stores numbers in E.164 (+{code}{local}). We search by the local
+ * part (passed in as `query`) using ILIKE so partial matches work.
+ */
 export async function searchCustomersByPhone(query: string): Promise<Customer[]> {
-  if (!query.trim()) return [];
-  // Strip non-digits from query for comparison, then match phones starting with or containing the digits
-  const normalized = query.replace(/\D/g, "");
-  if (!normalized) return [];
+  const local = stripTrunkPrefix(query);
+  if (local.length < 3) return [];
 
-  // ilike match against stripped digits — Postgres: translate to remove spaces/dashes then match
-  // We use a simple ilike with the raw normalized query, relying on phones being stored without spaces
-  const results = await db
+  return db
     .select()
     .from(customers)
-    .where(ilike(customers.phone, `%${normalized}%`))
-    .orderBy(customers.phone)   // consistent, ordered by phone number ascending
-    .limit(3);
-
-  return results;
+    .where(ilike(customers.phone, `%${local}%`))
+    .orderBy(customers.phone)
+    .limit(5);
 }
-
 
 // ─── Dashboard Stats ──────────────────────────────────────────────────────────
 
 export interface DashboardStats {
   todayOrders:    number;
-  activeOrders:   number; // pending + processing
-  doneOrders:     number; // done (awaiting pickup)
+  activeOrders:   number;
+  doneOrders:     number;
   todayRevenue:   number;
+  pendingRevenue: number;
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
@@ -235,12 +274,20 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const todayOrders  = allOrders.filter((o) => new Date(o.createdAt) >= todayStart);
   const activeOrders = allOrders.filter((o) => o.status === "pending" || o.status === "processing");
   const doneOrders   = allOrders.filter((o) => o.status === "done");
-  const todayRevenue = todayOrders.reduce((sum, o) => sum + parseFloat(o.totalPrice ?? "0"), 0);
+
+  const todayRevenue = allOrders
+    .filter((o) => o.paymentStatus === "paid" && o.paidAt && new Date(o.paidAt) >= todayStart)
+    .reduce((sum, o) => sum + parseFloat(o.totalPrice ?? "0"), 0);
+
+  const pendingRevenue = allOrders
+    .filter((o) => o.paymentStatus === "unpaid")
+    .reduce((sum, o) => sum + parseFloat(o.totalPrice ?? "0"), 0);
 
   return {
     todayOrders:  todayOrders.length,
     activeOrders: activeOrders.length,
     doneOrders:   doneOrders.length,
     todayRevenue,
+    pendingRevenue,
   };
 }

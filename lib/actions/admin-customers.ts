@@ -5,7 +5,7 @@
 import { db } from "@/lib/db";
 import { customers, orders } from "@/lib/db/schema";
 import type { Customer } from "@/lib/db/schema";
-import { eq, desc, ilike, or, sql, count } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -16,9 +16,21 @@ export interface CustomerWithStats extends Customer {
   lastOrderDate: Date | null;
 }
 
+export type SortOption = "recent" | "top_spender" | "most_orders" | "newest";
+
+export interface CustomerInsights {
+  topSpenders:    CustomerWithStats[];
+  mostRepeat:     CustomerWithStats[];
+  newThisMonth:   CustomerWithStats[];
+  newByMonth:     { month: string; count: number }[];
+}
+
 // ─── List all customers with stats ───────────────────────────────────────────
 
-export async function getAdminCustomers(search?: string): Promise<CustomerWithStats[]> {
+export async function getAdminCustomers(
+  search?: string,
+  sort: SortOption = "recent",
+): Promise<CustomerWithStats[]> {
   const allCustomers = await db
     .select()
     .from(customers)
@@ -31,17 +43,16 @@ export async function getAdminCustomers(search?: string): Promise<CustomerWithSt
       })
     : allCustomers;
 
-  // Fetch all orders once and group in JS (avoids N+1 queries)
   const allOrders = await db
     .select({
-      customerId: orders.customerId,
-      totalPrice: orders.totalPrice,
-      createdAt:  orders.createdAt,
+      customerId:    orders.customerId,
+      totalPrice:    orders.totalPrice,
+      createdAt:     orders.createdAt,
       paymentStatus: orders.paymentStatus,
     })
     .from(orders);
 
-  return filtered.map((c) => {
+  const withStats: CustomerWithStats[] = filtered.map((c) => {
     const customerOrders = allOrders.filter((o) => o.customerId === c.id);
     const paid = customerOrders.filter((o) => o.paymentStatus === "paid");
     const sorted = [...customerOrders].sort(
@@ -54,19 +65,104 @@ export async function getAdminCustomers(search?: string): Promise<CustomerWithSt
       lastOrderDate: sorted[0]?.createdAt ?? null,
     };
   });
+
+  // Apply sort
+  switch (sort) {
+    case "top_spender":
+      return withStats.sort((a, b) => b.totalSpent - a.totalSpent);
+    case "most_orders":
+      return withStats.sort((a, b) => b.totalOrders - a.totalOrders);
+    case "newest":
+      return withStats.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    case "recent":
+    default:
+      return withStats.sort((a, b) => {
+        const aDate = a.lastOrderDate ? new Date(a.lastOrderDate).getTime() : 0;
+        const bDate = b.lastOrderDate ? new Date(b.lastOrderDate).getTime() : 0;
+        return bDate - aDate;
+      });
+  }
+}
+
+// ─── Insights: top spenders, repeat buyers, monthly new ──────────────────────
+
+export async function getCustomerInsights(): Promise<CustomerInsights> {
+  const allCustomers = await db
+    .select()
+    .from(customers)
+    .orderBy(desc(customers.createdAt));
+
+  const allOrders = await db
+    .select({
+      customerId:    orders.customerId,
+      totalPrice:    orders.totalPrice,
+      createdAt:     orders.createdAt,
+      paymentStatus: orders.paymentStatus,
+    })
+    .from(orders);
+
+  const withStats: CustomerWithStats[] = allCustomers.map((c) => {
+    const customerOrders = allOrders.filter((o) => o.customerId === c.id);
+    const paid = customerOrders.filter((o) => o.paymentStatus === "paid");
+    const sortedOrd = [...customerOrders].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    return {
+      ...c,
+      totalOrders:   customerOrders.length,
+      totalSpent:    paid.reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0),
+      lastOrderDate: sortedOrd[0]?.createdAt ?? null,
+    };
+  });
+
+  // Top 5 spenders
+  const topSpenders = [...withStats]
+    .filter((c) => c.totalSpent > 0)
+    .sort((a, b) => b.totalSpent - a.totalSpent)
+    .slice(0, 5);
+
+  // Top 5 repeat buyers
+  const mostRepeat = [...withStats]
+    .filter((c) => c.totalOrders > 0)
+    .sort((a, b) => b.totalOrders - a.totalOrders)
+    .slice(0, 5);
+
+  // New this month
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const newThisMonth = withStats.filter(
+    (c) => new Date(c.createdAt) >= startOfMonth
+  );
+
+  // New customers by month (last 6 months)
+  const newByMonth: { month: string; count: number }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+    const monthLabel = d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+    const count = allCustomers.filter((c) => {
+      const created = new Date(c.createdAt);
+      return created >= d && created < nextMonth;
+    }).length;
+    newByMonth.push({ month: monthLabel, count });
+  }
+
+  return { topSpenders, mostRepeat, newThisMonth, newByMonth };
 }
 
 // ─── Single customer + their orders ──────────────────────────────────────────
 
 export interface CustomerDetail extends CustomerWithStats {
   recentOrders: {
-    id:           number;
-    orderNumber:  string;
-    totalPrice:   string;
-    status:       string;
+    id:            number;
+    orderNumber:   string;
+    totalPrice:    string;
+    status:        string;
     paymentStatus: string;
-    createdAt:    Date;
-    serviceName:  string;
+    createdAt:     Date;
+    serviceName:   string;
   }[];
 }
 

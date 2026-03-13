@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 // components/employee/PaymentModal.tsx
 "use client";
 
@@ -12,21 +11,38 @@ import { formatUSD } from "@/lib/utils/order-form";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface PaymentModalProps {
-  orderId: number;
-  orderNumber: string;
+  orderId:      number;
+  orderNumber:  string;
   customerName: string;
-  totalPrice: number;
-  onClose: () => void;
-  onSuccess: (change: number) => void;
+  totalPrice:   number;
+  onClose:      () => void;
+  onSuccess:    (change: number) => void;
 }
 
 type PaymentMethod = "cash" | "transfer" | "qris";
 
-const METHODS: { value: PaymentMethod; label: string; Icon: React.ElementType; color: string; border: string; bg: string }[] = [
-  { value: "cash",     label: "Cash",     Icon: Banknote,        color: "#16a34a", border: "#86efac", bg: "linear-gradient(135deg,#f0fdf4,#dcfce7)" },
-  { value: "transfer", label: "Transfer", Icon: ArrowLeftRight,  color: "#1a7fba", border: "#b6def5", bg: "linear-gradient(135deg,#edf7fd,#c8e9f8)" },
-  { value: "qris",     label: "QRIS",     Icon: QrCode,          color: "#7c3aed", border: "#c4b5fd", bg: "linear-gradient(135deg,#f5f3ff,#ede9fe)" },
+const METHODS: {
+  value:  PaymentMethod;
+  label:  string;
+  Icon:   React.ElementType;
+  color:  string;
+  border: string;
+  bg:     string;
+}[] = [
+  { value: "cash",     label: "Cash",     Icon: Banknote,       color: "#16a34a", border: "#86efac", bg: "linear-gradient(135deg,#f0fdf4,#dcfce7)" },
+  { value: "transfer", label: "Transfer", Icon: ArrowLeftRight, color: "#1a7fba", border: "#b6def5", bg: "linear-gradient(135deg,#edf7fd,#c8e9f8)" },
+  { value: "qris",     label: "QRIS",     Icon: QrCode,         color: "#7c3aed", border: "#c4b5fd", bg: "linear-gradient(135deg,#f5f3ff,#ede9fe)" },
 ];
+
+/**
+ * Generate sensible quick-fill amounts in USD.
+ * Always includes the exact total; adds round-dollar steps above it.
+ */
+function getQuickAmounts(total: number): number[] {
+  const rounds = [1, 2, 5, 10, 20, 50, 100].map((d) => Math.ceil(total / d) * d);
+  const unique = Array.from(new Set([total, ...rounds])).filter((v) => v >= total).sort((a, b) => a - b);
+  return unique.slice(0, 5);
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export function PaymentModal({
@@ -37,22 +53,18 @@ export function PaymentModal({
   onClose,
   onSuccess,
 }: PaymentModalProps) {
-  const [method, setMethod]           = useState<PaymentMethod>("cash");
-  const [tendered, setTendered]       = useState<string>("");
-  const [isPending, startTransition]  = useTransition();
-  const [error, setError]             = useState<string | null>(null);
+  const [method,   setMethod]          = useState<PaymentMethod>("cash");
+  const [tendered, setTendered]        = useState<string>("");
+  const [isPending, startTransition]   = useTransition();
+  const [error,    setError]           = useState<string | null>(null);
 
-  const tenderedNum = parseFloat(tendered) || 0;
-  const change      = method === "cash" ? Math.max(0, tenderedNum - totalPrice) : 0;
-  const isExact     = method !== "cash" || tenderedNum >= totalPrice;
+  const tenderedNum  = parseFloat(tendered) || 0;
+  const change       = method === "cash" ? Math.max(0, tenderedNum - totalPrice) : 0;
+  const isExact      = method !== "cash" || tenderedNum >= totalPrice;
+  const quickAmounts = getQuickAmounts(totalPrice);
 
-  // Quick-fill buttons (common cash amounts)
-  const quickAmounts = [totalPrice, 50000, 100000, 200000].filter(
-    (v, i, a) => a.indexOf(v) === i && v >= totalPrice,
-  );
-
+  // Reset tendered when switching methods
   useEffect(() => {
-    // Reset tendered when switching methods
     if (method !== "cash") setTendered(totalPrice.toString());
     else setTendered("");
   }, [method, totalPrice]);
@@ -60,14 +72,10 @@ export function PaymentModal({
   const handleSubmit = () => {
     setError(null);
     const amountTendered = method === "cash" ? tenderedNum : totalPrice;
-
     startTransition(async () => {
       const result = await processPayment({ orderId, paymentMethod: method, amountTendered });
-      if (result.success) {
-        onSuccess(result.change ?? 0);
-      } else {
-        setError(result.error ?? "Payment failed.");
-      }
+      if (result.success) onSuccess(result.change ?? 0);
+      else setError(result.error ?? "Payment failed.");
     });
   };
 
@@ -130,6 +138,7 @@ export function PaymentModal({
         </div>
 
         <div style={{ padding: "20px" }}>
+
           {/* Total due */}
           <div
             style={{
@@ -188,29 +197,43 @@ export function PaymentModal({
                 Amount Tendered
               </p>
               <div style={{ position: "relative" }}>
+                {/* Dollar sign prefix */}
                 <span style={{
                   position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)",
-                  fontSize: "13px", fontWeight: 700, color: "#64748b",
+                  fontSize: "14px", fontWeight: 800, color: "#64748b",
+                  pointerEvents: "none",
                 }}>
-                  Rp
+                  $
                 </span>
                 <input
                   type="number"
                   min={totalPrice}
-                  step="1000"
+                  step="0.01"
                   value={tendered}
                   onChange={(e) => setTendered(e.target.value)}
-                  placeholder="0"
+                  placeholder="0.00"
                   style={{
                     width: "100%", boxSizing: "border-box",
-                    padding: "12px 12px 12px 36px",
+                    padding: "12px 12px 12px 28px",
                     border: `1.5px solid ${tenderedNum >= totalPrice && tenderedNum > 0 ? "#86efac" : "#e2e8f0"}`,
-                    borderRadius: "8px", fontSize: "16px", fontWeight: 700, color: "#1e293b",
+                    borderRadius: "8px",
+                    fontSize: "16px", fontWeight: 700, color: "#1e293b",
                     outline: "none",
+                  }}
+                  onFocus={(e) => {
+                    if (!(tenderedNum >= totalPrice && tenderedNum > 0))
+                      e.currentTarget.style.borderColor = "#1a7fba";
+                    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(26,127,186,0.10)";
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor =
+                      tenderedNum >= totalPrice && tenderedNum > 0 ? "#86efac" : "#e2e8f0";
+                    e.currentTarget.style.boxShadow = "none";
                   }}
                 />
               </div>
-              {/* Quick amounts */}
+
+              {/* Quick-fill amounts */}
               <div style={{ display: "flex", gap: "6px", marginTop: "8px", flexWrap: "wrap" }}>
                 {quickAmounts.map((amt) => (
                   <button
@@ -223,6 +246,19 @@ export function PaymentModal({
                       fontSize: "11px", fontWeight: 700,
                       color: tenderedNum === amt ? "#1a7fba" : "#64748b",
                       cursor: "pointer",
+                      transition: "all 0.12s",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (tenderedNum !== amt) {
+                        e.currentTarget.style.borderColor = "#b6def5";
+                        e.currentTarget.style.color = "#1a7fba";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (tenderedNum !== amt) {
+                        e.currentTarget.style.borderColor = "#e2e8f0";
+                        e.currentTarget.style.color = "#64748b";
+                      }
                     }}
                   >
                     {formatUSD(amt)}
@@ -246,7 +282,9 @@ export function PaymentModal({
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                     <Calculator size={13} style={{ color: "#16a34a" }} />
-                    <span style={{ fontSize: "12px", fontWeight: 700, color: "#16a34a" }}>Change to return</span>
+                    <span style={{ fontSize: "12px", fontWeight: 700, color: "#16a34a" }}>
+                      Change to return
+                    </span>
                   </div>
                   <span style={{ fontSize: "16px", fontWeight: 900, color: "#14532d" }}>
                     {formatUSD(change)}
@@ -256,7 +294,7 @@ export function PaymentModal({
             </div>
           )}
 
-          {/* Transfer / QRIS info */}
+          {/* Transfer / QRIS confirmation notice */}
           {method !== "cash" && (
             <div
               style={{
@@ -268,7 +306,8 @@ export function PaymentModal({
                 fontSize: "12px", fontWeight: 600, color: "#92400e",
               }}
             >
-              Confirm that <strong>{formatUSD(totalPrice)}</strong> has been received via {method.toUpperCase()} before proceeding.
+              Confirm that <strong>{formatUSD(totalPrice)}</strong> has been received via{" "}
+              {method.toUpperCase()} before proceeding.
             </div>
           )}
 
@@ -301,6 +340,7 @@ export function PaymentModal({
               cursor: isPending || (method === "cash" && !isExact) ? "not-allowed" : "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
               opacity: isPending || (method === "cash" && !isExact) ? 0.6 : 1,
+              transition: "all 0.15s",
             }}
           >
             {isPending ? (
@@ -309,6 +349,7 @@ export function PaymentModal({
               <><CheckCircle2 size={16} /> Confirm Payment — {formatUSD(totalPrice)}</>
             )}
           </button>
+
         </div>
       </div>
     </div>
