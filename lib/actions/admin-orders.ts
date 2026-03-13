@@ -2,148 +2,199 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { orders, customers, servicePricing, soaps, pewangi } from "@/lib/db/schema";
-import type { Order } from "@/lib/db/schema";
-import { eq, ilike, desc, and, or, gte, lte, count, sql } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
+import {
+  orders,
+  customers,
+  orderItems,
+  servicePricing,
+  soaps,
+  pewangi,
+} from "@/lib/db/schema";
+import type { Order, OrderItem } from "@/lib/db/schema";
+import { eq, ilike, and, desc, or, count, gte, lte, inArray } from "drizzle-orm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface AdminOrderRow extends Order {
+/** One service line inside an order — all fields needed for display */
+export interface AdminOrderItem extends OrderItem {
+  serviceName: string;
+  soapName:    string | null;
+  pewangiName: string | null;
+}
+
+/** Full order record returned by all admin queries */
+export interface AdminOrderWithDetails extends Order {
   customerName:  string;
   customerPhone: string;
-  serviceName:   string;
-  soapName:      string | null;
-  pewangiName:   string | null;
+  items: AdminOrderItem[];
 }
 
-export interface OrderFilters {
-  search?:    string;   // order number or customer name
-  status?:    string;
-  payment?:   string;
-  dateFrom?:  string;   // ISO date string
-  dateTo?:    string;
-  page?:      number;
-  limit?:     number;
-}
-
+/** Shape returned by paginated list query */
 export interface PaginatedOrders {
-  rows:       AdminOrderRow[];
+  rows:       AdminOrderWithDetails[];
   total:      number;
   page:       number;
   totalPages: number;
 }
 
-// ─── List with filters + pagination ──────────────────────────────────────────
+/** Filter + pagination parameters */
+export interface OrderFilters {
+  search?:   string;
+  status?:   string;
+  payment?:  string;
+  dateFrom?: string;   // ISO date string "YYYY-MM-DD"
+  dateTo?:   string;   // ISO date string "YYYY-MM-DD"
+  page?:     number;
+  limit?:    number;
+}
 
-export async function getAdminOrders(filters: OrderFilters = {}): Promise<PaginatedOrders> {
-  const {
-    search, status, payment,
-    dateFrom, dateTo,
-    page  = 1,
-    limit = 20,
-  } = filters;
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Fetch all order_items (with joined service/soap/pewangi names) for a set of
+ * order IDs and return them grouped by orderId.
+ */
+async function fetchItemsByOrderIds(
+  orderIds: number[],
+): Promise<Map<number, AdminOrderItem[]>> {
+  if (orderIds.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      item:        orderItems,
+      serviceName: servicePricing.name,
+      soapName:    soaps.name,
+      pewangiName: pewangi.name,
+    })
+    .from(orderItems)
+    .leftJoin(servicePricing, eq(orderItems.servicePricingId, servicePricing.id))
+    .leftJoin(soaps,          eq(orderItems.soapId,    soaps.id))
+    .leftJoin(pewangi,        eq(orderItems.pewangiId, pewangi.id))
+    .where(inArray(orderItems.orderId, orderIds));
+
+  const map = new Map<number, AdminOrderItem[]>();
+  for (const r of rows) {
+    const list = map.get(r.item.orderId) ?? [];
+    list.push({
+      ...r.item,
+      serviceName: r.serviceName ?? "—",
+      soapName:    r.soapName    ?? null,
+      pewangiName: r.pewangiName ?? null,
+    });
+    map.set(r.item.orderId, list);
+  }
+  return map;
+}
+
+// ─── Paginated orders list ────────────────────────────────────────────────────
+
+export async function getAdminOrders(
+  filters: OrderFilters = {},
+): Promise<PaginatedOrders> {
+  const { search, status, payment, dateFrom, dateTo, page = 1, limit = 25 } = filters;
   const offset = (page - 1) * limit;
 
-  // Build where conditions
+  // Build WHERE conditions
   const conditions = [];
 
-  if (status  && status  !== "all") conditions.push(eq(orders.status,        status  as Order["status"]));
-  if (payment && payment !== "all") conditions.push(eq(orders.paymentStatus, payment as Order["paymentStatus"]));
-  if (dateFrom) conditions.push(gte(orders.createdAt, new Date(dateFrom)));
-  if (dateTo)   conditions.push(lte(orders.createdAt, new Date(dateTo + "T23:59:59")));
+  if (search?.trim()) {
+    conditions.push(
+      or(
+        ilike(orders.orderNumber, `%${search.trim()}%`),
+        ilike(customers.name,    `%${search.trim()}%`),
+        ilike(customers.phone,   `%${search.trim()}%`),
+      ),
+    );
+  }
+  if (status && status !== "all") {
+    conditions.push(eq(orders.status, status as Order["status"]));
+  }
+  if (payment && payment !== "all") {
+    conditions.push(eq(orders.paymentStatus, payment as Order["paymentStatus"]));
+  }
+  if (dateFrom) {
+    conditions.push(gte(orders.createdAt, new Date(dateFrom)));
+  }
+  if (dateTo) {
+    conditions.push(lte(orders.createdAt, new Date(dateTo + "T23:59:59")));
+  }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  // Search is done as a subquery filter on joined customer name / order number
-  const rows = await db
+  // Count total matching rows
+  const [{ value: total }] = await db
+    .select({ value: count() })
+    .from(orders)
+    .leftJoin(customers, eq(orders.customerId, customers.id))
+    .where(where);
+
+  // Fetch page of orders
+  const orderRows = await db
     .select({
       order:         orders,
       customerName:  customers.name,
       customerPhone: customers.phone,
-      serviceName:   servicePricing.name,
-      soapName:      soaps.name,
-      pewangiName:   pewangi.name,
     })
     .from(orders)
-    .leftJoin(customers,      eq(orders.customerId,       customers.id))
-    .leftJoin(servicePricing, eq(orders.servicePricingId, servicePricing.id))
-    .leftJoin(soaps,          eq(orders.soapId,           soaps.id))
-    .leftJoin(pewangi,        eq(orders.pewangiId,        pewangi.id))
+    .leftJoin(customers, eq(orders.customerId, customers.id))
     .where(where)
     .orderBy(desc(orders.createdAt))
-    .limit(limit + 50)   // fetch a bit more so client-side search still paginates
+    .limit(limit)
     .offset(offset);
 
-  // Client-side search filter on joined fields (avoids complex SQL ILIKE across joins)
-  const filtered = search
-    ? rows.filter((r) => {
-        const q = search.toLowerCase();
-        return (
-          r.order.orderNumber.toLowerCase().includes(q) ||
-          (r.customerName  ?? "").toLowerCase().includes(q) ||
-          (r.customerPhone ?? "").includes(q)
-        );
-      })
-    : rows;
+  const orderIds  = orderRows.map((r) => r.order.id);
+  const itemsMap  = await fetchItemsByOrderIds(orderIds);
 
-  const mapped: AdminOrderRow[] = filtered.slice(0, limit).map((r) => ({
+  const rows: AdminOrderWithDetails[] = orderRows.map((r) => ({
     ...r.order,
     customerName:  r.customerName  ?? "Unknown",
     customerPhone: r.customerPhone ?? "—",
-    serviceName:   r.serviceName   ?? "—",
-    soapName:      r.soapName      ?? null,
-    pewangiName:   r.pewangiName   ?? null,
+    items:         itemsMap.get(r.order.id) ?? [],
   }));
 
   return {
-    rows:       mapped,
-    total:      filtered.length,
+    rows,
+    total:      Number(total),
     page,
-    totalPages: Math.ceil(filtered.length / limit),
+    totalPages: Math.max(1, Math.ceil(Number(total) / limit)),
   };
 }
 
 // ─── Single order detail ──────────────────────────────────────────────────────
 
-export async function getAdminOrderById(id: number): Promise<AdminOrderRow | null> {
+export async function getAdminOrderById(
+  id: number,
+): Promise<AdminOrderWithDetails | null> {
   const rows = await db
     .select({
       order:         orders,
       customerName:  customers.name,
       customerPhone: customers.phone,
-      serviceName:   servicePricing.name,
-      soapName:      soaps.name,
-      pewangiName:   pewangi.name,
     })
     .from(orders)
-    .leftJoin(customers,      eq(orders.customerId,       customers.id))
-    .leftJoin(servicePricing, eq(orders.servicePricingId, servicePricing.id))
-    .leftJoin(soaps,          eq(orders.soapId,           soaps.id))
-    .leftJoin(pewangi,        eq(orders.pewangiId,        pewangi.id))
+    .leftJoin(customers, eq(orders.customerId, customers.id))
     .where(eq(orders.id, id))
     .limit(1);
 
   if (!rows[0]) return null;
+
+  const itemsMap = await fetchItemsByOrderIds([id]);
+
   return {
     ...rows[0].order,
     customerName:  rows[0].customerName  ?? "Unknown",
     customerPhone: rows[0].customerPhone ?? "—",
-    serviceName:   rows[0].serviceName   ?? "—",
-    soapName:      rows[0].soapName      ?? null,
-    pewangiName:   rows[0].pewangiName   ?? null,
+    items:         itemsMap.get(id) ?? [],
   };
 }
-
 // ─── Revenue stats for cash register page ────────────────────────────────────
 
 export interface RevenueStats {
-  todayRevenue:   number;
-  weekRevenue:    number;
-  monthRevenue:   number;
+  todayRevenue:    number;
+  weekRevenue:     number;
+  monthRevenue:    number;
   totalPaidOrders: number;
-  totalUnpaid:    number;
+  totalUnpaid:     number;
 }
 
 export async function getRevenueStats(): Promise<RevenueStats> {
@@ -152,10 +203,12 @@ export async function getRevenueStats(): Promise<RevenueStats> {
   const week  = new Date(today); week.setDate(today.getDate() - 7);
   const month = new Date(today); month.setDate(1);
 
+  // Only pull the columns we need — no join required
   const all = await db
     .select({
       totalPrice:    orders.totalPrice,
       paymentStatus: orders.paymentStatus,
+      paidAt:        orders.paidAt,
       createdAt:     orders.createdAt,
     })
     .from(orders);
@@ -163,9 +216,10 @@ export async function getRevenueStats(): Promise<RevenueStats> {
   const paid   = all.filter((o) => o.paymentStatus === "paid");
   const unpaid = all.filter((o) => o.paymentStatus === "unpaid");
 
+  // Revenue counted on paidAt date, falls back to createdAt for legacy rows
   const sum = (rows: typeof paid, from: Date) =>
     rows
-      .filter((o) => new Date(o.createdAt) >= from)
+      .filter((o) => new Date(o.paidAt ?? o.createdAt) >= from)
       .reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0);
 
   return {

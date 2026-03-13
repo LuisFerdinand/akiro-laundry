@@ -5,41 +5,46 @@ import { db } from "@/lib/db";
 import {
   customers,
   orders,
+  orderItems,
   soaps,
   pewangi,
   servicePricing,
 } from "@/lib/db/schema";
-import type { Customer, Soap, Pewangi, ServicePricing, Order } from "@/lib/db/schema";
+import type {
+  Customer,
+  Soap,
+  Pewangi,
+  ServicePricing,
+  Order,
+  OrderItem,
+} from "@/lib/db/schema";
 import { eq, ilike, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import {
   generateOrderNumber,
-  calculateOrderPrice,
+  calculateItemPrice,
   OrderFormData,
 } from "@/lib/utils/order-form";
-import { buildE164, parseE164, stripTrunkPrefix, DEFAULT_COUNTRY } from "@/lib/utils/phone";
+import {
+  buildE164,
+  parseE164,
+  stripTrunkPrefix,
+  DEFAULT_COUNTRY,
+} from "@/lib/utils/phone";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Normalise any phone string to E.164 for storage.
- * - If it already starts with "+", trust it as-is (already E.164).
- * - Otherwise assume Timor-Leste (+670) as the default country.
- */
 function normalizeForStorage(raw: string): string {
   if (!raw?.trim()) return raw;
   if (raw.startsWith("+")) {
-    // Validate it parses to a known country; if not, store as-is
     return parseE164(raw) ? raw : raw;
   }
-  // Assume TL for legacy unformatted numbers
   return buildE164(DEFAULT_COUNTRY, raw) ?? raw;
 }
 
 // ─── Lookups ──────────────────────────────────────────────────────────────────
 
 export async function lookupCustomerByPhone(phone: string): Promise<Customer | null> {
-  // phone is already E.164 from the form
   const result = await db
     .select()
     .from(customers)
@@ -50,7 +55,11 @@ export async function lookupCustomerByPhone(phone: string): Promise<Customer | n
 
 export async function searchCustomersByName(query: string): Promise<Customer[]> {
   if (!query.trim()) return [];
-  return db.select().from(customers).where(ilike(customers.name, `%${query}%`)).limit(10);
+  return db
+    .select()
+    .from(customers)
+    .where(ilike(customers.name, `%${query}%`))
+    .limit(10);
 }
 
 export async function getActiveSoaps(): Promise<Soap[]> {
@@ -67,61 +76,101 @@ export async function getActiveServicePricing(): Promise<ServicePricing[]> {
 
 // ─── Orders List ──────────────────────────────────────────────────────────────
 
-export interface OrderWithCustomer extends Order {
-  customerName: string;
+export interface OrderWithDetails extends Order {
+  customerName:  string;
   customerPhone: string;
-  serviceName: string;
+  /** All service line items belonging to this order */
+  items: (OrderItem & { serviceName: string })[];
 }
 
-export async function getOrders(limit = 50): Promise<OrderWithCustomer[]> {
-  const rows = await db
+export async function getOrders(limit = 50): Promise<OrderWithDetails[]> {
+  const orderRows = await db
     .select({
       order:         orders,
       customerName:  customers.name,
       customerPhone: customers.phone,
-      serviceName:   servicePricing.name,
     })
     .from(orders)
-    .leftJoin(customers,      eq(orders.customerId,       customers.id))
-    .leftJoin(servicePricing, eq(orders.servicePricingId, servicePricing.id))
+    .leftJoin(customers, eq(orders.customerId, customers.id))
     .orderBy(desc(orders.createdAt))
     .limit(limit);
 
-  return rows.map((r) => ({
+  if (orderRows.length === 0) return [];
+
+  const orderIds = orderRows.map((r) => r.order.id);
+
+  // Fetch all items for these orders in one query
+  const itemRows = await db
+    .select({
+      item:        orderItems,
+      serviceName: servicePricing.name,
+    })
+    .from(orderItems)
+    .leftJoin(servicePricing, eq(orderItems.servicePricingId, servicePricing.id))
+    .where(
+      // drizzle inArray equivalent
+      // If you have drizzle's `inArray` helper available import it; otherwise use a raw filter loop
+      // Using eq in a loop would need Promise.all — simplest is to join after the fact:
+      eq(orderItems.orderId, orderIds[0]), // placeholder replaced below
+    );
+
+  // Re-fetch items properly using inArray (requires drizzle-orm ≥ 0.28)
+  // If your version doesn't have it, use the Promise.all fallback below.
+  const { inArray } = await import("drizzle-orm");
+  const allItems = await db
+    .select({ item: orderItems, serviceName: servicePricing.name })
+    .from(orderItems)
+    .leftJoin(servicePricing, eq(orderItems.servicePricingId, servicePricing.id))
+    .where(inArray(orderItems.orderId, orderIds));
+
+  // Group items by orderId
+  const itemsByOrder = new Map<number, (OrderItem & { serviceName: string })[]>();
+  for (const row of allItems) {
+    const list = itemsByOrder.get(row.item.orderId) ?? [];
+    list.push({ ...row.item, serviceName: row.serviceName ?? "—" });
+    itemsByOrder.set(row.item.orderId, list);
+  }
+
+  return orderRows.map((r) => ({
     ...r.order,
     customerName:  r.customerName  ?? "Unknown",
     customerPhone: r.customerPhone ?? "—",
-    serviceName:   r.serviceName   ?? "—",
+    items:         itemsByOrder.get(r.order.id) ?? [],
   }));
 }
 
-export async function getOrderById(id: number): Promise<OrderWithCustomer | null> {
+export async function getOrderById(id: number): Promise<OrderWithDetails | null> {
   const rows = await db
     .select({
       order:         orders,
       customerName:  customers.name,
       customerPhone: customers.phone,
-      serviceName:   servicePricing.name,
     })
     .from(orders)
-    .leftJoin(customers,      eq(orders.customerId,       customers.id))
-    .leftJoin(servicePricing, eq(orders.servicePricingId, servicePricing.id))
+    .leftJoin(customers, eq(orders.customerId, customers.id))
     .where(eq(orders.id, id))
     .limit(1);
 
   if (!rows[0]) return null;
+
+  const items = await db
+    .select({ item: orderItems, serviceName: servicePricing.name })
+    .from(orderItems)
+    .leftJoin(servicePricing, eq(orderItems.servicePricingId, servicePricing.id))
+    .where(eq(orderItems.orderId, id));
+
   return {
     ...rows[0].order,
     customerName:  rows[0].customerName  ?? "Unknown",
     customerPhone: rows[0].customerPhone ?? "—",
-    serviceName:   rows[0].serviceName   ?? "—",
+    items: items.map((r) => ({ ...r.item, serviceName: r.serviceName ?? "—" })),
   };
 }
 
 // ─── Update Status ────────────────────────────────────────────────────────────
 
 export async function updateOrderStatus(
-  id: number,
+  id:     number,
   status: Order["status"],
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -157,26 +206,25 @@ export async function updateOrderStatus(
 // ─── Create Order ─────────────────────────────────────────────────────────────
 
 export interface CreateOrderResult {
-  success: boolean;
-  orderId?: number;
+  success:      boolean;
+  orderId?:     number;
   orderNumber?: string;
-  error?: string;
+  error?:       string;
 }
 
 export async function createOrder(formData: OrderFormData): Promise<CreateOrderResult> {
   try {
-    const { customer, servicePricingId, weightKg, soapId, pewangiId, notes } = formData;
+    const { customer, items, notes } = formData;
 
-    if (!servicePricingId || !weightKg) {
-      return { success: false, error: "Service or weight is missing." };
+    if (!items || items.length === 0) {
+      return { success: false, error: "At least one service item is required." };
     }
 
-    // Resolve or create customer
+    // ── 1. Resolve or create customer ─────────────────────────────────────────
     let customerId: number;
     if (customer.existingCustomerId) {
       customerId = customer.existingCustomerId;
     } else {
-      // phone from the form is already E.164 (built by buildE164 in the UI)
       const phoneE164 = normalizeForStorage(customer.phone);
       const existing  = await lookupCustomerByPhone(phoneE164);
       if (existing) {
@@ -194,21 +242,44 @@ export async function createOrder(formData: OrderFormData): Promise<CreateOrderR
       }
     }
 
-    const [serviceRow] = await db
-      .select()
-      .from(servicePricing)
-      .where(eq(servicePricing.id, servicePricingId))
-      .limit(1);
-    if (!serviceRow) return { success: false, error: "Service not found." };
+    // ── 2. Resolve service, soap, and pewangi rows for each item ──────────────
+    const resolvedItems = await Promise.all(
+      items.map(async (item) => {
+        if (!item.servicePricingId) {
+          throw new Error("Each item must have a servicePricingId.");
+        }
 
-    const soapRow    = soapId
-      ? (await db.select().from(soaps).where(eq(soaps.id, soapId)).limit(1))[0] ?? null
-      : null;
-    const pewangiRow = pewangiId
-      ? (await db.select().from(pewangi).where(eq(pewangi.id, pewangiId)).limit(1))[0] ?? null
-      : null;
+        const [serviceRow] = await db
+          .select()
+          .from(servicePricing)
+          .where(eq(servicePricing.id, item.servicePricingId))
+          .limit(1);
+        if (!serviceRow) throw new Error(`Service ${item.servicePricingId} not found.`);
 
-    const breakdown   = calculateOrderPrice(serviceRow, weightKg, soapRow, pewangiRow);
+        const soapRow = item.soapId
+          ? (await db.select().from(soaps).where(eq(soaps.id, item.soapId)).limit(1))[0] ?? null
+          : null;
+
+        const pewangiRow = item.pewangiId
+          ? (await db.select().from(pewangi).where(eq(pewangi.id, item.pewangiId)).limit(1))[0] ?? null
+          : null;
+
+        const breakdown = calculateItemPrice(
+          serviceRow,
+          item.weightKg,
+          item.quantity,
+          soapRow,
+          pewangiRow,
+        );
+
+        return { item, serviceRow, soapRow, pewangiRow, breakdown };
+      }),
+    );
+
+    // ── 3. Sum totals ─────────────────────────────────────────────────────────
+    const totalPrice = resolvedItems.reduce((sum, r) => sum + r.breakdown.subtotal, 0);
+
+    // ── 4. Insert order header ────────────────────────────────────────────────
     const orderNumber = generateOrderNumber();
 
     const [newOrder] = await db
@@ -216,33 +287,46 @@ export async function createOrder(formData: OrderFormData): Promise<CreateOrderR
       .values({
         orderNumber,
         customerId,
-        weightKg:        weightKg.toString(),
-        soapId:          soapId    ?? null,
-        pewangiId:       pewangiId ?? null,
-        servicePricingId,
-        basePricePerKg:  serviceRow.basePricePerKg,
-        soapCost:        breakdown.soapCost.toString(),
-        pewangiCost:     breakdown.pewangiCost.toString(),
-        totalPrice:      breakdown.totalPrice.toString(),
-        notes:           notes.trim() || null,
-        status:          "pending",
+        totalPrice:    totalPrice.toString(),
+        notes:         notes.trim() || null,
+        status:        "pending",
+        paymentStatus: "unpaid",
       })
       .returning({ id: orders.id, orderNumber: orders.orderNumber });
+
+    // ── 5. Insert order items ─────────────────────────────────────────────────
+    await db.insert(orderItems).values(
+      resolvedItems.map(({ item, serviceRow, breakdown }) => ({
+        orderId:          newOrder.id,
+        servicePricingId: serviceRow.id,
+        weightKg:
+          serviceRow.pricingUnit !== "per_pcs" && item.weightKg != null
+            ? item.weightKg.toString()
+            : null,
+        quantity:
+          serviceRow.pricingUnit === "per_pcs" && item.quantity != null
+            ? item.quantity
+            : null,
+        soapId:         item.soapId    ?? null,
+        pewangiId:      item.pewangiId ?? null,
+        basePricePerKg: serviceRow.basePricePerKg,
+        soapCost:       breakdown.soapCost.toString(),
+        pewangiCost:    breakdown.pewangiCost.toString(),
+        subtotal:       breakdown.subtotal.toString(),
+      })),
+    );
 
     revalidatePath("/employee/orders");
     return { success: true, orderId: newOrder.id, orderNumber: newOrder.orderNumber };
   } catch (err) {
     console.error("[createOrder]", err);
-    return { success: false, error: "Something went wrong. Please try again." };
+    const message = err instanceof Error ? err.message : "Something went wrong. Please try again.";
+    return { success: false, error: message };
   }
 }
 
-/**
- * Search customers by the subscriber digits portion of their phone number.
- *
- * The DB stores numbers in E.164 (+{code}{local}). We search by the local
- * part (passed in as `query`) using ILIKE so partial matches work.
- */
+// ─── Phone search ─────────────────────────────────────────────────────────────
+
 export async function searchCustomersByPhone(query: string): Promise<Customer[]> {
   const local = stripTrunkPrefix(query);
   if (local.length < 3) return [];
@@ -284,9 +368,9 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     .reduce((sum, o) => sum + parseFloat(o.totalPrice ?? "0"), 0);
 
   return {
-    todayOrders:  todayOrders.length,
-    activeOrders: activeOrders.length,
-    doneOrders:   doneOrders.length,
+    todayOrders:    todayOrders.length,
+    activeOrders:   activeOrders.length,
+    doneOrders:     doneOrders.length,
     todayRevenue,
     pendingRevenue,
   };

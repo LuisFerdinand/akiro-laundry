@@ -3,7 +3,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { servicePricing, orders } from "@/lib/db/schema";
+import { servicePricing, orders, orderItems } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -33,22 +33,23 @@ export interface ServiceActionResult {
 export async function getAdminServices(search?: string): Promise<ServiceWithStats[]> {
   const rows = await db.select().from(servicePricing).orderBy(desc(servicePricing.createdAt));
 
-  // Fetch all orders once to compute per-service stats
-  const allOrders = await db
+  // Join orderItems → orders to get payment status per item
+  const allItems = await db
     .select({
-      servicePricingId: orders.servicePricingId,
-      totalPrice:       orders.totalPrice,
+      servicePricingId: orderItems.servicePricingId,
+      subtotal:         orderItems.subtotal,
       paymentStatus:    orders.paymentStatus,
     })
-    .from(orders);
+    .from(orderItems)
+    .innerJoin(orders, eq(orders.id, orderItems.orderId));
 
   const filtered = search
     ? rows.filter((r) => r.name.toLowerCase().includes(search.toLowerCase()) || r.category.toLowerCase().includes(search.toLowerCase()))
     : rows;
 
   return filtered.map((r) => {
-    const serviceOrders = allOrders.filter((o) => o.servicePricingId === r.id);
-    const paid = serviceOrders.filter((o) => o.paymentStatus === "paid");
+    const serviceItems = allItems.filter((i) => i.servicePricingId === r.id);
+    const paidItems    = serviceItems.filter((i) => i.paymentStatus === "paid");
     return {
       id:             r.id,
       name:           r.name,
@@ -60,8 +61,8 @@ export async function getAdminServices(search?: string): Promise<ServiceWithStat
       notes:          r.notes      ?? null,
       isActive:       r.isActive,
       createdAt:      r.createdAt,
-      totalOrders:    serviceOrders.length,
-      totalRevenue:   paid.reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0),
+      totalOrders:    serviceItems.length,
+      totalRevenue:   paidItems.reduce((s, i) => s + parseFloat(i.subtotal ?? "0"), 0),
     };
   });
 }

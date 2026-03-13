@@ -32,9 +32,6 @@ export const paymentMethodEnum = pgEnum("payment_method", [
 ]);
 
 // ─── Role Enum + Roles Table ──────────────────────────────────────────────────
-// userRoleEnum is the canonical list of roles across the whole app.
-// The `roles` table adds a human-readable description to each value and acts
-// as the single reference point you can extend (e.g. add permissions later).
 export const userRoleEnum = pgEnum("user_role", ["admin", "employee", "user"]);
 
 export const roles = pgTable("roles", {
@@ -45,9 +42,6 @@ export const roles = pgTable("roles", {
 });
 
 // ─── Users ────────────────────────────────────────────────────────────────────
-// `role` uses the same enum so it's always in sync with the roles table.
-// Default is "user" — only set to "admin"/"employee" explicitly in the DB or
-// via an admin management screen.
 export const users = pgTable("users", {
   id:        serial("id").primaryKey(),
   name:      text("name").notNull(),
@@ -102,30 +96,57 @@ export const servicePricing = pgTable("service_pricing", {
 });
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
+// Top-level order record. Service details live in `order_items`.
+// Legacy single-service columns (servicePricingId, weightKg, basePricePerKg,
+// soapCost, pewangiCost) are REMOVED — everything is now in order_items.
 export const orders = pgTable("orders", {
-  id:               serial("id").primaryKey(),
-  orderNumber:      text("order_number").notNull().unique(),
-  customerId:       integer("customer_id").references(() => customers.id).notNull(),
-  weightKg:         numeric("weight_kg", { precision: 6, scale: 2 }).notNull(),
-  soapId:           integer("soap_id").references(() => soaps.id),
-  pewangiId:        integer("pewangi_id").references(() => pewangi.id),
-  servicePricingId: integer("service_pricing_id").references(() => servicePricing.id),
-  basePricePerKg:   numeric("base_price_per_kg", { precision: 10, scale: 2 }).notNull(),
-  soapCost:         numeric("soap_cost",    { precision: 10, scale: 2 }).default("0"),
-  pewangiCost:      numeric("pewangi_cost", { precision: 10, scale: 2 }).default("0"),
-  totalPrice:       numeric("total_price",  { precision: 10, scale: 2 }).notNull(),
+  id:          serial("id").primaryKey(),
+  orderNumber: text("order_number").notNull().unique(),
+  customerId:  integer("customer_id").references(() => customers.id).notNull(),
+
+  // ── Totals (sum of all items) ──
+  totalPrice: numeric("total_price", { precision: 10, scale: 2 }).notNull(),
+
   // ── Payment ──
   paymentStatus: paymentStatusEnum("payment_status").default("unpaid").notNull(),
   paymentMethod: paymentMethodEnum("payment_method"),
   amountPaid:    numeric("amount_paid",  { precision: 10, scale: 2 }),
   changeGiven:   numeric("change_given", { precision: 10, scale: 2 }),
   paidAt:        timestamp("paid_at"),
+
   // ── Order status ──
   status:          orderStatusEnum("status").default("pending").notNull(),
   notes:           text("notes"),
   estimatedDoneAt: timestamp("estimated_done_at"),
   createdAt:       timestamp("created_at").defaultNow().notNull(),
   updatedAt:       timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ─── Order Items ──────────────────────────────────────────────────────────────
+// One row per service line within an order.
+// • Clothes service  → pricingUnit = "per_kg",  weightKg = X, quantity = null
+// • Shoes service    → pricingUnit = "per_pcs", weightKg = null, quantity = N
+// Both can coexist in the same order.
+export const orderItems = pgTable("order_items", {
+  id:               serial("id").primaryKey(),
+  orderId:          integer("order_id").references(() => orders.id, { onDelete: "cascade" }).notNull(),
+  servicePricingId: integer("service_pricing_id").references(() => servicePricing.id).notNull(),
+
+  // ── Quantity fields — only one will be set depending on pricingUnit ──
+  weightKg: numeric("weight_kg", { precision: 6, scale: 2 }),   // set when pricingUnit = "per_kg"
+  quantity: integer("quantity"),                                  // set when pricingUnit = "per_pcs"
+
+  // ── Add-ons (per-item so shoes can skip soap/pewangi) ──
+  soapId:    integer("soap_id").references(() => soaps.id),
+  pewangiId: integer("pewangi_id").references(() => pewangi.id),
+
+  // ── Snapshotted prices at time of order ──
+  basePricePerKg: numeric("base_price_per_kg", { precision: 10, scale: 2 }).notNull(),
+  soapCost:       numeric("soap_cost",    { precision: 10, scale: 2 }).default("0"),
+  pewangiCost:    numeric("pewangi_cost", { precision: 10, scale: 2 }).default("0"),
+  subtotal:       numeric("subtotal",     { precision: 10, scale: 2 }).notNull(),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // ─── Cash Register ────────────────────────────────────────────────────────────
@@ -139,7 +160,6 @@ export const cashRegister = pgTable("cash_register", {
 // ─── Cash Register Transactions ───────────────────────────────────────────────
 export const cashRegisterTransactions = pgTable("cash_register_transactions", {
   id:           serial("id").primaryKey(),
-  // positive = money in, negative = money out (change given)
   amount:       numeric("amount",        { precision: 12, scale: 2 }).notNull(),
   type:         text("type").notNull(),  // "payment_in" | "change_out" | "manual_adjustment" | "initial"
   orderId:      integer("order_id").references(() => orders.id),
@@ -153,22 +173,30 @@ export const customersRelations = relations(customers, ({ many }) => ({
   orders: many(orders),
 }));
 
-export const ordersRelations = relations(orders, ({ one }) => ({
+export const ordersRelations = relations(orders, ({ one, many }) => ({
   customer: one(customers, {
-    fields: [orders.customerId],
+    fields:     [orders.customerId],
     references: [customers.id],
   }),
+  items: many(orderItems),
+}));
+
+export const orderItemsRelations = relations(orderItems, ({ one }) => ({
+  order: one(orders, {
+    fields:     [orderItems.orderId],
+    references: [orders.id],
+  }),
+  servicePricing: one(servicePricing, {
+    fields:     [orderItems.servicePricingId],
+    references: [servicePricing.id],
+  }),
   soap: one(soaps, {
-    fields: [orders.soapId],
+    fields:     [orderItems.soapId],
     references: [soaps.id],
   }),
   pewangi: one(pewangi, {
-    fields: [orders.pewangiId],
+    fields:     [orderItems.pewangiId],
     references: [pewangi.id],
-  }),
-  servicePricing: one(servicePricing, {
-    fields: [orders.servicePricingId],
-    references: [servicePricing.id],
   }),
 }));
 
@@ -176,16 +204,14 @@ export const cashRegisterTransactionsRelations = relations(
   cashRegisterTransactions,
   ({ one }) => ({
     order: one(orders, {
-      fields: [cashRegisterTransactions.orderId],
+      fields:     [cashRegisterTransactions.orderId],
       references: [orders.id],
     }),
-  })
+  }),
 );
 
 // ─── Exported Types ───────────────────────────────────────────────────────────
-
-// The canonical role union type — use this everywhere instead of plain string
-export type UserRole = typeof userRoleEnum.enumValues[number]; // "admin" | "employee" | "user"
+export type UserRole = typeof userRoleEnum.enumValues[number];
 export type Role     = typeof roles.$inferSelect;
 
 export type User               = typeof users.$inferSelect;
@@ -200,5 +226,7 @@ export type ServicePricing     = typeof servicePricing.$inferSelect;
 export type NewServicePricing  = typeof servicePricing.$inferInsert;
 export type Order              = typeof orders.$inferSelect;
 export type NewOrder           = typeof orders.$inferInsert;
+export type OrderItem          = typeof orderItems.$inferSelect;
+export type NewOrderItem       = typeof orderItems.$inferInsert;
 export type CashRegister            = typeof cashRegister.$inferSelect;
 export type CashRegisterTransaction = typeof cashRegisterTransactions.$inferSelect;
