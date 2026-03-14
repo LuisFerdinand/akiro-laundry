@@ -39,7 +39,7 @@ import type { ServicePricing, Soap, Pewangi } from "@/lib/db/schema";
 
 const EMPTY_FORM: OrderFormData = {
   customer: { name: "", phone: "", address: "" },
-  items:    [{ ...EMPTY_ORDER_ITEM }],
+  items:    [], 
   notes:    "",
 };
 

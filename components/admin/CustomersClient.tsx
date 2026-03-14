@@ -8,10 +8,13 @@ import {
   Search, Plus, X, Loader2, Save,
   Users, ArrowUpRight, Trophy, Star,
   UserPlus, Crown, Medal, Award,
-  ShoppingBag, Sparkles, BarChart3, ChevronDown,
+  ShoppingBag, Sparkles, BarChart3, ChevronDown, Download,
 } from "lucide-react";
 import { createCustomer } from "@/lib/actions/admin-customers";
+import { getCustomersForExport } from "@/lib/actions/export";
+import { exportToXlsx } from "@/lib/utils/export-xlsx";
 import { formatUSD } from "@/lib/utils/order-form";
+import { ExportModal, type ExportDateRange } from "@/components/admin/ExportModal";
 import type { CustomerWithStats, CustomerInsights, SortOption } from "@/lib/actions/admin-customers";
 
 // ─── Create Customer Modal ────────────────────────────────────────────────────
@@ -260,12 +263,12 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
   const pathname     = usePathname();
   const searchParams = useSearchParams();
 
-  const [search,    setSearch]    = useState(initialSearch);
-  const [sort,      setSort]      = useState<SortOption>(initialSort);
-  const [showModal, setShowModal] = useState(false);
-  const [isPending, start]        = useTransition();
+  const [search,      setSearch]      = useState(initialSearch);
+  const [sort,        setSort]        = useState<SortOption>(initialSort);
+  const [showModal,   setShowModal]   = useState(false);
+  const [showExport,  setShowExport]  = useState(false);
+  const [isPending,   start]          = useTransition();
 
-  // Debounce ref — prevents a router.push on every single keystroke
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pushUrl = (newSearch: string, newSort: SortOption) => {
@@ -276,7 +279,7 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
   };
 
   const handleSearch = (v: string) => {
-    setSearch(v); // update input immediately (controlled value)
+    setSearch(v);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => pushUrl(v, sort), 350);
   };
@@ -287,23 +290,42 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
     pushUrl("", sort);
   };
 
-  // Clean up timer on unmount
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
   const handleSort = (v: SortOption) => {
     setSort(v);
-    if (debounceRef.current) clearTimeout(debounceRef.current); // cancel any in-flight search
-    pushUrl(search, v); // sort is instant — no debounce
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    pushUrl(search, v);
   };
 
   const handleCreated = () => { setShowModal(false); router.refresh(); };
+
+  // ── Export handler ────────────────────────────────────────────────────────
+  const handleExport = async ({ from, to }: ExportDateRange) => {
+    const rows = await getCustomersForExport(from, to);
+    if (rows.length === 0) throw new Error("No customers found in the selected date range.");
+
+    const fromLabel = from.replace(/-/g, "");
+    const toLabel   = to.replace(/-/g, "");
+    exportToXlsx(rows, {
+      filename:  `customers_${fromLabel}_${toLabel}`,
+      sheetName: "Customers",
+    });
+  };
 
   const totalSpent  = customers.reduce((s, c) => s + c.totalSpent,  0);
   const totalOrders = customers.reduce((s, c) => s + c.totalOrders, 0);
 
   return (
     <>
-      {showModal && <CreateCustomerModal onClose={() => setShowModal(false)} onSuccess={handleCreated} />}
+      {showModal  && <CreateCustomerModal onClose={() => setShowModal(false)}  onSuccess={handleCreated} />}
+      {showExport && (
+        <ExportModal
+          title="Export Customers"
+          onClose={() => setShowExport(false)}
+          onExport={handleExport}
+        />
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
 
@@ -315,15 +337,39 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
               {customers.length} customer{customers.length !== 1 ? "s" : ""} · {formatUSD(totalSpent)} total revenue · {totalOrders} orders
             </p>
           </div>
-          <button onClick={() => setShowModal(true)} style={{
-            display: "flex", alignItems: "center", gap: "7px", padding: "10px 18px",
-            borderRadius: "9px", border: "none",
-            background: "linear-gradient(135deg,#1a7fba,#2496d6 55%,#0f5a85)",
-            boxShadow: "0 4px 14px rgba(26,127,186,0.3)",
-            color: "white", fontSize: "13px", fontWeight: 800, cursor: "pointer",
-          }}>
-            <Plus size={15} /> Add Customer
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {/* Export button */}
+            <button
+              onClick={() => setShowExport(true)}
+              style={{
+                display: "flex", alignItems: "center", gap: "7px", padding: "10px 16px",
+                borderRadius: "9px", border: "1.5px solid #86efac",
+                background: "#f0fdf4",
+                color: "#16a34a", fontSize: "13px", fontWeight: 800, cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "#dcfce7";
+                e.currentTarget.style.borderColor = "#4ade80";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "#f0fdf4";
+                e.currentTarget.style.borderColor = "#86efac";
+              }}
+            >
+              <Download size={14} /> Export
+            </button>
+            {/* Add customer button */}
+            <button onClick={() => setShowModal(true)} style={{
+              display: "flex", alignItems: "center", gap: "7px", padding: "10px 18px",
+              borderRadius: "9px", border: "none",
+              background: "linear-gradient(135deg,#1a7fba,#2496d6 55%,#0f5a85)",
+              boxShadow: "0 4px 14px rgba(26,127,186,0.3)",
+              color: "white", fontSize: "13px", fontWeight: 800, cursor: "pointer",
+            }}>
+              <Plus size={15} /> Add Customer
+            </button>
+          </div>
         </div>
 
         {/* ── Insights Row ── */}
@@ -339,7 +385,6 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
           padding: "14px 18px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
           display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap",
         }}>
-          {/* Search input with clear button */}
           <div style={{ position: "relative", flex: "1", minWidth: "200px", maxWidth: "380px" }}>
             <Search size={14} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", pointerEvents: "none" }} />
             <input
@@ -371,7 +416,6 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
             )}
           </div>
 
-          {/* Sort select */}
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
             <BarChart3 size={13} style={{ color: "#94a3b8" }} />
             <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b" }}>Sort:</span>
@@ -392,7 +436,6 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
             </div>
           </div>
 
-          {/* Pending indicator */}
           {isPending && (
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <Loader2 size={13} style={{ color: "#94a3b8" }} className="animate-spin" />

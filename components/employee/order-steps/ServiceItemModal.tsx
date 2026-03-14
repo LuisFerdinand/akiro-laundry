@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/refs */
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -23,7 +25,10 @@ interface ServiceItemModalProps {
 
 type ModalStep = "service" | "quantity" | "addons";
 
-// ─── Stepper Button ───────────────────────────────────────────────────────────
+// ─── Drag threshold ───────────────────────────────────────────────────────────
+const CLOSE_THRESHOLD = 120; // px dragged down before closing
+
+// ─── Stepper ──────────────────────────────────────────────────────────────────
 
 function Stepper({
   value, min, max, step = 1, onChange, unit, isFloat = false,
@@ -45,11 +50,8 @@ function Stepper({
 
   return (
     <div className="flex items-center justify-between gap-3">
-      {/* Decrement */}
       <button
-        type="button"
-        onClick={decrement}
-        disabled={val <= min}
+        type="button" onClick={decrement} disabled={val <= min}
         className="flex items-center justify-center transition-all active:scale-95"
         style={{
           width: 52, height: 52, borderRadius: 14,
@@ -62,21 +64,11 @@ function Stepper({
         <Minus size={20} strokeWidth={2.5} />
       </button>
 
-      {/* Value display */}
       <div className="flex-1 flex flex-col items-center gap-1">
-        <div
-          className="relative w-full flex items-center justify-center"
-          style={{
-            height: 72, borderRadius: 16,
-            background: "linear-gradient(135deg,#edf7fd,#dff0fb)",
-            border: "2px solid #b6def5",
-          }}
-        >
+        <div className="relative w-full flex items-center justify-center"
+          style={{ height: 72, borderRadius: 16, background: "linear-gradient(135deg,#edf7fd,#dff0fb)", border: "2px solid #b6def5" }}>
           <input
-            type="number"
-            min={min}
-            max={max}
-            step={step}
+            type="number" min={min} max={max} step={step}
             value={val === 0 ? "" : display}
             onChange={(e) => {
               const v = parseFloat(e.target.value);
@@ -92,11 +84,8 @@ function Stepper({
         </span>
       </div>
 
-      {/* Increment */}
       <button
-        type="button"
-        onClick={increment}
-        disabled={val >= max}
+        type="button" onClick={increment} disabled={val >= max}
         className="flex items-center justify-center transition-all active:scale-95"
         style={{
           width: 52, height: 52, borderRadius: 14,
@@ -112,20 +101,15 @@ function Stepper({
   );
 }
 
-// ─── Quick-select presets ─────────────────────────────────────────────────────
+// ─── Quick presets ────────────────────────────────────────────────────────────
 
-function QuickPresets({
-  presets, active, onSelect, unit,
-}: {
+function QuickPresets({ presets, active, onSelect, unit }: {
   presets: number[]; active: number | null; onSelect: (v: number) => void; unit: string;
 }) {
   return (
     <div className="flex gap-2 flex-wrap">
       {presets.map((p) => (
-        <button
-          key={p}
-          type="button"
-          onClick={() => onSelect(p)}
+        <button key={p} type="button" onClick={() => onSelect(p)}
           className="transition-all active:scale-95 font-black text-sm"
           style={{
             padding: "7px 14px", borderRadius: 8,
@@ -144,9 +128,7 @@ function QuickPresets({
 
 // ─── Addon Pill ───────────────────────────────────────────────────────────────
 
-function AddonPill({
-  label, price, active, onClick, accent = "blue", isNone = false,
-}: {
+function AddonPill({ label, price, active, onClick, accent = "blue", isNone = false }: {
   label: string; price?: string; active: boolean; onClick: () => void;
   accent?: "blue" | "purple"; isNone?: boolean;
 }) {
@@ -157,14 +139,12 @@ function AddonPill({
   const softBd = blue ? "#b6def5" : "#c4b5fd";
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <button type="button" onClick={onClick}
       className="transition-all active:scale-95 text-left"
       style={{
         display: "flex", alignItems: "center", gap: 10,
         padding: "11px 13px", borderRadius: 12,
-        background: active ? `linear-gradient(135deg,${color},${color2})` : isNone ? "white" : "white",
+        background: active ? `linear-gradient(135deg,${color},${color2})` : "white",
         border: `2px solid ${active ? "transparent" : isNone ? "#e2e8f0" : softBd}`,
         boxShadow: active ? `0 4px 12px ${blue ? "rgba(26,127,186,0.25)" : "rgba(124,58,237,0.25)"}` : "0 1px 3px rgba(0,0,0,0.05)",
       }}
@@ -201,7 +181,12 @@ export function ServiceItemModal({
   const [visible, setVisible]   = useState(false);
   const [mounted, setMounted]   = useState(false);
   const [qtyError, setQtyError] = useState("");
-  const sheetRef                = useRef<HTMLDivElement>(null);
+
+  // ── Drag-to-close state ────────────────────────────────────────────────────
+  const [dragY, setDragY]         = useState(0);
+  const isDragging                = useRef(false);
+  const dragStartY                = useRef(0);
+  const sheetRef                  = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => {
@@ -216,8 +201,42 @@ export function ServiceItemModal({
     return () => { document.body.style.overflow = prev; };
   }, [mounted]);
 
-  const close = () => { setVisible(false); setTimeout(onClose, 300); };
-  const handleBackdrop = (e: React.MouseEvent) => { if (e.target === e.currentTarget) close(); };
+  // ── Drag handle pointer handlers ───────────────────────────────────────────
+
+  const handleDragStart = (e: React.PointerEvent) => {
+    isDragging.current = true;
+    dragStartY.current = e.clientY;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handleDragMove = (e: React.PointerEvent) => {
+    if (!isDragging.current) return;
+    const delta = Math.max(0, e.clientY - dragStartY.current); // only downward
+    setDragY(delta);
+  };
+
+  const handleDragEnd = () => {
+    if (!isDragging.current) return;
+    isDragging.current = false;
+    if (dragY >= CLOSE_THRESHOLD) {
+      // Crossed threshold — animate out then close
+      setDragY(window.innerHeight);
+      setTimeout(onClose, 280);
+    } else {
+      // Snap back
+      setDragY(0);
+    }
+  };
+
+  const close = () => {
+    setVisible(false);
+    setDragY(0);
+    setTimeout(onClose, 300);
+  };
+
+  const handleBackdrop = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) close();
+  };
 
   const selectedService = services.find((s) => s.id === item.servicePricingId) ?? null;
   const isPerPcs        = selectedService?.pricingUnit === "per_pcs";
@@ -227,8 +246,7 @@ export function ServiceItemModal({
   const filtered = search.trim()
     ? services.filter((s) =>
         s.name.toLowerCase().includes(search.toLowerCase()) ||
-        s.category.toLowerCase().includes(search.toLowerCase()),
-      )
+        s.category.toLowerCase().includes(search.toLowerCase()))
     : services;
 
   const grouped = new Map<string, ServicePricing[]>();
@@ -237,19 +255,7 @@ export function ServiceItemModal({
     grouped.get(s.category)!.push(s);
   }
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
-
-  const handleSelectService = (svcId: number) => {
-    const svc       = services.find((s) => s.id === svcId)!;
-    const nowPerPcs = svc.pricingUnit === "per_pcs";
-    setItem((prev) => ({
-      ...prev,
-      servicePricingId: svcId,
-      weightKg: nowPerPcs ? null : prev.weightKg,
-      quantity:  nowPerPcs ? prev.quantity : null,
-    }));
-    setStep("quantity");
-  };
+  // ── Quantity next ──────────────────────────────────────────────────────────
 
   const handleQtyNext = () => {
     if (isPerPcs) {
@@ -268,16 +274,40 @@ export function ServiceItemModal({
 
   if (!mounted) return null;
 
-  // ── Step indicator data ────────────────────────────────────────────────────
+  // ── Step indicator ─────────────────────────────────────────────────────────
   const steps: { key: ModalStep; label: string }[] = isPerPcs
     ? [{ key: "service", label: "Service" }, { key: "quantity", label: "Amount" }]
     : [{ key: "service", label: "Service" }, { key: "quantity", label: "Amount" }, { key: "addons", label: "Add-ons" }];
   const stepIdx = steps.findIndex((s) => s.key === step);
 
+  // ── Sheet transform ────────────────────────────────────────────────────────
+  // Blend open/close animation with live drag offset
+  const baseTranslate = visible ? 0 : 100; // % — CSS animation
+  const sheetStyle: React.CSSProperties = {
+    background:    "#f8fafc",
+    borderRadius:  "24px 24px 0 0",
+    maxHeight:     "92dvh",
+    // When dragging use px offset; otherwise use the CSS % animation
+    transform:     isDragging.current || dragY > 0
+      ? `translateY(${dragY}px)`
+      : `translateY(${baseTranslate}%)`,
+    transition:    isDragging.current
+      ? "none"                                              // no transition while dragging
+      : dragY > 0
+        ? "transform 0.28s cubic-bezier(0.32,0.72,0,1)"   // snap-back or fly-out
+        : "transform 0.32s cubic-bezier(0.32,0.72,0,1)",  // open/close
+    boxShadow:     "0 -12px 60px rgba(0,0,0,0.22)",
+    overflow:      "hidden",
+    paddingBottom: "env(safe-area-inset-bottom, 0px)",
+    display:       "flex",
+    flexDirection: "column",
+    width:         "100%",
+    maxWidth:      "512px",   // matches max-w-lg from layout
+  };
+
   const modal = (
     <div
-      role="dialog"
-      aria-modal="true"
+      role="dialog" aria-modal="true"
       className="fixed inset-0 flex items-end justify-center"
       style={{
         zIndex: 9999,
@@ -289,28 +319,29 @@ export function ServiceItemModal({
       }}
       onClick={handleBackdrop}
     >
-      <div
-        ref={sheetRef}
-        className="w-full max-w-lg flex flex-col"
-        style={{
-          background:    "#f8fafc",
-          borderRadius:  "24px 24px 0 0",
-          maxHeight:     "92dvh",
-          transform:     visible ? "translateY(0)" : "translateY(100%)",
-          transition:    "transform 0.32s cubic-bezier(0.32,0.72,0,1)",
-          boxShadow:     "0 -12px 60px rgba(0,0,0,0.22)",
-          overflow:      "hidden",
-          paddingBottom: "env(safe-area-inset-bottom, 0px)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Drag handle */}
-        <div className="flex justify-center pt-3 pb-0 shrink-0">
-          <div style={{ width: 40, height: 4, borderRadius: 2, background: "#cbd5e1" }} />
+      <div ref={sheetRef} style={sheetStyle} onClick={(e) => e.stopPropagation()}>
+
+        {/* ── Drag handle ─────────────────────────────────────────────────── */}
+        <div
+          className="flex justify-center pt-3 pb-1 shrink-0 select-none"
+          style={{ cursor: "grab", touchAction: "none" }}
+          onPointerDown={handleDragStart}
+          onPointerMove={handleDragMove}
+          onPointerUp={handleDragEnd}
+          onPointerCancel={handleDragEnd}
+        >
+          {/* Pill — grows slightly on hover to hint it's draggable */}
+          <div
+            style={{
+              width: 44, height: 5, borderRadius: 3,
+              background: dragY > 0 ? "#1a7fba" : "#cbd5e1",
+              transition: "background 0.15s, width 0.15s",
+            }}
+          />
         </div>
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div className="shrink-0 px-5 pt-4 pb-3">
+        <div className="shrink-0 px-5 pt-3 pb-3">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="font-black text-lg tracking-tight" style={{ color: "#0f2744", lineHeight: 1.1 }}>
@@ -322,12 +353,9 @@ export function ServiceItemModal({
                 {step === "addons"   && "Detergent & fragrance"}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={close}
+            <button type="button" onClick={close}
               className="flex items-center justify-center w-9 h-9 transition-all active:scale-90"
-              style={{ borderRadius: 10, border: "2px solid #e2e8f0", background: "white", color: "#64748b" }}
-            >
+              style={{ borderRadius: 10, border: "2px solid #e2e8f0", background: "white", color: "#64748b" }}>
               <X size={15} />
             </button>
           </div>
@@ -339,15 +367,10 @@ export function ServiceItemModal({
               const active = i === stepIdx;
               return (
                 <div key={s.key} className="flex items-center gap-1.5 flex-1 last:flex-none last:flex-initial">
-                  <button
-                    type="button"
-                    disabled={!done}
-                    onClick={() => done && setStep(s.key)}
-                    className="flex items-center gap-1.5 transition-all"
-                  >
+                  <button type="button" disabled={!done} onClick={() => done && setStep(s.key)}
+                    className="flex items-center gap-1.5 transition-all">
                     <div style={{
-                      width: active ? 28 : done ? 22 : 22, height: 22,
-                      borderRadius: 6,
+                      width: active ? 28 : 22, height: 22, borderRadius: 6,
                       background: done ? "#22c55e" : active ? "#1a7fba" : "#e2e8f0",
                       display: "flex", alignItems: "center", justifyContent: "center",
                       transition: "all 0.2s ease",
@@ -365,7 +388,8 @@ export function ServiceItemModal({
                     </span>
                   </button>
                   {i < steps.length - 1 && (
-                    <div className="flex-1 h-0.5 rounded-full" style={{ background: i < stepIdx ? "#22c55e" : "#e2e8f0", transition: "background 0.3s" }} />
+                    <div className="flex-1 h-0.5 rounded-full"
+                      style={{ background: i < stepIdx ? "#22c55e" : "#e2e8f0", transition: "background 0.3s" }} />
                   )}
                 </div>
               );
@@ -374,15 +398,12 @@ export function ServiceItemModal({
         </div>
 
         {/* ── Scrollable body ─────────────────────────────────────────────── */}
-        <div
-          className="flex-1 overflow-y-auto"
-          style={{ overscrollBehavior: "contain", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
-        >
+        <div className="flex-1 overflow-y-auto"
+          style={{ overscrollBehavior: "contain", WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
 
           {/* ════ STEP: SERVICE ════════════════════════════════════════════ */}
           {step === "service" && (
             <div className="px-5 pt-2 pb-4 space-y-3">
-              {/* Search */}
               <div className="relative flex items-center">
                 <Search size={14} className="absolute left-3.5 pointer-events-none" style={{ color: "#94a3b8" }} />
                 <input
@@ -401,7 +422,6 @@ export function ServiceItemModal({
                 )}
               </div>
 
-              {/* Grouped service cards */}
               {grouped.size === 0 && (
                 <div className="flex flex-col items-center py-10 gap-2" style={{ color: "#94a3b8" }}>
                   <Search size={24} />
@@ -409,7 +429,7 @@ export function ServiceItemModal({
                 </div>
               )}
 
-              {Array.from(grouped.entries()).map(([cat, items]) => (
+              {Array.from(grouped.entries()).map(([cat, catItems]) => (
                 <div key={cat}>
                   <div className="flex items-center gap-2 mb-2">
                     {cat === "package" || cat === "regular"
@@ -419,13 +439,19 @@ export function ServiceItemModal({
                     <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#94a3b8" }}>{cat}</span>
                   </div>
                   <div className="space-y-2">
-                    {items.map((s) => {
+                    {catItems.map((s) => {
                       const active = item.servicePricingId === s.id;
                       return (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onClick={() => handleSelectService(s.id)}
+                        <button key={s.id} type="button" onClick={() => {
+                          const nowPerPcs = s.pricingUnit === "per_pcs";
+                          setItem((prev) => ({
+                            ...prev,
+                            servicePricingId: s.id,
+                            weightKg: nowPerPcs ? null : prev.weightKg,
+                            quantity:  nowPerPcs ? prev.quantity : null,
+                          }));
+                          setStep("quantity");
+                        }}
                           className="w-full transition-all active:scale-[0.985]"
                           style={{
                             display: "flex", alignItems: "center", gap: 12,
@@ -435,7 +461,6 @@ export function ServiceItemModal({
                             boxShadow: active ? "0 4px 16px rgba(26,127,186,0.28)" : "0 1px 4px rgba(0,0,0,0.05)",
                           }}
                         >
-                          {/* Icon */}
                           <div style={{
                             width: 40, height: 40, borderRadius: 10, flexShrink: 0,
                             display: "flex", alignItems: "center", justifyContent: "center",
@@ -444,12 +469,8 @@ export function ServiceItemModal({
                           }}>
                             <Tag size={16} style={{ color: active ? "white" : "#1a7fba" }} />
                           </div>
-
-                          {/* Info */}
                           <div className="flex-1 min-w-0 text-left">
-                            <p className="font-black text-sm truncate" style={{ color: active ? "white" : "#1e293b" }}>
-                              {s.name}
-                            </p>
+                            <p className="font-black text-sm truncate" style={{ color: active ? "white" : "#1e293b" }}>{s.name}</p>
                             <div className="flex items-center gap-2 mt-0.5">
                               {s.duration && (
                                 <span className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: active ? "rgba(255,255,255,0.65)" : "#94a3b8" }}>
@@ -463,8 +484,6 @@ export function ServiceItemModal({
                               )}
                             </div>
                           </div>
-
-                          {/* Price */}
                           <div className="text-right shrink-0">
                             <p className="font-black text-sm" style={{ color: active ? "white" : "#1e293b" }}>
                               {formatUSD(parseFloat(s.basePricePerKg))}
@@ -473,7 +492,6 @@ export function ServiceItemModal({
                               {s.pricingUnit === "per_pcs" ? "/ pcs" : "/ kg"}
                             </p>
                           </div>
-
                           <ChevronRight size={14} style={{ color: active ? "rgba(255,255,255,0.7)" : "#cbd5e1", flexShrink: 0 }} />
                         </button>
                       );
@@ -487,11 +505,8 @@ export function ServiceItemModal({
           {/* ════ STEP: QUANTITY ══════════════════════════════════════════ */}
           {step === "quantity" && selectedService && (
             <div className="px-5 pt-2 pb-4 space-y-5">
-              {/* Selected service recap */}
-              <div
-                className="flex items-center gap-3 p-3.5 rounded-2xl"
-                style={{ background: "linear-gradient(135deg,#1a7fba,#2496d6)", boxShadow: "0 4px 16px rgba(26,127,186,0.28)" }}
-              >
+              <div className="flex items-center gap-3 p-3.5 rounded-2xl"
+                style={{ background: "linear-gradient(135deg,#1a7fba,#2496d6)", boxShadow: "0 4px 16px rgba(26,127,186,0.28)" }}>
                 <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(255,255,255,0.20)", border: "1.5px solid rgba(255,255,255,0.30)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <Tag size={16} style={{ color: "white" }} />
                 </div>
@@ -501,24 +516,18 @@ export function ServiceItemModal({
                     {formatUSD(parseFloat(selectedService.basePricePerKg))} {isPerPcs ? "/ pcs" : "/ kg"}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setStep("service")}
+                <button type="button" onClick={() => setStep("service")}
                   className="text-[10px] font-black uppercase px-2.5 py-1.5 rounded-lg transition-all"
-                  style={{ background: "rgba(255,255,255,0.20)", color: "white", border: "1.5px solid rgba(255,255,255,0.30)" }}
-                >
+                  style={{ background: "rgba(255,255,255,0.20)", color: "white", border: "1.5px solid rgba(255,255,255,0.30)" }}>
                   Change
                 </button>
               </div>
 
-              {/* Stepper */}
               <div className="bg-white rounded-2xl p-5" style={{ border: "2px solid #e8eef5" }}>
                 <Stepper
                   value={isPerPcs ? item.quantity : item.weightKg}
-                  min={isPerPcs ? 1 : 0.1}
-                  max={isPerPcs ? 1000 : 100}
-                  step={isPerPcs ? 1 : 0.5}
-                  isFloat={!isPerPcs}
+                  min={isPerPcs ? 1 : 0.1} max={isPerPcs ? 1000 : 100}
+                  step={isPerPcs ? 1 : 0.5} isFloat={!isPerPcs}
                   unit={isPerPcs ? "pieces" : "kilograms"}
                   onChange={(v) => {
                     setQtyError("");
@@ -529,11 +538,8 @@ export function ServiceItemModal({
                 />
               </div>
 
-              {/* Quick presets */}
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest mb-2.5" style={{ color: "#94a3b8" }}>
-                  Quick select
-                </p>
+                <p className="text-[10px] font-black uppercase tracking-widest mb-2.5" style={{ color: "#94a3b8" }}>Quick select</p>
                 <QuickPresets
                   presets={isPerPcs ? [1, 2, 3, 5, 10] : [1, 2, 3, 5, 7, 10]}
                   active={isPerPcs ? item.quantity : item.weightKg}
@@ -547,28 +553,18 @@ export function ServiceItemModal({
                 />
               </div>
 
-              {/* Error */}
-              {qtyError && (
-                <p className="text-xs font-semibold" style={{ color: "#e05252" }}>{qtyError}</p>
-              )}
+              {qtyError && <p className="text-xs font-semibold" style={{ color: "#e05252" }}>{qtyError}</p>}
 
-              {/* Live total preview */}
               {subtotal > 0 && (
-                <div
-                  className="flex items-center justify-between px-4 py-3.5 rounded-2xl"
-                  style={{ background: "linear-gradient(135deg,#f0fdf4,#dcfce7)", border: "2px solid #86efac" }}
-                >
+                <div className="flex items-center justify-between px-4 py-3.5 rounded-2xl"
+                  style={{ background: "linear-gradient(135deg,#f0fdf4,#dcfce7)", border: "2px solid #86efac" }}>
                   <div>
-                    <p className="text-xs font-black uppercase tracking-widest" style={{ color: "#16a34a" }}>
-                      Base estimate
-                    </p>
+                    <p className="text-xs font-black uppercase tracking-widest" style={{ color: "#16a34a" }}>Base estimate</p>
                     <p className="text-[10px] font-semibold mt-0.5" style={{ color: "#4ade80" }}>
                       {isPerPcs ? item.quantity : item.weightKg} {isPerPcs ? "pcs" : "kg"} × {formatUSD(parseFloat(selectedService.basePricePerKg))}
                     </p>
                   </div>
-                  <p className="font-black text-xl" style={{ color: "#14532d", letterSpacing: "-0.03em" }}>
-                    {formatUSD(subtotal)}
-                  </p>
+                  <p className="font-black text-xl" style={{ color: "#14532d", letterSpacing: "-0.03em" }}>{formatUSD(subtotal)}</p>
                 </div>
               )}
             </div>
@@ -577,27 +573,18 @@ export function ServiceItemModal({
           {/* ════ STEP: ADDONS ════════════════════════════════════════════ */}
           {step === "addons" && selectedService && (
             <div className="px-5 pt-2 pb-4 space-y-5">
-              {/* Recap bar */}
-              <div
-                className="flex items-center gap-3 px-4 py-3 rounded-2xl"
-                style={{ background: "linear-gradient(135deg,#1a7fba,#2496d6)" }}
-              >
+              <div className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+                style={{ background: "linear-gradient(135deg,#1a7fba,#2496d6)" }}>
                 <Tag size={13} style={{ color: "white" }} />
                 <span className="font-black text-sm text-white truncate flex-1">{selectedService.name}</span>
-                <span className="font-black text-sm" style={{ color: "rgba(255,255,255,0.80)" }}>
-                  {item.weightKg} kg
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setStep("quantity")}
+                <span className="font-black text-sm" style={{ color: "rgba(255,255,255,0.80)" }}>{item.weightKg} kg</span>
+                <button type="button" onClick={() => setStep("quantity")}
                   className="ml-1 text-[10px] font-black uppercase px-2 py-1 rounded-lg"
-                  style={{ background: "rgba(255,255,255,0.20)", color: "white", border: "1.5px solid rgba(255,255,255,0.30)" }}
-                >
+                  style={{ background: "rgba(255,255,255,0.20)", color: "white", border: "1.5px solid rgba(255,255,255,0.30)" }}>
                   Edit
                 </button>
               </div>
 
-              {/* Detergent */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg,#edf7fd,#c8e9f8)", border: "1.5px solid #b6def5", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -607,23 +594,19 @@ export function ServiceItemModal({
                   <span className="text-[10px] font-semibold" style={{ color: "#94a3b8" }}>optional</span>
                 </div>
                 <div className="grid grid-cols-1 gap-2">
-                  <AddonPill
-                    label="No detergent" active={item.soapId === null}
-                    onClick={() => setItem((p) => ({ ...p, soapId: null }))} isNone accent="blue"
-                  />
+                  <AddonPill label="No detergent" active={item.soapId === null}
+                    onClick={() => setItem((p) => ({ ...p, soapId: null }))} isNone accent="blue" />
                   {soaps.map((s) => (
                     <AddonPill key={s.id} label={s.name}
                       price={`+${formatUSD(parseFloat(s.pricePerKg))}/kg`}
                       active={item.soapId === s.id}
-                      onClick={() => setItem((p) => ({ ...p, soapId: s.id }))} accent="blue"
-                    />
+                      onClick={() => setItem((p) => ({ ...p, soapId: s.id }))} accent="blue" />
                   ))}
                 </div>
               </div>
 
               <div style={{ borderTop: "2px dashed #e2e8f0" }} />
 
-              {/* Fragrance */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg,#f5f3ff,#ede9fe)", border: "1.5px solid #c4b5fd", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -633,16 +616,13 @@ export function ServiceItemModal({
                   <span className="text-[10px] font-semibold" style={{ color: "#94a3b8" }}>optional</span>
                 </div>
                 <div className="grid grid-cols-1 gap-2">
-                  <AddonPill
-                    label="No fragrance" active={item.pewangiId === null}
-                    onClick={() => setItem((p) => ({ ...p, pewangiId: null }))} isNone accent="purple"
-                  />
+                  <AddonPill label="No fragrance" active={item.pewangiId === null}
+                    onClick={() => setItem((p) => ({ ...p, pewangiId: null }))} isNone accent="purple" />
                   {pewangis.map((p) => (
                     <AddonPill key={p.id} label={p.name}
                       price={`+${formatUSD(parseFloat(p.pricePerKg))}/kg`}
                       active={item.pewangiId === p.id}
-                      onClick={() => setItem((q) => ({ ...q, pewangiId: p.id }))} accent="purple"
-                    />
+                      onClick={() => setItem((q) => ({ ...q, pewangiId: p.id }))} accent="purple" />
                   ))}
                 </div>
               </div>
@@ -652,45 +632,25 @@ export function ServiceItemModal({
         </div>{/* end scroll body */}
 
         {/* ── Footer ──────────────────────────────────────────────────────── */}
-        <div
-          className="shrink-0 px-5 py-4"
-          style={{ borderTop: "2px solid #f1f5f9", background: "rgba(248,250,252,0.98)", backdropFilter: "blur(8px)" }}
-        >
+        <div className="shrink-0 px-5 py-4"
+          style={{ borderTop: "2px solid #f1f5f9", background: "rgba(248,250,252,0.98)", backdropFilter: "blur(8px)" }}>
           {step === "service" && (
             <div className="text-center">
               <p className="text-xs font-semibold" style={{ color: "#94a3b8" }}>Tap a service to continue →</p>
             </div>
           )}
-
           {step === "quantity" && (
-            <button
-              type="button"
-              onClick={handleQtyNext}
+            <button type="button" onClick={handleQtyNext}
               className="w-full h-13 flex items-center justify-center gap-2 font-black text-sm transition-all active:scale-[0.98]"
-              style={{
-                height: 52, borderRadius: 14,
-                background: "linear-gradient(135deg,#1a7fba,#2496d6,#0f5a85)",
-                boxShadow: "0 4px 16px rgba(26,127,186,0.30)",
-                color: "white",
-              }}
-            >
+              style={{ height: 52, borderRadius: 14, background: "linear-gradient(135deg,#1a7fba,#2496d6,#0f5a85)", boxShadow: "0 4px 16px rgba(26,127,186,0.30)", color: "white" }}>
               {isPerPcs ? "Confirm" : "Next: Add-ons"}
               <ChevronRight size={16} strokeWidth={2.5} />
             </button>
           )}
-
           {step === "addons" && (
-            <button
-              type="button"
-              onClick={() => { onConfirm(item); close(); }}
+            <button type="button" onClick={() => { onConfirm(item); close(); }}
               className="w-full flex items-center justify-center gap-2 font-black text-sm transition-all active:scale-[0.98]"
-              style={{
-                height: 52, borderRadius: 14,
-                background: "linear-gradient(135deg,#16a34a,#22c55e,#15803d)",
-                boxShadow: "0 4px 16px rgba(22,163,74,0.28)",
-                color: "white",
-              }}
-            >
+              style={{ height: 52, borderRadius: 14, background: "linear-gradient(135deg,#16a34a,#22c55e,#15803d)", boxShadow: "0 4px 16px rgba(22,163,74,0.28)", color: "white" }}>
               <CheckCircle2 size={16} />
               {isEditing ? "Save Changes" : "Add to Order"}
             </button>

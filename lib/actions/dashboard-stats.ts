@@ -298,7 +298,7 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
   const recentRaw = allOrders.slice(0, 10);
   const recentCustIds = [...new Set(recentRaw.map((o) => o.customerId))];
 
-  let custNameMap = new Map<number, string>();
+  const custNameMap = new Map<number, string>();
   if (recentCustIds.length > 0) {
     const names = await db
       .select({ id: customers.id, name: customers.name })
