@@ -76,19 +76,41 @@ export async function getActiveServicePricing(): Promise<ServicePricing[]> {
 
 // ─── Orders List ──────────────────────────────────────────────────────────────
 
+// Extended item type — includes joined fields needed for receipt printing
+export type OrderItemWithDetails = OrderItem & {
+  serviceName:  string;
+  pricingUnit:  string;
+  soapName:     string | null;
+  pewangiName:  string | null;
+};
+
 export interface OrderWithDetails extends Order {
-  customerName:  string;
-  customerPhone: string;
-  /** All service line items belonging to this order */
-  items: (OrderItem & { serviceName: string })[];
+  customerName:    string;
+  customerPhone:   string;
+  customerAddress: string | null;
+  items:           OrderItemWithDetails[];
+}
+
+// ── Shared item select shape ───────────────────────────────────────────────────
+const itemSelect = {
+  item:        orderItems,
+  serviceName: servicePricing.name,
+  pricingUnit: servicePricing.pricingUnit,
+  soapName:    soaps.name,
+  pewangiName: pewangi.name,
+} as const;
+
+function buildItemJoins<T extends typeof db.select>(q: ReturnType<T>) {
+  // Helper type — not called directly; joins are inlined below for type safety
 }
 
 export async function getOrders(limit = 50): Promise<OrderWithDetails[]> {
   const orderRows = await db
     .select({
-      order:         orders,
-      customerName:  customers.name,
-      customerPhone: customers.phone,
+      order:           orders,
+      customerName:    customers.name,
+      customerPhone:   customers.phone,
+      customerAddress: customers.address,
     })
     .from(orders)
     .leftJoin(customers, eq(orders.customerId, customers.id))
@@ -99,52 +121,50 @@ export async function getOrders(limit = 50): Promise<OrderWithDetails[]> {
 
   const orderIds = orderRows.map((r) => r.order.id);
 
-  // Fetch all items for these orders in one query
-  const itemRows = await db
+  const { inArray } = await import("drizzle-orm");
+  const allItems = await db
     .select({
       item:        orderItems,
       serviceName: servicePricing.name,
+      pricingUnit: servicePricing.pricingUnit,
+      soapName:    soaps.name,
+      pewangiName: pewangi.name,
     })
     .from(orderItems)
     .leftJoin(servicePricing, eq(orderItems.servicePricingId, servicePricing.id))
-    .where(
-      // drizzle inArray equivalent
-      // If you have drizzle's `inArray` helper available import it; otherwise use a raw filter loop
-      // Using eq in a loop would need Promise.all — simplest is to join after the fact:
-      eq(orderItems.orderId, orderIds[0]), // placeholder replaced below
-    );
-
-  // Re-fetch items properly using inArray (requires drizzle-orm ≥ 0.28)
-  // If your version doesn't have it, use the Promise.all fallback below.
-  const { inArray } = await import("drizzle-orm");
-  const allItems = await db
-    .select({ item: orderItems, serviceName: servicePricing.name })
-    .from(orderItems)
-    .leftJoin(servicePricing, eq(orderItems.servicePricingId, servicePricing.id))
+    .leftJoin(soaps,    eq(orderItems.soapId,    soaps.id))
+    .leftJoin(pewangi,  eq(orderItems.pewangiId, pewangi.id))
     .where(inArray(orderItems.orderId, orderIds));
 
-  // Group items by orderId
-  const itemsByOrder = new Map<number, (OrderItem & { serviceName: string })[]>();
+  const itemsByOrder = new Map<number, OrderItemWithDetails[]>();
   for (const row of allItems) {
     const list = itemsByOrder.get(row.item.orderId) ?? [];
-    list.push({ ...row.item, serviceName: row.serviceName ?? "—" });
+    list.push({
+      ...row.item,
+      serviceName: row.serviceName ?? "—",
+      pricingUnit: row.pricingUnit ?? "per_kg",
+      soapName:    row.soapName    ?? null,
+      pewangiName: row.pewangiName ?? null,
+    });
     itemsByOrder.set(row.item.orderId, list);
   }
 
   return orderRows.map((r) => ({
     ...r.order,
-    customerName:  r.customerName  ?? "Unknown",
-    customerPhone: r.customerPhone ?? "—",
-    items:         itemsByOrder.get(r.order.id) ?? [],
+    customerName:    r.customerName    ?? "Unknown",
+    customerPhone:   r.customerPhone   ?? "—",
+    customerAddress: r.customerAddress ?? null,
+    items:           itemsByOrder.get(r.order.id) ?? [],
   }));
 }
 
 export async function getOrderById(id: number): Promise<OrderWithDetails | null> {
   const rows = await db
     .select({
-      order:         orders,
-      customerName:  customers.name,
-      customerPhone: customers.phone,
+      order:           orders,
+      customerName:    customers.name,
+      customerPhone:   customers.phone,
+      customerAddress: customers.address,
     })
     .from(orders)
     .leftJoin(customers, eq(orders.customerId, customers.id))
@@ -154,16 +174,31 @@ export async function getOrderById(id: number): Promise<OrderWithDetails | null>
   if (!rows[0]) return null;
 
   const items = await db
-    .select({ item: orderItems, serviceName: servicePricing.name })
+    .select({
+      item:        orderItems,
+      serviceName: servicePricing.name,
+      pricingUnit: servicePricing.pricingUnit,
+      soapName:    soaps.name,
+      pewangiName: pewangi.name,
+    })
     .from(orderItems)
     .leftJoin(servicePricing, eq(orderItems.servicePricingId, servicePricing.id))
+    .leftJoin(soaps,   eq(orderItems.soapId,    soaps.id))
+    .leftJoin(pewangi, eq(orderItems.pewangiId, pewangi.id))
     .where(eq(orderItems.orderId, id));
 
   return {
     ...rows[0].order,
-    customerName:  rows[0].customerName  ?? "Unknown",
-    customerPhone: rows[0].customerPhone ?? "—",
-    items: items.map((r) => ({ ...r.item, serviceName: r.serviceName ?? "—" })),
+    customerName:    rows[0].customerName    ?? "Unknown",
+    customerPhone:   rows[0].customerPhone   ?? "—",
+    customerAddress: rows[0].customerAddress ?? null,
+    items: items.map((r) => ({
+      ...r.item,
+      serviceName: r.serviceName ?? "—",
+      pricingUnit: r.pricingUnit ?? "per_kg",
+      soapName:    r.soapName    ?? null,
+      pewangiName: r.pewangiName ?? null,
+    })),
   };
 }
 

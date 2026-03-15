@@ -34,6 +34,8 @@ import {
   createOrder,
 } from "@/lib/actions/orders";
 import type { ServicePricing, Soap, Pewangi } from "@/lib/db/schema";
+import { Printer } from "lucide-react";
+import { printReceipt } from "@/components/employee/PrintReceipt";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -157,6 +159,24 @@ export default function NewOrderPage() {
   // ── Success screen ─────────────────────────────────────────────────────────
 
   if (success) {
+    const handlePrint = () => {
+      printReceipt({
+        orderNumber:   success.orderNumber,
+        createdAt:     new Date(),
+        formData,
+        services,
+        soaps,
+        pewangis,
+        breakdown,
+        // only pass payment info if it's been processed
+        paymentMethod: paymentDone ? undefined : undefined, // filled below once you expose it
+        amountPaid:    paymentDone && changeGiven != null
+          ? success.total + changeGiven
+          : undefined,
+        changeGiven:   changeGiven ?? undefined,
+      });
+    };
+
     return (
       <>
         {showPayModal && (
@@ -215,6 +235,28 @@ export default function NewOrderPage() {
                 Pay Now
               </button>
             )}
+
+            {/* ── Print receipt button ── */}
+            <button type="button" onClick={handlePrint}
+              className="flex items-center justify-center gap-2 w-full h-11 rounded-md font-black text-sm transition-all active:scale-[0.98]"
+              style={{
+                background: "linear-gradient(135deg,#f8fafc,#f1f5f9)",
+                border: "1.5px solid #e2e8f0",
+                color: "#475569",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#1a7fba";
+                e.currentTarget.style.color = "#1a7fba";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#e2e8f0";
+                e.currentTarget.style.color = "#475569";
+              }}
+            >
+              <Printer size={15} />
+              Print Receipt
+            </button>
           </div>
 
           <div className="flex gap-3 w-full max-w-xs">

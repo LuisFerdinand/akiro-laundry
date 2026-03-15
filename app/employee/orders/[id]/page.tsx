@@ -2,7 +2,8 @@
 import { notFound }     from "next/navigation";
 import { getOrderById } from "@/lib/actions/orders";
 import { formatUSD, ORDER_STATUS_LABELS } from "@/lib/utils/order-form";
-import { OrderStatusUpdater } from "@/components/employee/OrderStatusUpdater";
+import { OrderStatusUpdater }  from "@/components/employee/OrderStatusUpdater";
+import { PrintReceiptButton }  from "@/components/employee/PrintReceiptButton"; // ← add
 import {
   ArrowLeft, User, Phone, Layers, Weight, Calendar,
   Clock, FileText, Droplets, Wind, Hash,
@@ -77,21 +78,19 @@ export default async function OrderDetailPage({ params }: PageProps) {
 
   const totalPrice  = safeFloat(order.totalPrice);
   const statusStyle = STATUS_STYLES[order.status] ?? STATUS_STYLES.pending;
-
-  // Build first service name for the status updater
   const firstServiceName = order.items[0]?.serviceName ?? "—";
 
   return (
     <div className="space-y-4 px-4 pb-8 pt-2">
 
-      {/* Back link */}
+      {/* Back link — unchanged */}
       <Link href="/employee/orders"
         className="inline-flex items-center gap-1.5 text-xs font-bold transition-colors text-slate-400 hover:text-[#1a7fba]">
         <ArrowLeft size={13} />
         Back to Orders
       </Link>
 
-      {/* Header card */}
+      {/* Header card — unchanged */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
         <div className="shrink-0 flex items-center justify-center font-black text-white text-xl"
           style={{ width: 46, height: 46, borderRadius: "8px", background: "linear-gradient(135deg,#1a7fba,#2496d6)", boxShadow: "0 4px 12px rgba(26,127,186,0.30)" }}>
@@ -107,7 +106,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
         </span>
       </div>
 
-      {/* Customer details */}
+      {/* Customer details — unchanged */}
       <SectionCard title="Customer">
         <div style={{ padding: "0 16px" }}>
           <DetailRow icon={User}     label="Customer" value={order.customerName}                          theme="brand"  />
@@ -122,7 +121,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
         </div>
       </SectionCard>
 
-      {/* Per-service items */}
+      {/* Per-service items — unchanged */}
       {order.items.map((item, i) => {
         const isPerPcs    = item.quantity != null;
         const soapCost    = safeFloat(item.soapCost);
@@ -135,8 +134,8 @@ export default async function OrderDetailPage({ params }: PageProps) {
             <div style={{ padding: "0 16px" }}>
               <DetailRow icon={Layers} label="Service" value={item.serviceName} theme="brand" />
               {isPerPcs
-                ? <DetailRow icon={Hash}   label="Quantity" value={`${item.quantity} pcs`}    theme="amber" />
-                : <DetailRow icon={Weight} label="Weight"   value={`${item.weightKg} kg`}     theme="amber" />
+                ? <DetailRow icon={Hash}   label="Quantity" value={`${item.quantity} pcs`} theme="amber" />
+                : <DetailRow icon={Weight} label="Weight"   value={`${item.weightKg} kg`}  theme="amber" />
               }
               {!isPerPcs && soapCost > 0 && (
                 <DetailRow icon={Droplets} label="Detergent" value={`+${formatUSD(soapCost)}`} theme="brand" />
@@ -145,8 +144,6 @@ export default async function OrderDetailPage({ params }: PageProps) {
                 <DetailRow icon={Wind} label="Fragrance" value={`+${formatUSD(pewangiCost)}`} theme="purple" />
               )}
             </div>
-
-            {/* Item price breakdown */}
             <div style={{ padding: "0 16px 14px" }}>
               <div style={{ borderRadius: "6px", background: "#f8fafc", border: "1.5px solid #e8edf2", overflow: "hidden", marginTop: 4 }}>
                 {baseTotal > 0 && (
@@ -182,7 +179,6 @@ export default async function OrderDetailPage({ params }: PageProps) {
                     <span className="text-sm font-bold" style={{ color: "#1e293b" }}>+ {formatUSD(pewangiCost)}</span>
                   </div>
                 )}
-                {/* Subtotal row */}
                 <div className="flex justify-between items-center px-3 py-2.5"
                   style={{ background: "linear-gradient(135deg,#f0f9ff,#e0f2fe)", borderTop: "1.5px solid #bae6fd" }}>
                   <span className="text-xs font-black uppercase tracking-wide" style={{ color: "#1a7fba" }}>Subtotal</span>
@@ -194,7 +190,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
         );
       })}
 
-      {/* Grand total */}
+      {/* Grand total — unchanged */}
       <div style={{ borderRadius: "7px", background: "linear-gradient(135deg,#1a7fba,#2496d6 55%,#0f5a85)", boxShadow: "0 4px 16px rgba(26,127,186,0.30)", padding: "13px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.6)" }}>Total</p>
@@ -205,7 +201,10 @@ export default async function OrderDetailPage({ params }: PageProps) {
         <span className="font-black text-2xl tracking-tight" style={{ color: "white" }}>{formatUSD(totalPrice)}</span>
       </div>
 
-      {/* Status updater */}
+      {/* ── Print receipt button ── */}
+      <PrintReceiptButton order={order} />
+
+      {/* Status updater — unchanged */}
       <OrderStatusUpdater
         orderId={order.id}
         currentStatus={order.status}
