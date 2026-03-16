@@ -14,12 +14,11 @@ import { CustomerStep }  from "@/components/employee/order-steps/CustomerStep";
 import { ServiceStep }   from "@/components/employee/order-steps/ServiceStep";
 import { ReviewStep }    from "@/components/employee/order-steps/ReviewStep";
 import { PaymentModal }  from "@/components/employee/PaymentModal";
+import { WhatsAppNotify } from "@/components/employee/WhatsAppNotify";
 import {
   OrderFormStep,
   OrderFormData,
-  OrderItemFormData,
   OrderPriceBreakdown,
-  EMPTY_ORDER_ITEM,
   getNextStep,
   getPrevStep,
   validateCustomerStep,
@@ -41,7 +40,7 @@ import { printReceipt } from "@/components/employee/PrintReceipt";
 
 const EMPTY_FORM: OrderFormData = {
   customer: { name: "", phone: "", address: "" },
-  items:    [], 
+  items:    [],
   notes:    "",
 };
 
@@ -51,7 +50,7 @@ const STEP_TITLES: Record<OrderFormStep, {
 }> = {
   customer: {
     title: "Customer Info",      subtitle: "Find or register the customer",
-    Icon: User,                  iconBg: "bg-blue-50 border-blue-100",   iconColor: "text-blue-500",
+    Icon: User,                  iconBg: "bg-blue-50 border-blue-100",    iconColor: "text-blue-500",
   },
   service: {
     title: "Services & Add-ons", subtitle: "Choose services, quantities and extras",
@@ -59,7 +58,7 @@ const STEP_TITLES: Record<OrderFormStep, {
   },
   review: {
     title: "Confirm Order",      subtitle: "Review everything before submitting",
-    Icon: ClipboardList,         iconBg: "bg-amber-50 border-amber-100", iconColor: "text-amber-500",
+    Icon: ClipboardList,         iconBg: "bg-amber-50 border-amber-100",  iconColor: "text-amber-500",
   },
 };
 
@@ -99,6 +98,14 @@ export default function NewOrderPage() {
     formData.items.map((it) => soaps.find((s) => s.id === it.soapId) ?? null),
     formData.items.map((it) => pewangis.find((p) => p.id === it.pewangiId) ?? null),
   );
+
+  // ── Derived services summary for WA message ────────────────────────────────
+
+  const servicesSummary = formData.items.length === 1
+    ? (services.find((s) => s.id === formData.items[0].servicePricingId)?.name ?? "Servisu")
+    : formData.items.length > 1
+      ? `${formData.items.length} servisu`
+      : "Servisu";
 
   // ── Navigation ─────────────────────────────────────────────────────────────
 
@@ -168,14 +175,17 @@ export default function NewOrderPage() {
         soaps,
         pewangis,
         breakdown,
-        // only pass payment info if it's been processed
-        paymentMethod: paymentDone ? undefined : undefined, // filled below once you expose it
+        paymentMethod: paymentDone ? undefined : undefined,
         amountPaid:    paymentDone && changeGiven != null
           ? success.total + changeGiven
           : undefined,
         changeGiven:   changeGiven ?? undefined,
       });
     };
+
+    // Payment status for WA: if payment has been processed on this screen use "paid",
+    // otherwise "unpaid" so the message correctly tells the customer to prepare payment.
+    const waPaymentStatus = paymentDone ? "paid" : "unpaid";
 
     return (
       <>
@@ -191,31 +201,35 @@ export default function NewOrderPage() {
         )}
 
         <div className="flex flex-col items-center justify-center min-h-[65vh] px-6 text-center gap-6">
+
+          {/* ── Success icon ── */}
           <div className="relative">
             <div className="w-20 h-20 flex items-center justify-center"
               style={{ borderRadius: "14px", background: "linear-gradient(135deg,#1a7fba,#2496d6)", boxShadow: "0 8px 32px rgba(26,127,186,0.35)" }}>
               <CheckCircle2 size={38} className="text-white" />
             </div>
-            <div className="absolute -top-2 -right-2 w-7 h-7 border-2 border-white flex items-center justify-center text-xs shadow-md"
-              style={{ borderRadius: "8px", background: "#ffcc00" }}>🎉</div>
           </div>
 
+          {/* ── Title ── */}
           <div className="space-y-1">
             <h2 className="font-black text-xl text-slate-800 tracking-tight">Order Created!</h2>
             <p className="text-slate-400 text-sm font-medium">The order has been saved successfully.</p>
           </div>
 
+          {/* ── Order number badge ── */}
           <div className="px-8 py-5 text-center w-full max-w-xs"
             style={{ background: "linear-gradient(135deg,#edf7fd,#dff0fb)", border: "1.5px solid #b6def5", borderRadius: "10px" }}>
             <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: "#1a7fba" }}>Order Number</p>
             <p className="font-mono font-black text-xl tracking-widest" style={{ color: "#0f5a85" }}>{success.orderNumber}</p>
           </div>
 
+          {/* ── Actions ── */}
           <div className="w-full max-w-xs space-y-2">
             <p className="text-sm text-slate-400 font-medium">
               Total: <span className="font-black text-slate-800 text-base">{formatUSD(success.total)}</span>
             </p>
 
+            {/* Payment */}
             {paymentDone ? (
               <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-md w-full"
                 style={{ background: "linear-gradient(135deg,#f0fdf4,#dcfce7)", border: "1.5px solid #86efac" }}>
@@ -236,7 +250,20 @@ export default function NewOrderPage() {
               </button>
             )}
 
-            {/* ── Print receipt button ── */}
+            {/* WhatsApp notify — sends Tetum message to the customer */}
+            <WhatsAppNotify
+              customerPhone={formData.customer.phone}
+              customerName={formData.customer.name}
+              orderNumber={success.orderNumber}
+              servicesSummary={servicesSummary}
+              status="pending"
+              paymentStatus={waPaymentStatus}
+              totalPrice={success.total}
+              notes={formData.notes}
+              className="w-full"
+            />
+
+            {/* Print receipt */}
             <button type="button" onClick={handlePrint}
               className="flex items-center justify-center gap-2 w-full h-11 rounded-md font-black text-sm transition-all active:scale-[0.98]"
               style={{
@@ -259,6 +286,7 @@ export default function NewOrderPage() {
             </button>
           </div>
 
+          {/* ── Nav buttons ── */}
           <div className="flex gap-3 w-full max-w-xs">
             <Button variant="outline" size="lg" className="flex-1 h-11 rounded-md font-bold" onClick={handleNewOrder}>
               New Order
@@ -341,7 +369,7 @@ export default function NewOrderPage() {
       </div>
 
       {/* ── Floating action bar ──────────────────────────────────────────── */}
-      <div className="fixed bottom-[88px] left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-[calc(512px-32px)] z-40"
+      <div className="fixed bottom-22 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-120 z-40"
         style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1.5px solid hsl(210 25% 91%)", borderRadius: "14px", padding: "12px 14px", boxShadow: "0 -2px 20px rgba(26,127,186,0.07),0 8px 32px rgba(0,0,0,0.10)" }}>
 
         {/* Live total preview on service step */}
@@ -362,13 +390,13 @@ export default function NewOrderPage() {
           )}
 
           {step !== "review" ? (
-            <Button variant="default" className="flex-1 h-[46px] rounded-md font-black text-sm gap-1.5"
+            <Button variant="default" className="flex-1 h-11.5 rounded-md font-black text-sm gap-1.5"
               style={{ background: "linear-gradient(135deg,#1a7fba,#2496d6 55%,#0f5a85)", boxShadow: "0 4px 16px rgba(26,127,186,0.35)" }}
               onClick={handleNext}>
               Continue <ChevronRight size={15} strokeWidth={3} />
             </Button>
           ) : (
-            <Button variant="default" className="flex-1 h-[46px] rounded-md font-black text-sm gap-1.5"
+            <Button variant="default" className="flex-1 h-11.5 rounded-md font-black text-sm gap-1.5"
               style={{ background: isPending ? "linear-gradient(135deg,#1a7fba,#2496d6)" : "linear-gradient(135deg,#1a7fba,#2496d6 55%,#0f5a85)", boxShadow: "0 4px 16px rgba(26,127,186,0.35)" }}
               onClick={handleSubmit} disabled={isPending}>
               {isPending ? <><Loader2 size={14} className="animate-spin" /> Submitting…</> : <><Sparkles size={14} /> Confirm Order</>}

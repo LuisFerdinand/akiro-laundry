@@ -7,12 +7,13 @@ import { type LucideIcon, LayoutDashboard, PlusCircle, ClipboardList, Wallet } f
 
 type NavItem = {
   href: string; label: string; icon: LucideIcon; exact: boolean; isCTA?: boolean;
+  exclude?: string;
 };
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/employee",               label: "Home",   icon: LayoutDashboard, exact: true  },
   { href: "/employee/orders/new",    label: "New",    icon: PlusCircle,      exact: false, isCTA: true },
-  { href: "/employee/orders",        label: "Orders", icon: ClipboardList,   exact: false },
+  { href: "/employee/orders",        label: "Orders", icon: ClipboardList,   exact: false, exclude: "/employee/orders/new" },
   { href: "/employee/cash-register", label: "Cash",   icon: Wallet,          exact: false },
 ];
 
@@ -22,8 +23,10 @@ export function BottomNav() {
   return (
     <nav className="fixed bottom-0 inset-x-0 z-50 bg-white/95 backdrop-blur-md border-t border-blue-100/50">
       <div className="flex items-end h-[68px] max-w-lg mx-auto px-3 pb-3">
-        {NAV_ITEMS.map(({ href, label, icon: Icon, exact, isCTA }) => {
-          const isActive = exact ? pathname === href : pathname.startsWith(href);
+        {NAV_ITEMS.map(({ href, label, icon: Icon, exact, isCTA, exclude }) => {
+          const isActive = exact
+            ? pathname === href
+            : pathname.startsWith(href) && (!exclude || !pathname.startsWith(exclude));
 
           if (isCTA) {
             return (

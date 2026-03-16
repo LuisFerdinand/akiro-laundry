@@ -10,6 +10,7 @@ import {
   Droplets, Wind,
 } from "lucide-react";
 import type { AdminOrderItem } from "@/lib/actions/admin-orders";
+import { WhatsAppNotify } from "@/components/employee/WhatsAppNotify";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -151,7 +152,7 @@ function OrderItemCard({
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <PcsIcon size={12} style={{ color: "#1a7fba" }} />
-              <span style={{ fontSize: "12px", color: "#64748b" }}>Quantity</span>
+              <span style={{ fontSize: "12px", color: "#64748b" }}>Kuantidade</span>
             </div>
             <span style={{ fontSize: "12px", fontWeight: 700, color: "#1e293b" }}>
               {item.quantity} pcs
@@ -164,7 +165,7 @@ function OrderItemCard({
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <Weight size={12} style={{ color: "#1a7fba" }} />
-              <span style={{ fontSize: "12px", color: "#64748b" }}>Weight</span>
+              <span style={{ fontSize: "12px", color: "#64748b" }}>Todan</span>
             </div>
             <span style={{ fontSize: "12px", fontWeight: 700, color: "#1e293b" }}>
               {item.weightKg} kg
@@ -178,7 +179,7 @@ function OrderItemCard({
           padding: "10px 0", borderBottom: "1px solid #f1f5f9",
         }}>
           <span style={{ fontSize: "12px", color: "#64748b" }}>
-            Base ({formatUSD(parseFloat(item.basePricePerKg))}{isPerPcs ? "/pc" : "/kg"})
+            Baze ({formatUSD(parseFloat(item.basePricePerKg))}{isPerPcs ? "/pc" : "/kg"})
           </span>
           <span style={{ fontSize: "12px", fontWeight: 700, color: "#1e293b" }}>
             {formatUSD(baseCost)}
@@ -194,7 +195,7 @@ function OrderItemCard({
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <Droplets size={12} style={{ color: "#1a7fba" }} />
               <span style={{ fontSize: "12px", color: "#64748b" }}>
-                Detergent · {item.soapName}
+                Deterjentu · {item.soapName}
               </span>
             </div>
             <span style={{ fontSize: "12px", fontWeight: 700, color: "#1e293b" }}>
@@ -212,7 +213,7 @@ function OrderItemCard({
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <Wind size={12} style={{ color: "#7c3aed" }} />
               <span style={{ fontSize: "12px", color: "#64748b" }}>
-                Fragrance · {item.pewangiName}
+                Aroma · {item.pewangiName}
               </span>
             </div>
             <span style={{ fontSize: "12px", fontWeight: 700, color: "#1e293b" }}>
@@ -227,7 +228,7 @@ function OrderItemCard({
           padding: "10px 0",
         }}>
           <span style={{ fontSize: "12px", fontWeight: 700, color: "#1e293b" }}>
-            Item subtotal
+            Subtotal item
           </span>
           <span style={{ fontSize: "13px", fontWeight: 800, color: "#0f5a85" }}>
             {formatUSD(subtotal)}
@@ -253,11 +254,10 @@ export default async function AdminOrderDetailPage({
   const isPaid = order.paymentStatus === "paid";
   const total  = parseFloat(order.totalPrice);
 
-  // Derive a display summary from items
   const servicesSummary =
     order.items.length === 1
       ? order.items[0].serviceName
-      : `${order.items.length} services`;
+      : `${order.items.length} servisu`;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -269,7 +269,7 @@ export default async function AdminOrderDetailPage({
           fontSize: "12px", fontWeight: 700, color: "#64748b",
           textDecoration: "none", marginBottom: "16px",
         }}>
-          <ArrowLeft size={13} /> Back to Orders
+          <ArrowLeft size={13} /> Fila ba Pedidu
         </Link>
 
         <div style={{
@@ -284,15 +284,16 @@ export default async function AdminOrderDetailPage({
               {order.orderNumber}
             </h1>
             <p style={{ fontSize: "13px", color: "#94a3b8" }}>
-              Created{" "}
-              {new Date(order.createdAt).toLocaleString("en-US", {
+              Kria iha{" "}
+              {new Date(order.createdAt).toLocaleString("pt-TL", {
                 dateStyle: "long",
                 timeStyle: "short",
               })}
             </p>
           </div>
 
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          {/* ── Action badges + WA button ── */}
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
             <span style={{
               display: "inline-flex", alignItems: "center", gap: "6px",
               padding: "6px 14px", borderRadius: "999px",
@@ -302,7 +303,7 @@ export default async function AdminOrderDetailPage({
               color: isPaid ? "#16a34a" : "#d97706",
             }}>
               {isPaid ? <BadgeCheck size={13} /> : <AlertTriangle size={13} />}
-              {isPaid ? "Paid" : "Unpaid"}
+              {isPaid ? "Selu ona" : "Seidauk selu"}
             </span>
 
             <span style={{
@@ -314,6 +315,18 @@ export default async function AdminOrderDetailPage({
               <sc.Icon size={13} />
               {ORDER_STATUS_LABELS[order.status]}
             </span>
+
+            {/* WhatsApp notify button — sends Tetum message via shared component */}
+            <WhatsAppNotify
+              customerPhone={order.customerPhone}
+              customerName={order.customerName}
+              orderNumber={order.orderNumber}
+              servicesSummary={servicesSummary}
+              status={order.status}
+              paymentStatus={order.paymentStatus as "paid" | "unpaid"}
+              totalPrice={total}
+              notes={order.notes}
+            />
           </div>
         </div>
       </div>
@@ -327,17 +340,17 @@ export default async function AdminOrderDetailPage({
         {/* ── Left column ─────────────────────────────────── */}
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
 
-          <SectionCard title="Customer">
-            <DetailRow icon={User}  label="Name"  value={order.customerName}  />
-            <DetailRow icon={Phone} label="Phone" value={order.customerPhone} />
+          <SectionCard title="Kliente">
+            <DetailRow icon={User}  label="Naran"  value={order.customerName}  />
+            <DetailRow icon={Phone} label="Telefone" value={order.customerPhone} />
           </SectionCard>
 
           {/* Service items — one card per item */}
-          <SectionCard title={`Service Items · ${order.items.length}`}>
+          <SectionCard title={`Item Servisu · ${order.items.length}`}>
             <div style={{ padding: "16px 0", display: "flex", flexDirection: "column", gap: "12px" }}>
               {order.items.length === 0 ? (
                 <p style={{ fontSize: "13px", color: "#94a3b8", textAlign: "center", padding: "8px 0" }}>
-                  No items found
+                  La iha item
                 </p>
               ) : (
                 order.items.map((item, i) => (
@@ -348,16 +361,16 @@ export default async function AdminOrderDetailPage({
           </SectionCard>
 
           {/* Order meta */}
-          <SectionCard title="Order Info">
-            <DetailRow icon={Hash}     label="Order Number"   value={order.orderNumber} mono />
+          <SectionCard title="Info Pedidu">
+            <DetailRow icon={Hash}     label="Nú. Pedidu"   value={order.orderNumber} mono />
             {order.notes && (
-              <DetailRow icon={FileText} label="Notes" value={order.notes} />
+              <DetailRow icon={FileText} label="Nota" value={order.notes} />
             )}
             {order.estimatedDoneAt && (
               <DetailRow
                 icon={Calendar}
-                label="Est. Done"
-                value={new Date(order.estimatedDoneAt).toLocaleDateString("en-US", {
+                label="Est. Remata"
+                value={new Date(order.estimatedDoneAt).toLocaleDateString("pt-TL", {
                   dateStyle: "medium",
                 })}
               />
@@ -366,28 +379,28 @@ export default async function AdminOrderDetailPage({
 
           {/* Payment details (only when paid) */}
           {isPaid && (
-            <SectionCard title="Payment Details">
+            <SectionCard title="Detallu Pagamentu">
               <DetailRow
                 icon={CreditCard}
-                label="Method"
+                label="Métodu"
                 value={(order.paymentMethod ?? "").toUpperCase()}
               />
               <DetailRow
                 icon={CreditCard}
-                label="Amount Paid"
+                label="Montante Selu"
                 value={formatUSD(parseFloat(order.amountPaid ?? "0"))}
               />
               <DetailRow
                 icon={CreditCard}
-                label="Change Given"
+                label="Troku"
                 value={formatUSD(parseFloat(order.changeGiven ?? "0"))}
               />
               <DetailRow
                 icon={Calendar}
-                label="Paid At"
+                label="Selu iha"
                 value={
                   order.paidAt
-                    ? new Date(order.paidAt).toLocaleString("en-US", {
+                    ? new Date(order.paidAt).toLocaleString("pt-TL", {
                         dateStyle: "medium",
                         timeStyle: "short",
                       })
@@ -421,13 +434,12 @@ export default async function AdminOrderDetailPage({
                 fontSize: "10px", fontWeight: 800, color: "#64748b",
                 textTransform: "uppercase", letterSpacing: "0.1em",
               }}>
-                Order Summary
+                Sumáriu Pedidu
               </p>
             </div>
 
             <div style={{ padding: "0 20px" }}>
-              {/* One subtotal row per item */}
-              {order.items.map((item, i) => (
+              {order.items.map((item) => (
                 <div key={item.id} style={{
                   display: "flex", justifyContent: "space-between", alignItems: "center",
                   padding: "11px 0", borderBottom: "1px solid #f1f5f9",
@@ -478,10 +490,10 @@ export default async function AdminOrderDetailPage({
                     color: "rgba(255,255,255,0.65)",
                     textTransform: "uppercase", letterSpacing: "0.1em",
                   }}>
-                    Grand Total
+                    Total Tomak
                   </p>
                   <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)", marginTop: "1px" }}>
-                    {order.items.length} service{order.items.length !== 1 ? "s" : ""}
+                    {order.items.length} servisu{order.items.length !== 1 ? "" : ""}
                   </p>
                 </div>
                 <span style={{
@@ -504,11 +516,11 @@ export default async function AdminOrderDetailPage({
               fontSize: "10px", fontWeight: 800, color: "#94a3b8",
               textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "12px",
             }}>
-              Timestamps
+              Tempu
             </p>
             {[
-              { label: "Created",      date: order.createdAt },
-              { label: "Last Updated", date: order.updatedAt },
+              { label: "Kria iha",       date: order.createdAt },
+              { label: "Atualiza foun", date: order.updatedAt },
             ].map(({ label, date }) => (
               <div key={label} style={{
                 display: "flex", justifyContent: "space-between",
@@ -516,7 +528,7 @@ export default async function AdminOrderDetailPage({
               }}>
                 <span style={{ fontSize: "12px", color: "#64748b" }}>{label}</span>
                 <span style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>
-                  {new Date(date).toLocaleString("en-US", {
+                  {new Date(date).toLocaleString("pt-TL", {
                     month: "short", day: "numeric",
                     hour: "2-digit", minute: "2-digit",
                   })}

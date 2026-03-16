@@ -5,12 +5,13 @@ import { useState, useTransition } from "react";
 import {
   CheckCircle2, Loader2, RefreshCw,
   Clock, Waves, PackageCheck, ShoppingBag,
-  MessageCircle, Save, CreditCard, BadgeCheck, AlertTriangle,
+  Save, CreditCard, BadgeCheck, AlertTriangle,
 } from "lucide-react";
 import { updateOrderStatus } from "@/lib/actions/orders";
-import { ORDER_STATUS_LABELS, formatUSD } from "@/lib/utils/order-form";
+import { formatUSD } from "@/lib/utils/order-form";
 import type { Order } from "@/lib/db/schema";
 import { PaymentModal } from "./PaymentModal";
+import { WhatsAppNotify } from "./WhatsAppNotify";
 
 // ── Status config ──────────────────────────────────────────────────────────────
 const STATUSES: {
@@ -103,7 +104,6 @@ export function OrderStatusUpdater({
     setError(null);
     setSaved(false);
 
-    // Optimistically warn if trying to set picked_up while unpaid
     if (status === "picked_up" && !isPaid) {
       setError("Order must be paid before it can be marked as picked up.");
       return;
@@ -116,28 +116,6 @@ export function OrderStatusUpdater({
     });
   };
 
-  const handleWhatsApp = () => {
-    const statusLabel    = ORDER_STATUS_LABELS[status];
-    const formattedPrice = formatUSD(isNaN(totalPriceNum) ? 0 : totalPriceNum);
-
-    const message = [
-      `Halo *${customerName}*! 👋`,
-      ``,
-      `Berikut update pesanan laundry Anda:`,
-      ``,
-      `🧾 *No. Order:* ${orderNumber}`,
-      `👕 *Layanan:* ${serviceName}`,
-      `📦 *Status:* *${statusLabel}*`,
-      `💰 *Total:* ${formattedPrice}`,
-      ``,
-      `Terima kasih telah menggunakan layanan kami! 🙏`,
-    ].join("\n");
-
-    const normalized = customerPhone.replace(/\D/g, "").replace(/^0/, "62");
-    const url = `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
-    window.open(url, "_blank");
-  };
-
   const handlePaymentSuccess = (change: number) => {
     setPaymentStatus("paid");
     setChangeGiven(change);
@@ -147,7 +125,6 @@ export function OrderStatusUpdater({
 
   return (
     <>
-      {/* Payment modal */}
       {showPayModal && (
         <PaymentModal
           orderId={orderId}
@@ -192,7 +169,7 @@ export function OrderStatusUpdater({
               <AlertTriangle size={15} style={{ color: "#d97706" }} />
             )}
             <span style={{ fontSize: "12px", fontWeight: 800, color: isPaid ? "#14532d" : "#92400e" }}>
-              {isPaid ? "Payment received" : "Payment pending"}
+              {isPaid ? "Pagamentu simu" : "Pagamentu pendente"}
             </span>
           </div>
 
@@ -211,7 +188,7 @@ export function OrderStatusUpdater({
               }}
             >
               <CreditCard size={11} />
-              Pay now
+              Selu agora
             </button>
           )}
         </div>
@@ -229,7 +206,7 @@ export function OrderStatusUpdater({
           >
             <CheckCircle2 size={13} style={{ color: "#16a34a" }} />
             <span style={{ fontSize: "12px", fontWeight: 700, color: "#14532d" }}>
-              Change to return: <strong>{formatUSD(changeGiven)}</strong>
+              Troku atu fila: <strong>{formatUSD(changeGiven)}</strong>
             </span>
           </div>
         )}
@@ -248,7 +225,7 @@ export function OrderStatusUpdater({
             <RefreshCw size={12} style={{ color: "#1a7fba" }} />
           </div>
           <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#94a3b8" }}>
-            Update Status
+            Atualiza Estadu
           </p>
         </div>
 
@@ -256,7 +233,6 @@ export function OrderStatusUpdater({
         <div className="grid grid-cols-2 gap-2">
           {STATUSES.map((s) => {
             const active   = status === s.value;
-            // Dim picked_up if not paid
             const disabled = s.value === "picked_up" && !isPaid;
 
             return (
@@ -265,14 +241,14 @@ export function OrderStatusUpdater({
                 type="button"
                 onClick={() => {
                   if (disabled) {
-                    setError("Order must be paid before marking as picked up.");
+                    setError("Tenki selu pedidu molok marka hanesan foti ona.");
                     return;
                   }
                   setStatus(s.value);
                   setSaved(false);
                   setError(null);
                 }}
-                title={disabled ? "Pay first to unlock this status" : undefined}
+                title={disabled ? "Selu uluk atu desblokeiu estadu ne'e" : undefined}
                 className="transition-all duration-150 active:scale-[0.97]"
                 style={{
                   display: "flex",
@@ -301,7 +277,6 @@ export function OrderStatusUpdater({
                   }
                 }}
               >
-                {/* Left accent bar */}
                 <div
                   style={{
                     width: "3px", flexShrink: 0,
@@ -330,7 +305,7 @@ export function OrderStatusUpdater({
                     </span>
                     {disabled && (
                       <p style={{ fontSize: "9px", color: "#d97706", fontWeight: 700, marginTop: "1px" }}>
-                        Pay first
+                        Selu uluk
                       </p>
                     )}
                   </div>
@@ -356,32 +331,17 @@ export function OrderStatusUpdater({
 
         {/* Action buttons row */}
         <div className="flex gap-2">
-          {/* WhatsApp button */}
-          <button
-            type="button"
-            onClick={handleWhatsApp}
-            className="flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.97]"
-            style={{
-              height: 44, paddingLeft: 14, paddingRight: 14,
-              borderRadius: "7px",
-              borderWidth: "1.5px", borderStyle: "solid",
-              borderColor: "#86efac",
-              background: "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
-              color: "#16a34a", fontWeight: 800, fontSize: "13px",
-              whiteSpace: "nowrap", flexShrink: 0,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = "#4ade80";
-              e.currentTarget.style.boxShadow = "0 2px 10px rgba(22,163,74,0.15)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = "#86efac";
-              e.currentTarget.style.boxShadow = "none";
-            }}
-          >
-            <MessageCircle size={14} />
-            WA
-          </button>
+          {/* WhatsApp button — uses shared component for consistent Tetum message */}
+          <WhatsAppNotify
+            customerPhone={customerPhone}
+            customerName={customerName}
+            orderNumber={orderNumber}
+            servicesSummary={serviceName}
+            status={status}
+            paymentStatus={paymentStatus}
+            totalPrice={totalPriceNum}
+            compact
+          />
 
           {/* Save button */}
           <button
@@ -404,11 +364,11 @@ export function OrderStatusUpdater({
             }}
           >
             {isPending ? (
-              <><Loader2 size={14} className="animate-spin" /> Saving…</>
+              <><Loader2 size={14} className="animate-spin" /> Salva…</>
             ) : saved ? (
-              <><CheckCircle2 size={14} /> Saved!</>
+              <><CheckCircle2 size={14} /> Salva ona!</>
             ) : (
-              <><Save size={14} /> Save Status</>
+              <><Save size={14} /> Salva Estadu</>
             )}
           </button>
         </div>

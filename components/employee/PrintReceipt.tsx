@@ -36,7 +36,6 @@ function formatDateTime(date: Date): string {
   }).format(date);
 }
 
-/** Fetch an image from the same origin and return a base64 data URL */
 async function toDataURL(src: string): Promise<string> {
   const res  = await fetch(src);
   const blob = await res.blob();
@@ -55,20 +54,22 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
     paymentMethod, amountPaid, changeGiven,
   } = data;
 
-  /* ── Convert logo to embeddable base64 ────────────────────────────── */
+  // Normalize notes — treat blank/whitespace-only as absent
+  const notes = formData.notes?.trim() ?? "";
+
   let logoSrc = "";
   try {
-    logoSrc = await toDataURL("/logo/2.png");
+    logoSrc = await toDataURL("/logo/4.png");
   } catch {
-    // Logo failed to load — receipt still prints without it
+    // Receipt still prints without logo
   }
 
   /* ── Per-item rows ─────────────────────────────────────────────────── */
   const itemRows = formData.items.map((item, i) => {
-    const svc     = services.find((s) => s.id === item.servicePricingId);
-    const soap    = soaps.find((s)    => s.id === item.soapId);
-    const pewangi = pewangis.find((p) => p.id === item.pewangiId);
-    const b       = breakdown.items[i];
+    const svc      = services.find((s) => s.id === item.servicePricingId);
+    const soap     = soaps.find((s)    => s.id === item.soapId);
+    const pewangi  = pewangis.find((p) => p.id === item.pewangiId);
+    const b        = breakdown.items[i];
     const isPerPcs = svc?.pricingUnit === "per_pcs";
 
     const qtyLine = isPerPcs
@@ -124,6 +125,18 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
     </tr>` : ""}
   ` : "";
 
+  /* ── Notes block HTML ──────────────────────────────────────────────── */
+  const notesBlock = notes ? `
+    <hr class="dashed" />
+    <div class="notes-section">
+      <div class="notes-header">
+        <span class="notes-icon">📝</span>
+        <span class="notes-label">Special Instructions</span>
+      </div>
+      <div class="notes-box">${notes}</div>
+    </div>
+  ` : "";
+
   /* ── Full receipt HTML ─────────────────────────────────────────────── */
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -150,13 +163,8 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
   /* ── Header ── */
   .header { text-align: center; padding-bottom: 6px; }
   .logo-img {
-    width: 56px;
-    height: 56px;
-    object-fit: contain;
-    margin-bottom: 5px;
-    display: block;
-    margin-left: auto;
-    margin-right: auto;
+    width: 56px; height: 56px; object-fit: contain;
+    margin: 0 auto 5px; display: block;
   }
   .shop-name {
     font-size: 15px; font-weight: 700;
@@ -227,22 +235,33 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
 
   /* ── Payment ── */
   .payment-row td { font-size: 10px; padding: 1.5px 0; }
-  .payment-row .right {
-    text-align: right; font-weight: 600; white-space: nowrap;
-  }
-  .change td { color: #15803d; font-weight: 700; }
-  .unpaid td { color: #d97706; font-weight: 700; font-size: 10.5px; }
+  .payment-row .right { text-align: right; font-weight: 600; white-space: nowrap; }
+  .change td  { color: #15803d; font-weight: 700; }
+  .unpaid td  { color: #d97706; font-weight: 700; font-size: 10.5px; }
 
   /* ── Notes ── */
+  .notes-section { margin: 2px 0; }
+  .notes-header {
+    display: flex; align-items: center; gap: 5px;
+    margin-bottom: 4px;
+  }
+  .notes-icon  { font-size: 11px; line-height: 1; }
   .notes-label {
     font-size: 8.5px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.12em;
-    color: #607080; margin-bottom: 3px;
+    text-transform: uppercase; letter-spacing: 0.14em;
+    color: #475569;
   }
   .notes-box {
-    background: #f8fafc; border: 1px dashed #94a3b8;
-    border-radius: 4px; padding: 5px 8px;
-    font-size: 9.5px; color: #475569; line-height: 1.55;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-left: 3px solid #f59e0b;
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 10px;
+    color: #78350f;
+    line-height: 1.6;
+    word-break: break-word;
+    white-space: pre-wrap;   /* preserve line breaks from textarea */
   }
 
   /* ── Footer ── */
@@ -267,10 +286,7 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
 
 <!-- ── Header ─────────────────────────────────────────────────────────── -->
 <div class="header">
-  ${logoSrc
-    ? `<img src="${logoSrc}" alt="Akiro Laundry" class="logo-img" />`
-    : ""
-  }
+  ${logoSrc ? `<img src="${logoSrc}" alt="Akiro Laundry" class="logo-img" />` : ""}
   <div class="shop-name">Akiro Laundry</div>
   <div class="shop-sub">Kampu Alor &mdash; Timor-Leste</div>
   <div class="shop-addr">
@@ -338,11 +354,8 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
   </tr>`}
 </table>
 
-${formData.notes ? `
-<hr class="dashed" />
-<div class="notes-label">Notes</div>
-<div class="notes-box">${formData.notes}</div>
-` : ""}
+<!-- ── Notes (only rendered when present) ─────────────────────────────── -->
+${notesBlock}
 
 <hr class="dashed" />
 
