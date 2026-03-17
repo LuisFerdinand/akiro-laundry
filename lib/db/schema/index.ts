@@ -269,3 +269,5 @@ export type CashRegister            = typeof cashRegister.$inferSelect;
 export type ExpenseCategory    = typeof expenseCategories.$inferSelect;
 export type NewExpenseCategory = typeof expenseCategories.$inferInsert;
 export type CashRegisterTransaction = typeof cashRegisterTransactions.$inferSelect;
+
+export * from "./cms";

@@ -4,23 +4,27 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import type { CmsNavbar, CmsNavLink } from "@/lib/db/schema/cms";
 
-const NAV_LINKS = [
-  { label: "Services",     href: "#services"      },
-  { label: "How It Works", href: "#how-it-works"  },
-  { label: "Testimonials", href: "#testimonials"  },
-  { label: "Contact",      href: "#contact"       },
-];
+type NavbarData = (CmsNavbar & { links: CmsNavLink[] }) | null;
 
-export default function Navbar() {
-  const [scrolled,  setScrolled]  = useState(false);
-  const [menuOpen,  setMenuOpen]  = useState(false);
+export default function Navbar({ data }: { data: NavbarData }) {
+  const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  // Fallbacks so the navbar never breaks if CMS rows are missing
+  const brandName  = data?.brandName  ?? "Akiro Laundry";
+  const logoUrl    = data?.logoUrl    ?? null;
+  const logoAlt    = data?.logoAlt    ?? "Akiro Laundry Logo";
+  const ctaLabel   = data?.ctaLabel   ?? "Book Now";
+  const ctaHref    = data?.ctaHref    ?? "#contact";
+  const links      = data?.links      ?? [];
 
   return (
     <header
@@ -34,26 +38,39 @@ export default function Navbar() {
 
         {/* ── Logo ── */}
         <div className="flex items-center gap-2.5">
-          <Image
-            src="/logo/2.png"
-            alt="Akiro Laundry Logo"
-            width={38}
-            height={38}
-            className="rounded-[14px]"
-            priority
-          />
+          {logoUrl ? (
+            <Image
+              src={logoUrl}
+              alt={logoAlt}
+              width={38}
+              height={38}
+              className="rounded-[14px]"
+              priority
+            />
+          ) : (
+            <Image
+              src="/logo/2.png"
+              alt={logoAlt}
+              width={38}
+              height={38}
+              className="rounded-[14px]"
+              priority
+            />
+          )}
           <span
             className="font-display font-extrabold text-[17px] tracking-tight"
             style={{ color: "#0f5a85" }}
           >
-            Akiro{" "}
-            <span style={{ color: "#1a7fba" }}>Laundry</span>
+            {brandName.split(" ")[0]}{" "}
+            <span style={{ color: "#1a7fba" }}>
+              {brandName.split(" ").slice(1).join(" ")}
+            </span>
           </span>
         </div>
 
         {/* ── Desktop links ── */}
         <nav className="hidden md:flex items-center gap-7">
-          {NAV_LINKS.map(({ label, href }) => (
+          {links.map(({ label, href }) => (
             <a
               key={label}
               href={href}
@@ -73,14 +90,14 @@ export default function Navbar() {
             Sign In
           </Link>
           <a
-            href="#contact"
+            href={ctaHref}
             className="text-sm font-bold text-white px-4 py-2.5 rounded-xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
             style={{
               background: "linear-gradient(135deg, #2496d6 0%, #1a7fba 100%)",
               boxShadow: "0 4px 14px rgba(26,127,186,0.35)",
             }}
           >
-            Order Pickup
+            {ctaLabel}
           </a>
         </div>
 
@@ -90,33 +107,19 @@ export default function Navbar() {
           onClick={() => setMenuOpen((v) => !v)}
           aria-label="Toggle menu"
         >
-          <span
-            className={`w-5 h-0.5 bg-[#1a7fba] rounded transition-all duration-300 origin-center ${
-              menuOpen ? "rotate-45 translate-y-[7px]" : ""
-            }`}
-          />
-          <span
-            className={`w-5 h-0.5 bg-[#1a7fba] rounded transition-all duration-300 ${
-              menuOpen ? "opacity-0 scale-x-0" : ""
-            }`}
-          />
-          <span
-            className={`w-5 h-0.5 bg-[#1a7fba] rounded transition-all duration-300 origin-center ${
-              menuOpen ? "-rotate-45 -translate-y-[7px]" : ""
-            }`}
-          />
+          <span className={`w-5 h-0.5 bg-[#1a7fba] rounded transition-all duration-300 origin-center ${menuOpen ? "rotate-45 translate-y-[7px]" : ""}`} />
+          <span className={`w-5 h-0.5 bg-[#1a7fba] rounded transition-all duration-300 ${menuOpen ? "opacity-0 scale-x-0" : ""}`} />
+          <span className={`w-5 h-0.5 bg-[#1a7fba] rounded transition-all duration-300 origin-center ${menuOpen ? "-rotate-45 -translate-y-[7px]" : ""}`} />
         </button>
       </div>
 
       {/* ── Mobile drawer ── */}
       <div
-        className={`md:hidden overflow-hidden transition-all duration-400 ${
-          menuOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
-        }`}
+        className={`md:hidden overflow-hidden transition-all duration-400 ${menuOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"}`}
         style={{ background: "rgba(255,255,255,0.97)", backdropFilter: "blur(20px)" }}
       >
         <div className="px-6 py-5 flex flex-col gap-4 border-t border-[#e8f4fb]">
-          {NAV_LINKS.map(({ label, href }) => (
+          {links.map(({ label, href }) => (
             <a
               key={label}
               href={href}
@@ -134,11 +137,11 @@ export default function Navbar() {
               Sign In
             </Link>
             <a
-              href="#contact"
+              href={ctaHref}
               className="flex-1 text-sm font-bold text-white py-2.5 rounded-xl text-center"
               style={{ background: "linear-gradient(135deg, #2496d6, #1a7fba)" }}
             >
-              Order Pickup
+              {ctaLabel}
             </a>
           </div>
         </div>
