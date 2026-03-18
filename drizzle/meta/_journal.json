@@ -43,6 +43,13 @@
       "when": 1773751218167,
       "tag": "0005_fearless_maginty",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1773833698442,
+      "tag": "0006_cynical_colossus",
+      "breakpoints": true
     }
   ]
 }

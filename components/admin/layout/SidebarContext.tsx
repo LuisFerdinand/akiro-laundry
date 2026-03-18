@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 // components/admin/layout/SidebarContext.tsx
 "use client";
 

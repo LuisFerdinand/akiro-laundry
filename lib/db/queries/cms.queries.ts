@@ -1,11 +1,4 @@
 // lib/db/queries/cms.queries.ts
-//
-// Ready-to-use query functions for every public landing-page section.
-// Import these in your page/layout Server Components.
-//
-// Usage:
-//   import { getLandingPageData } from "@/lib/db/queries/cms.queries";
-//   const data = await getLandingPageData();
 
 import { db } from "@/lib/db";
 import { eq, asc } from "drizzle-orm";
@@ -15,7 +8,6 @@ import * as cms from "@/lib/db/schema/cms";
 
 export async function getSiteSettings() {
   const rows = await db.select().from(cms.cmsSiteSettings);
-  // Convert to a plain key→value map for easy consumption
   return Object.fromEntries(rows.map((r) => [r.key, r.value])) as Record<string, string>;
 }
 
@@ -71,6 +63,21 @@ export async function getHowItWorksSection() {
   return { ...section, steps };
 }
 
+export async function getGallerySection() {
+  const [section] = await db
+    .select()
+    .from(cms.cmsGallerySection)
+    .where(eq(cms.cmsGallerySection.isActive, true))
+    .limit(1);
+  if (!section) return null;
+  const images = await db
+    .select()
+    .from(cms.cmsGalleryImages)
+    .where(eq(cms.cmsGalleryImages.sectionId, section.id))
+    .orderBy(asc(cms.cmsGalleryImages.sortOrder));
+  return { ...section, images };
+}
+
 export async function getTestimonialsSection() {
   const [section] = await db
     .select()
@@ -117,18 +124,29 @@ export async function getFooter() {
 // ─── Bulk loader — fetch everything in parallel ───────────────────────────────
 
 export async function getLandingPageData() {
-  const [siteSettings, navbar, hero, services, howItWorks, testimonials, cta, contactItems, footer] =
-    await Promise.all([
-      getSiteSettings(),
-      getNavbar(),
-      getHero(),
-      getServicesSection(),
-      getHowItWorksSection(),
-      getTestimonialsSection(),
-      getCtaSection(),
-      getContactItems(),
-      getFooter(),
-    ]);
+  const [
+    siteSettings,
+    navbar,
+    hero,
+    services,
+    howItWorks,
+    gallery,
+    testimonials,
+    cta,
+    contactItems,
+    footer,
+  ] = await Promise.all([
+    getSiteSettings(),
+    getNavbar(),
+    getHero(),
+    getServicesSection(),
+    getHowItWorksSection(),
+    getGallerySection(),
+    getTestimonialsSection(),
+    getCtaSection(),
+    getContactItems(),
+    getFooter(),
+  ]);
 
   return {
     siteSettings,
@@ -136,6 +154,7 @@ export async function getLandingPageData() {
     hero,
     services,
     howItWorks,
+    gallery,
     testimonials,
     cta,
     contactItems,

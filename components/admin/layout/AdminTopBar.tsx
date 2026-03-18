@@ -237,7 +237,7 @@ export function AdminTopBar({ userName, userEmail }: Props) {
             onSelect={(e) => e.preventDefault()}
           >
             <Link
-              href="/admin"
+              href="/"
               style={{
                 display:        "flex",
                 alignItems:     "center",
@@ -254,7 +254,7 @@ export function AdminTopBar({ userName, userEmail }: Props) {
               <div style={{ width: 24, height: 24, borderRadius: "7px", background: "#edf7fd", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <Home size={12} style={{ color: "#1a7fba" }} />
               </div>
-              Dashboard
+              Home Page
             </Link>
           </DropdownMenuItem>
 

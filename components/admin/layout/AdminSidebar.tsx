@@ -17,23 +17,31 @@ import {
   Users,
   Wrench,
   Wallet,
-  Sparkles,
   Package,
   UserCog,
   Settings,
   ChevronRight,
+  FileText,
+  ImageIcon,
+  Star,
+  Megaphone,
+  LayoutTemplate,
+  Navigation,
+  Layers,
 } from "lucide-react";
 
 // ─── Nav groups ───────────────────────────────────────────────────────────────
 
+type NavItem = {
+  href:   string;
+  icon:   React.ElementType;
+  label:  string;
+  exact?: boolean;
+};
+
 type NavGroup = {
   label: string;
-  items: {
-    href:   string;
-    icon:   React.ElementType;
-    label:  string;
-    exact?: boolean;
-  }[];
+  items: NavItem[];
 };
 
 const NAV_GROUPS: NavGroup[] = [
@@ -54,8 +62,22 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Catalogue",
     items: [
-      { href: "/admin/services", icon: Wrench,   label: "Services"  },
-      { href: "/admin/products", icon: Package,  label: "Products"  },
+      { href: "/admin/services", icon: Wrench,   label: "Services" },
+      { href: "/admin/products", icon: Package,  label: "Products" },
+    ],
+  },
+  {
+    label: "Content",
+    items: [
+      { href: "/admin/cms",                  icon: Layers,        label: "CMS Overview"  },
+      { href: "/admin/cms/navbar",           icon: Navigation,    label: "Navbar"        },
+      { href: "/admin/cms/hero",             icon: LayoutTemplate,label: "Hero"          },
+      { href: "/admin/cms/services",         icon: Wrench,        label: "Services"      },
+      { href: "/admin/cms/how-it-works",     icon: FileText,      label: "How It Works"  },
+      { href: "/admin/cms/gallery",          icon: ImageIcon,     label: "Gallery"       },
+      { href: "/admin/cms/testimonials",     icon: Star,          label: "Testimonials"  },
+      { href: "/admin/cms/cta",              icon: Megaphone,     label: "CTA & Contact" },
+      { href: "/admin/cms/footer",           icon: FileText,      label: "Footer"        },
     ],
   },
   {
@@ -69,7 +91,7 @@ const NAV_GROUPS: NavGroup[] = [
 
 // ─── Nav item ─────────────────────────────────────────────────────────────────
 
-function NavItem({
+function NavItemComponent({
   href, icon: Icon, label, isActive, collapsed,
 }: {
   href:      string;
@@ -141,21 +163,19 @@ function NavItem({
 
   return (
     <Tooltip>
-      <TooltipTrigger>
-        {linkContent}
-      </TooltipTrigger>
+      <TooltipTrigger style={{ display: "block", width: "100%" }}>{linkContent}</TooltipTrigger>
       <TooltipContent
         side="right"
         sideOffset={12}
         className="border-0"
         style={{
-          background:   "#0f172a",
-          color:        "white",
-          fontSize:     "12px",
-          fontWeight:   700,
-          padding:      "6px 10px",
-          borderRadius: "8px",
-          boxShadow:    "0 4px 16px rgba(0,0,0,0.25)",
+          background:    "#0f172a",
+          color:         "white",
+          fontSize:      "12px",
+          fontWeight:    700,
+          padding:       "6px 10px",
+          borderRadius:  "8px",
+          boxShadow:     "0 4px 16px rgba(0,0,0,0.25)",
           letterSpacing: "0.01em",
         }}
       >
@@ -171,19 +191,18 @@ export function AdminSidebar() {
   const { collapsed: collapsedState, mounted } = useSidebar();
   const pathname = usePathname();
 
-  // Before the client has mounted, always treat sidebar as expanded so the
-  // server-rendered HTML and the first client render match exactly.
-  // Once mounted=true the real localStorage value kicks in.
   const collapsed = mounted ? collapsedState : false;
 
   const isActive = (href: string, exact?: boolean) =>
     exact ? pathname === href : pathname.startsWith(href);
 
+  // Highlight the whole Content group when anywhere under /admin/cms
+  const cmsActive = pathname.startsWith("/admin/cms");
+
   const W = collapsed ? 64 : 224;
 
   return (
     <>
-      {/* Fixed sidebar */}
       <aside
         style={{
           position:      "fixed",
@@ -255,67 +274,111 @@ export function AdminSidebar() {
 
         {/* ── Nav ──────────────────────────────────────── */}
         <TooltipProvider>
-        <nav
-          style={{
-            flex:          1,
-            padding:       "16px 8px",
-            display:       "flex",
-            flexDirection: "column",
-            overflowY:     "auto",
-            overflowX:     "hidden",
-          }}
-        >
-          {NAV_GROUPS.map((group, groupIndex) => (
-            <div
-              key={group.label}
-              style={{
-                display:       "flex",
-                flexDirection: "column",
-                marginBottom:  collapsed ? 0 : "24px",
-              }}
-            >
-              {/* Separator between groups when collapsed */}
-              {collapsed && groupIndex > 0 && (
-                <div
-                  style={{
-                    height:     "1px",
-                    background: "rgba(255,255,255,0.08)",
-                    margin:     "6px 10px",
-                    flexShrink: 0,
-                  }}
-                />
-              )}
+          <nav
+            style={{
+              flex:          1,
+              padding:       "16px 8px",
+              display:       "flex",
+              flexDirection: "column",
+              overflowY:     "auto",
+              overflowX:     "hidden",
+            }}
+          >
+            {NAV_GROUPS.map((group, groupIndex) => {
+              const isContentGroup = group.label === "Content";
 
-              {/* Group label — visible only when expanded */}
-              {!collapsed && (
-                <p
+              return (
+                <div
+                  key={group.label}
                   style={{
-                    fontSize:      "9px",
-                    fontWeight:    800,
-                    letterSpacing: "0.12em",
-                    textTransform: "uppercase",
-                    color:         "rgba(255,255,255,0.25)",
-                    padding:       "0 8px",
-                    marginBottom:  "6px",
+                    display:       "flex",
+                    flexDirection: "column",
+                    marginBottom:  collapsed ? 0 : "24px",
                   }}
                 >
-                  {group.label}
-                </p>
-              )}
+                  {/* Separator between groups when collapsed */}
+                  {collapsed && groupIndex > 0 && (
+                    <div
+                      style={{
+                        height:     "1px",
+                        background: "rgba(255,255,255,0.08)",
+                        margin:     "6px 10px",
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
 
-              {group.items.map((item) => (
-                <NavItem
-                  key={item.href}
-                  href={item.href}
-                  icon={item.icon}
-                  label={item.label}
-                  isActive={isActive(item.href, item.exact)}
-                  collapsed={collapsed}
-                />
-              ))}
-            </div>
-          ))}
-        </nav>
+                  {/* Group label */}
+                  {!collapsed && (
+                    <p
+                      style={{
+                        fontSize:      "9px",
+                        fontWeight:    800,
+                        letterSpacing: "0.12em",
+                        textTransform: "uppercase",
+                        color:         isContentGroup && cmsActive
+                          ? "rgba(36,150,214,0.70)"
+                          : "rgba(255,255,255,0.25)",
+                        padding:      "0 8px",
+                        marginBottom: "6px",
+                        transition:   "color 0.15s",
+                      }}
+                    >
+                      {group.label}
+                    </p>
+                  )}
+
+                  {/* Content group: wrap CMS sub-items in a subtle inset panel */}
+                  {isContentGroup && !collapsed ? (
+                    <div>
+                      {/* Overview item sits at top level */}
+                      <NavItemComponent
+                        key="/admin/cms"
+                        href="/admin/cms"
+                        icon={Layers}
+                        label="CMS Overview"
+                        isActive={isActive("/admin/cms", true)}
+                        collapsed={false}
+                      />
+                      {/* Sub-items indented */}
+                      <div
+                        style={{
+                          marginLeft:   "6px",
+                          paddingLeft:  "10px",
+                          borderLeft:   cmsActive
+                            ? "1.5px solid rgba(36,150,214,0.30)"
+                            : "1.5px solid rgba(255,255,255,0.07)",
+                          transition:   "border-color 0.2s",
+                        }}
+                      >
+                        {group.items.slice(1).map((item) => (
+                          <NavItemComponent
+                            key={item.href}
+                            href={item.href}
+                            icon={item.icon}
+                            label={item.label}
+                            isActive={isActive(item.href, item.exact)}
+                            collapsed={false}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    group.items.map((item) => (
+                      <NavItemComponent
+                        key={item.href}
+                        href={item.href}
+                        icon={item.icon}
+                        label={item.label}
+                        isActive={isActive(item.href, item.exact)}
+                        collapsed={collapsed}
+                      />
+                    ))
+                  )}
+                </div>
+              );
+            })}
+          </nav>
         </TooltipProvider>
 
         {/* ── Footer ───────────────────────────────────── */}
@@ -334,7 +397,7 @@ export function AdminSidebar() {
         )}
       </aside>
 
-      {/* Spacer so page content doesn't render under the fixed sidebar */}
+      {/* Spacer */}
       <div
         style={{
           width:      W,

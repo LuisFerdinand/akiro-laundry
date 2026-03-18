@@ -90,11 +90,11 @@ export function TopBar() {
               className="p-0 rounded-xl cursor-pointer"
             >
               <Link
-                href="/employee"
+                href="/"
                 className="flex items-center gap-2.5 w-full px-3 py-2 text-slate-700 font-semibold text-[13px]"
               >
                 <Home size={13} className="text-blue-500" />
-                Home
+                Home Page
               </Link>
             </DropdownMenuItem>
 

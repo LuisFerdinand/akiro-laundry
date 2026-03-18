@@ -7,9 +7,23 @@ import type { UserRole } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
+// ── Session lifetime constants ────────────────────────────────────────────────
+// Change SESSION_MAX_AGE to any value in seconds to adjust auto-logout timing.
+const SESSION_MAX_AGE = 8 * 60 * 60; // 8 hours — users are logged out after this
+
 export const { auth, handlers, signIn, signOut } = NextAuth({
   secret: process.env.NEXTAUTH_SECRET,
-  session: { strategy: "jwt" },
+
+  session: {
+    strategy: "jwt",
+    // Hard expiry: the JWT (and therefore the session) becomes invalid after
+    // this many seconds, forcing a re-login regardless of activity.
+    maxAge: SESSION_MAX_AGE,
+    // Rolling refresh: the JWT TTL is reset whenever it is more than this many
+    // seconds old. Set to SESSION_MAX_AGE to disable rolling (absolute expiry).
+    updateAge: 60 * 60, // refresh the token once per hour if the user is active
+  },
+
   pages: { signIn: "/login" },
 
   providers: [
@@ -46,7 +60,6 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
 
           console.log("[auth] User found, id:", user.id, "role:", user.role);
 
-          // Guard: password must be a bcrypt hash (starts with $2b$ or $2a$)
           if (!user.password.startsWith("$2")) {
             console.log("[auth] Password is not a bcrypt hash — run npm run seed:users to rehash");
             return null;
@@ -73,6 +86,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
 
   callbacks: {
     jwt({ token, user }) {
+      // On first sign-in, embed the role into the token
       if (user) token.role = (user as { role: UserRole }).role;
       return token;
     },

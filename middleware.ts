@@ -10,36 +10,41 @@ type AuthedRequest = NextRequest & {
 
 export default auth((req: AuthedRequest) => {
   const { pathname } = req.nextUrl;
-  const role = req.auth?.user?.role;
+  const role         = req.auth?.user?.role;
+
+  // ── Protected routes only ─────────────────────────────────────────────────
+  // Public pages (/, /login, /register, static assets) are never intercepted
+  // because the matcher below excludes them entirely.
 
   // Not authenticated — send to login
   if (!req.auth) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // "user" role has no portal access
-  if (role === "user") {
-    // Let them land on login or a future customer-facing page
-    if (pathname.startsWith("/admin") || pathname.startsWith("/employee")) {
-      return NextResponse.redirect(new URL("/login", req.url));
-    }
-  }
-
-  // Admin-only routes
+  // Admin-only routes: only admins allowed
   if (pathname.startsWith("/admin") && role !== "admin") {
     return NextResponse.redirect(
       new URL(role === "employee" ? "/employee" : "/login", req.url)
     );
   }
 
-  // Employee routes — employee or admin only
-  if (pathname.startsWith("/employee") && role !== "employee" && role !== "admin") {
+  // Employee routes: employee or admin allowed
+  if (
+    pathname.startsWith("/employee") &&
+    role !== "employee" &&
+    role !== "admin"
+  ) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
+  // All other authenticated requests (including admin/employee visiting "/")
+  // pass through freely.
   return NextResponse.next();
 });
 
 export const config = {
-  matcher: ["/employee/:path*", "/admin/:path*"],
+  // Only intercept protected portal routes.
+  // The public landing page ("/") and login page are NOT in this list,
+  // so any logged-in user can visit them without being redirected.
+  matcher: ["/admin/:path*", "/employee/:path*"],
 };
