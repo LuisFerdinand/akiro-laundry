@@ -1,4 +1,4 @@
-// middleware.ts  (project root)
+// proxy.ts  (project root)  ← renamed from middleware.ts for Next.js 16
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
@@ -11,10 +11,6 @@ type AuthedRequest = NextRequest & {
 export default auth((req: AuthedRequest) => {
   const { pathname } = req.nextUrl;
   const role         = req.auth?.user?.role;
-
-  // ── Protected routes only ─────────────────────────────────────────────────
-  // Public pages (/, /login, /register, static assets) are never intercepted
-  // because the matcher below excludes them entirely.
 
   // Not authenticated — send to login
   if (!req.auth) {
@@ -37,14 +33,9 @@ export default auth((req: AuthedRequest) => {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // All other authenticated requests (including admin/employee visiting "/")
-  // pass through freely.
   return NextResponse.next();
 });
 
 export const config = {
-  // Only intercept protected portal routes.
-  // The public landing page ("/") and login page are NOT in this list,
-  // so any logged-in user can visit them without being redirected.
   matcher: ["/admin/:path*", "/employee/:path*"],
 };
