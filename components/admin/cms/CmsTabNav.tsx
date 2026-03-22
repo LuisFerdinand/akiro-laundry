@@ -12,6 +12,7 @@ import {
   ImageIcon,
   Star,
   Megaphone,
+  Search,
 } from "lucide-react";
 
 const CMS_SECTIONS = [
@@ -24,6 +25,7 @@ const CMS_SECTIONS = [
   { href: "/admin/cms/testimonials", icon: Star,           label: "Testimonials"  },
   { href: "/admin/cms/cta",          icon: Megaphone,      label: "CTA & Contact" },
   { href: "/admin/cms/footer",       icon: FileText,       label: "Footer"        },
+  { href: "/admin/cms/seo",          icon: Search,         label: "SEO"           },
 ] as const;
 
 export function CmsTabNav() {

@@ -46,6 +46,49 @@ export const cmsSiteSettings = pgTable("cms_site_settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// ─── SEO / Head Settings ──────────────────────────────────────────────────────
+// One row — all metadata that populates <head> in layout.tsx.
+
+export const cmsSeoSettings = pgTable("cms_seo_settings", {
+  id:               serial("id").primaryKey(),
+
+  // Basic
+  siteTitle:        text("site_title").notNull().default("Akiro Laundry & Perfume"),
+  titleTemplate:    text("title_template").notNull().default("%s | Akiro Laundry"),
+  metaDescription:  text("meta_description").notNull().default("Premium laundry service in Timor-Leste. Open every day 08:00–20:00."),
+  metaKeywords:     text("meta_keywords"),                   // comma-separated
+  canonicalUrl:     text("canonical_url"),                   // e.g. https://akirolaundry.com
+
+  // Open Graph
+  ogTitle:          text("og_title"),
+  ogDescription:    text("og_description"),
+  ogImageUrl:       text("og_image_url"),                    // Cloudinary URL, 1200×630
+  ogImageAlt:       text("og_image_alt"),
+  ogType:           text("og_type").notNull().default("website"),
+  ogLocale:         text("og_locale").notNull().default("pt_TL"),
+
+  // Twitter / X card
+  twitterCard:      text("twitter_card").notNull().default("summary_large_image"),
+  twitterSite:      text("twitter_site"),                    // @handle
+  twitterCreator:   text("twitter_creator"),
+
+  // Verification codes (paste the full content="" value only)
+  googleVerification: text("google_verification"),
+  fbAppId:            text("fb_app_id"),
+
+  // Robots
+  robotsIndex:      boolean("robots_index").notNull().default(true),
+  robotsFollow:     boolean("robots_follow").notNull().default(true),
+
+  // Structured data (JSON-LD as raw string — admin pastes it in)
+  jsonLd:           text("json_ld"),
+
+  // Misc <head> injections (analytics snippets, etc.)
+  headScripts:      text("head_scripts"),  // raw HTML — injected verbatim
+
+  updatedAt:        timestamp("updated_at").defaultNow().notNull(),
+});
+
 // ─── Navbar ───────────────────────────────────────────────────────────────────
 
 export const cmsNavbar = pgTable("cms_navbar", {
@@ -275,6 +318,7 @@ export const cmsMedia = pgTable("cms_media", {
 // ─── Exported Types ───────────────────────────────────────────────────────────
 
 export type CmsSiteSettings        = typeof cmsSiteSettings.$inferSelect;
+export type CmsSeoSettings         = typeof cmsSeoSettings.$inferSelect;
 export type CmsNavbar              = typeof cmsNavbar.$inferSelect;
 export type CmsNavLink             = typeof cmsNavLinks.$inferSelect;
 export type CmsHero                = typeof cmsHero.$inferSelect;

@@ -2,7 +2,7 @@
 "use client";
 
 import { useRef, useState, useCallback } from "react";
-import { Loader2, CheckCircle2, Upload, X, Image as ImageIcon } from "lucide-react";
+import { Loader2, Upload, X, Image as ImageIcon } from "lucide-react";
 import { uploadImage } from "@/lib/actions/cms/upload.actions";
 
 // ─── Shared style base ────────────────────────────────────────────────────────
@@ -354,13 +354,18 @@ export function FormGrid({ cols = 2, children }: { cols?: number; children: Reac
 
 // ─── FormField ────────────────────────────────────────────────────────────────
 
-export function FormField({ label, children, span }: {
-  label: string; children: React.ReactNode; span?: number;
+export function FormField({ label, children, span, hint }: {
+  label: string; children: React.ReactNode; span?: number; hint?: string;
 }) {
   return (
     <div style={span ? { gridColumn: `span ${span}` } : undefined}>
       <FieldLabel>{label}</FieldLabel>
       {children}
+      {hint && (
+        <p style={{ fontSize: "11px", color: "#8ca0b0", marginTop: "5px", fontWeight: 500 }}>
+          {hint}
+        </p>
+      )}
     </div>
   );
 }
@@ -404,16 +409,11 @@ export function AddButton({ onClick, label }: { onClick: () => void; label: stri
 
 // ─── SaveBar ──────────────────────────────────────────────────────────────────
 
-export function SaveBar({ pending, saved, onSave }: {
-  pending: boolean; saved: boolean; onSave: () => void;
+export function SaveBar({ pending, onSave }: {
+  pending: boolean; onSave: () => void;
 }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "12px", marginTop: "32px", paddingTop: "20px", borderTop: "1.5px solid hsl(210 25% 91%)" }}>
-      {saved && (
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "#10b981" }}>
-          <CheckCircle2 size={15} /> Saved successfully
-        </div>
-      )}
       <button
         type="button"
         onClick={onSave}

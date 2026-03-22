@@ -26,7 +26,7 @@ async function seed() {
     .insert(users)
     .values({
       name: "Admin Akiro",
-      email: "admin@akirolarundry.com",
+      email: "admin@akirolaundry.com",
       password: "WILL_BE_HASHED_LATER",
       role: "admin",
     })

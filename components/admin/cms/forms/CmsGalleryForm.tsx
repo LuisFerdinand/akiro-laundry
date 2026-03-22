@@ -2,7 +2,6 @@
 "use client";
 
 import { useState, useTransition, useMemo } from "react";
-import { useRouter }                        from "next/navigation";
 import { Search, Pencil, Trash2, X, ImageIcon, Plus } from "lucide-react";
 import type { CmsGallerySection, CmsGalleryImage } from "@/lib/db/schema/cms";
 import { saveGallery }  from "@/lib/actions/cms/gallery.actions";
@@ -11,6 +10,7 @@ import {
   TextInput, TextArea, ImageUploadField, SelectInput,
   SaveBar,
 } from "./CmsFormPrimitives";
+import { useCmsSave } from "@/hooks/useCmsSave";
 
 type GalleryData = (CmsGallerySection & { images: CmsGalleryImage[] }) | null;
 type ImageState  = {
@@ -129,9 +129,7 @@ function EditDrawer({
 
 // ── Main form ─────────────────────────────────────────────────────────────────
 export function CmsGalleryForm({ data }: { data: GalleryData }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [saved,   setSaved]        = useState(false);
+  const { save, pending } = useCmsSave();
   const [search,  setSearch]       = useState("");
   const [editing, setEditing]      = useState<number | null>(null);
 
@@ -172,13 +170,10 @@ export function CmsGalleryForm({ data }: { data: GalleryData }) {
   }, [images, search]);
 
   const handleSave = () => {
-    startTransition(async () => {
-      await saveGallery({
+    save(() => saveGallery({
         sectionId: data?.id, badge, headline, subtext,
         images: images.map((img, i) => ({ ...img, sortOrder: i, caption: img.caption || null })),
-      });
-      setSaved(true); setTimeout(() => setSaved(false), 3000); router.refresh();
-    });
+      }));
   };
 
   return (
@@ -348,7 +343,7 @@ export function CmsGalleryForm({ data }: { data: GalleryData }) {
         />
       )}
 
-      <SaveBar pending={pending} saved={saved} onSave={handleSave} />
+      <SaveBar pending={pending} onSave={handleSave} />
     </div>
   );
 }

@@ -1,8 +1,7 @@
 // components/admin/cms/forms/CmsNavbarForm.tsx
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter }               from "next/navigation";
+import { useState } from "react";
 import { GripVertical, Trash2 }    from "lucide-react";
 import type { CmsNavbar, CmsNavLink } from "@/lib/db/schema/cms";
 import { saveNavbar }              from "@/lib/actions/cms/navbar.actions";
@@ -15,13 +14,12 @@ import {
   AddButton,
   SaveBar,
 } from "./CmsFormPrimitives";
+import { useCmsSave } from "@/hooks/useCmsSave";
 
 type NavbarData = (CmsNavbar & { links: CmsNavLink[] }) | null;
 
 export function CmsNavbarForm({ data }: { data: NavbarData }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [saved,   setSaved]        = useState(false);
+  const { save, pending } = useCmsSave();
 
   // ── Field state ──────────────────────────────────────────────────────────
   const [brandName, setBrandName] = useState(data?.brandName ?? "Akiro Laundry");
@@ -40,8 +38,7 @@ export function CmsNavbarForm({ data }: { data: NavbarData }) {
     setLinks((p) => p.map((l, idx) => (idx === i ? { ...l, [field]: v } : l)));
 
   const handleSave = () => {
-    startTransition(async () => {
-      await saveNavbar({
+    save(() => saveNavbar({
         navbarId:  data?.id,
         brandName,
         logoUrl:   logoUrl || null,
@@ -49,11 +46,7 @@ export function CmsNavbarForm({ data }: { data: NavbarData }) {
         ctaLabel,
         ctaHref,
         links: links.map((l, i) => ({ ...l, sortOrder: i })),
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-      router.refresh();
-    });
+      }));
   };
 
   return (
@@ -206,7 +199,7 @@ export function CmsNavbarForm({ data }: { data: NavbarData }) {
         <AddButton onClick={addLink} label="Add navigation link" />
       </div>
 
-      <SaveBar pending={pending} saved={saved} onSave={handleSave} />
+      <SaveBar pending={pending} onSave={handleSave} />
     </div>
   );
 }

@@ -5,50 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1773118875035,
-      "tag": "0000_wild_emma_frost",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1773233800039,
-      "tag": "0001_magical_dark_phoenix",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1773237489074,
-      "tag": "0002_dashing_kylun",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1773392082871,
-      "tag": "0003_milky_multiple_man",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1773403188809,
-      "tag": "0004_careless_captain_marvel",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1773751218167,
-      "tag": "0005_fearless_maginty",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1773833698442,
-      "tag": "0006_cynical_colossus",
+      "when": 1774203490971,
+      "tag": "0000_luxuriant_wendell_vaughn",
       "breakpoints": true
     }
   ]

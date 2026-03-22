@@ -18,19 +18,19 @@ const db  = drizzle(sql);
 const SEED_USERS = [
   {
     name:     "Admin Akiro",
-    email:    "admin@akirolarundry.com",
+    email:    "admin@akirolaundry.com",
     password: "admin123",
     role:     "admin" as const,
   },
   {
     name:     "Employee One",
-    email:    "employee1@akirolarundry.com",
+    email:    "employee1@akirolaundry.com",
     password: "employee123",
     role:     "employee" as const,
   },
   {
     name:     "Employee Two",
-    email:    "employee2@akirolarundry.com",
+    email:    "employee2@akirolaundry.com",
     password: "employee123",
     role:     "employee" as const,
   },

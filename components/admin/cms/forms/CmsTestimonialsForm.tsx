@@ -2,7 +2,6 @@
 "use client";
 
 import { useState, useTransition, useMemo } from "react";
-import { useRouter }                        from "next/navigation";
 import { Search, Pencil, Trash2, X, Star, Plus, UserCircle2 } from "lucide-react";
 import type { CmsTestimonialsSection, CmsTestimonial } from "@/lib/db/schema/cms";
 import { saveTestimonials } from "@/lib/actions/cms/testimonials.actions";
@@ -11,6 +10,7 @@ import {
   TextInput, TextArea, ImageUploadField, ColorInput, SelectInput,
   SaveBar,
 } from "./CmsFormPrimitives";
+import { useCmsSave } from "@/hooks/useCmsSave";
 
 type TestimonialsData = (CmsTestimonialsSection & { testimonials: CmsTestimonial[] }) | null;
 type ItemState = {
@@ -161,9 +161,7 @@ function EditDrawer({
 
 // ── Main form ─────────────────────────────────────────────────────────────────
 export function CmsTestimonialsForm({ data }: { data: TestimonialsData }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [saved,   setSaved]        = useState(false);
+  const { save, pending } = useCmsSave();
   const [search,  setSearch]       = useState("");
   const [editing, setEditing]      = useState<number | null>(null);
 
@@ -207,13 +205,10 @@ export function CmsTestimonialsForm({ data }: { data: TestimonialsData }) {
   }, [items, search]);
 
   const handleSave = () => {
-    startTransition(async () => {
-      await saveTestimonials({
+    save(() => saveTestimonials({
         sectionId: data?.id, badge, headline, subtext, aggregateRating, reviewCount,
         testimonials: items.map((t, i) => ({ ...t, sortOrder: i, avatarUrl: t.avatarUrl || null, avatarAlt: t.avatarAlt || null })),
-      });
-      setSaved(true); setTimeout(() => setSaved(false), 3000); router.refresh();
-    });
+      }));
   };
 
   return (
@@ -389,7 +384,7 @@ export function CmsTestimonialsForm({ data }: { data: TestimonialsData }) {
         />
       )}
 
-      <SaveBar pending={pending} saved={saved} onSave={handleSave} />
+      <SaveBar pending={pending} onSave={handleSave} />
     </div>
   );
 }

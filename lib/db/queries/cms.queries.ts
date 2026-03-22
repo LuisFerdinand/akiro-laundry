@@ -1,8 +1,9 @@
 // lib/db/queries/cms.queries.ts
 
 import { db } from "@/lib/db";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, desc } from "drizzle-orm";
 import * as cms from "@/lib/db/schema/cms";
+import { cmsSeoSettings } from "@/lib/db/schema/cms";
 
 // ─── Individual section fetchers ─────────────────────────────────────────────
 
@@ -12,7 +13,12 @@ export async function getSiteSettings() {
 }
 
 export async function getNavbar() {
-  const [navbar] = await db.select().from(cms.cmsNavbar).where(eq(cms.cmsNavbar.isActive, true)).limit(1);
+  const [navbar] = await db
+    .select()
+    .from(cms.cmsNavbar)
+    .where(eq(cms.cmsNavbar.isActive, true))
+    .orderBy(desc(cms.cmsNavbar.id))
+    .limit(1);
   if (!navbar) return null;
   const links = await db
     .select()
@@ -23,7 +29,12 @@ export async function getNavbar() {
 }
 
 export async function getHero() {
-  const [hero] = await db.select().from(cms.cmsHero).where(eq(cms.cmsHero.isActive, true)).limit(1);
+  const [hero] = await db
+    .select()
+    .from(cms.cmsHero)
+    .where(eq(cms.cmsHero.isActive, true))
+    .orderBy(desc(cms.cmsHero.id))
+    .limit(1);
   if (!hero) return null;
   const stats = await db
     .select()
@@ -38,6 +49,7 @@ export async function getServicesSection() {
     .select()
     .from(cms.cmsServicesSection)
     .where(eq(cms.cmsServicesSection.isActive, true))
+    .orderBy(desc(cms.cmsServicesSection.id))
     .limit(1);
   if (!section) return null;
   const cards = await db
@@ -53,6 +65,7 @@ export async function getHowItWorksSection() {
     .select()
     .from(cms.cmsHowItWorksSection)
     .where(eq(cms.cmsHowItWorksSection.isActive, true))
+    .orderBy(desc(cms.cmsHowItWorksSection.id))
     .limit(1);
   if (!section) return null;
   const steps = await db
@@ -68,6 +81,7 @@ export async function getGallerySection() {
     .select()
     .from(cms.cmsGallerySection)
     .where(eq(cms.cmsGallerySection.isActive, true))
+    .orderBy(desc(cms.cmsGallerySection.id))
     .limit(1);
   if (!section) return null;
   const images = await db
@@ -83,6 +97,7 @@ export async function getTestimonialsSection() {
     .select()
     .from(cms.cmsTestimonialsSection)
     .where(eq(cms.cmsTestimonialsSection.isActive, true))
+    .orderBy(desc(cms.cmsTestimonialsSection.id))
     .limit(1);
   if (!section) return null;
   const testimonials = await db
@@ -98,6 +113,7 @@ export async function getCtaSection() {
     .select()
     .from(cms.cmsCtaSection)
     .where(eq(cms.cmsCtaSection.isActive, true))
+    .orderBy(desc(cms.cmsCtaSection.id))
     .limit(1);
   return section ?? null;
 }
@@ -111,7 +127,12 @@ export async function getContactItems() {
 }
 
 export async function getFooter() {
-  const [footer] = await db.select().from(cms.cmsFooter).where(eq(cms.cmsFooter.isActive, true)).limit(1);
+  const [footer] = await db
+    .select()
+    .from(cms.cmsFooter)
+    .where(eq(cms.cmsFooter.isActive, true))
+    .orderBy(desc(cms.cmsFooter.id))
+    .limit(1);
   if (!footer) return null;
   const links = await db
     .select()
@@ -119,6 +140,15 @@ export async function getFooter() {
     .where(eq(cms.cmsFooterLinks.footerId, footer.id))
     .orderBy(asc(cms.cmsFooterLinks.sortOrder));
   return { ...footer, links };
+}
+
+export async function getSeoSettings() {
+  const [row] = await db
+    .select()
+    .from(cmsSeoSettings)
+    .orderBy(desc(cmsSeoSettings.id))
+    .limit(1);
+  return row ?? null;
 }
 
 // ─── Bulk loader — fetch everything in parallel ───────────────────────────────

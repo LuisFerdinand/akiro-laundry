@@ -325,9 +325,7 @@ export default function Footer({ data }: { data: FooterData }) {
 
             {/* Open hours chip */}
             <div
-              className="mt-2 rounded-2xl p-4"
-              style={{ background: "rgba(26,127,186,0.10)", border: "1px solid rgba(36,150,214,0.18)" }}
-            >
+              className="mt-2 rounded-2xl p-4">
               <div className="mb-2 flex items-center gap-2">
                 <span className="akiro-dot" />
                 <span className="font-display text-[10px] font-extrabold uppercase tracking-widest" style={{ color: "#3ecb9a" }}>

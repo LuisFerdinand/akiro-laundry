@@ -77,19 +77,17 @@ const HOW_IT_WORKS_STEPS = [
   { stepNumber: "04", title: "Delivered Fresh",  description: "Clean, folded, and fragrant — your laundry is delivered back to your door right on schedule.",              imageUrl: null, imageAlt: "Delivery of clean laundry to front door",          accentColor: "#ec4899", sortOrder: 3 },
 ] as const;
 
-// Gallery images use Unsplash placeholder URLs.
-// Replace imageUrl values with your Cloudinary secure URLs after uploading.
 const GALLERY_IMAGES = [
-  { imageUrl: "https://images.unsplash.com/photo-1545173168-9f1947eebb7f?w=800&q=80", altText: "Industrial washing machines in a row",         caption: "Commercial-grade washers",    sizeHint: "tall"   as const, sortOrder: 0 },
-  { imageUrl: "https://images.unsplash.com/photo-1604335399105-a0c585fd81a1?w=800&q=80", altText: "Neatly folded laundry stacked on shelves",   caption: "Ready for delivery",          sizeHint: "square" as const, sortOrder: 1 },
-  { imageUrl: "https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=800&q=80", altText: "Staff member sorting clean garments",        caption: "Careful garment sorting",     sizeHint: "square" as const, sortOrder: 2 },
-  { imageUrl: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1200&q=80",  altText: "Wide shot of the laundry floor",             caption: "Our main facility floor",     sizeHint: "wide"   as const, sortOrder: 3 },
-  { imageUrl: "https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?w=800&q=80", altText: "Clothes hanging on a rack after drying",    caption: "Air-dry finishing area",      sizeHint: "square" as const, sortOrder: 4 },
-  { imageUrl: "https://images.unsplash.com/photo-1610557892470-55d9e80c0bce?w=800&q=80", altText: "Premium detergents on shelf",               caption: "Only premium products",       sizeHint: "square" as const, sortOrder: 5 },
-  { imageUrl: "https://images.unsplash.com/photo-1567113463300-102a7eb3cb26?w=800&q=80", altText: "Ironing and pressing station",              caption: "Pressing & ironing station",  sizeHint: "tall"   as const, sortOrder: 6 },
-  { imageUrl: "https://images.unsplash.com/photo-1489274495757-95c7c837b101?w=800&q=80", altText: "Packaged laundry bags ready for pickup",    caption: "Packaged & ready",            sizeHint: "square" as const, sortOrder: 7 },
-  { imageUrl: "https://images.unsplash.com/photo-1521656693074-0ef32e80a5d5?w=800&q=80", altText: "Close-up of washing machine drum",         caption: "High-capacity drums",         sizeHint: "square" as const, sortOrder: 8 },
-  { imageUrl: "https://images.unsplash.com/photo-1469371670807-013ccf25f16a?w=1200&q=80", altText: "Bright reception and drop-off area",      caption: "Drop-off & reception",        sizeHint: "wide"   as const, sortOrder: 9 },
+  { imageUrl: "https://images.unsplash.com/photo-1545173168-9f1947eebb7f?w=800&q=80",   altText: "Industrial washing machines in a row",       caption: "Commercial-grade washers",   sizeHint: "tall"   as const, sortOrder: 0 },
+  { imageUrl: "https://images.unsplash.com/photo-1604335399105-a0c585fd81a1?w=800&q=80", altText: "Neatly folded laundry stacked on shelves",   caption: "Ready for delivery",         sizeHint: "square" as const, sortOrder: 1 },
+  { imageUrl: "https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=800&q=80", altText: "Staff member sorting clean garments",        caption: "Careful garment sorting",    sizeHint: "square" as const, sortOrder: 2 },
+  { imageUrl: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1200&q=80",  altText: "Wide shot of the laundry floor",             caption: "Our main facility floor",    sizeHint: "wide"   as const, sortOrder: 3 },
+  { imageUrl: "https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?w=800&q=80", altText: "Clothes hanging on a rack after drying",    caption: "Air-dry finishing area",     sizeHint: "square" as const, sortOrder: 4 },
+  { imageUrl: "https://images.unsplash.com/photo-1610557892470-55d9e80c0bce?w=800&q=80", altText: "Premium detergents on shelf",               caption: "Only premium products",      sizeHint: "square" as const, sortOrder: 5 },
+  { imageUrl: "https://images.unsplash.com/photo-1567113463300-102a7eb3cb26?w=800&q=80", altText: "Ironing and pressing station",              caption: "Pressing & ironing station", sizeHint: "tall"   as const, sortOrder: 6 },
+  { imageUrl: "https://images.unsplash.com/photo-1489274495757-95c7c837b101?w=800&q=80", altText: "Packaged laundry bags ready for pickup",    caption: "Packaged & ready",           sizeHint: "square" as const, sortOrder: 7 },
+  { imageUrl: "https://images.unsplash.com/photo-1521656693074-0ef32e80a5d5?w=800&q=80", altText: "Close-up of washing machine drum",         caption: "High-capacity drums",        sizeHint: "square" as const, sortOrder: 8 },
+  { imageUrl: "https://images.unsplash.com/photo-1469371670807-013ccf25f16a?w=1200&q=80", altText: "Bright reception and drop-off area",      caption: "Drop-off & reception",       sizeHint: "wide"   as const, sortOrder: 9 },
 ] as const;
 
 const TESTIMONIALS = [
@@ -119,33 +117,51 @@ const FOOTER_LINKS = [
   { column: "social",      label: "Facebook",     href: "https://facebook.com/",     sortOrder: 2 },
 ] as const;
 
+// ─── Reset helper ─────────────────────────────────────────────────────────────
+// Uses TRUNCATE … RESTART IDENTITY CASCADE so all serial sequences reset to 1.
+// Child tables are listed first to respect FK constraints, then parents.
+// CASCADE handles any remaining FK dependencies automatically.
+
+async function resetAllCmsTables() {
+  console.log("⚠️  Truncating CMS tables and resetting ID sequences…");
+
+  // Single TRUNCATE statement with all tables — Postgres handles FK order
+  // automatically when CASCADE is specified.
+  await sql`
+    TRUNCATE TABLE
+      cms_media,
+      cms_footer_links,
+      cms_footer,
+      cms_contact_items,
+      cms_cta_section,
+      cms_testimonials,
+      cms_testimonials_section,
+      cms_gallery_images,
+      cms_gallery_section,
+      cms_how_it_works_steps,
+      cms_how_it_works_section,
+      cms_service_cards,
+      cms_services_section,
+      cms_hero_stats,
+      cms_hero,
+      cms_nav_links,
+      cms_navbar,
+      cms_site_settings,
+      cms_seo_settings
+    RESTART IDENTITY CASCADE
+  `;
+
+  console.log("   ✓ All CMS tables truncated, IDs reset to 1\n");
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function seedCms() {
   const resetMode = process.argv.includes("--reset");
-  console.log(`🌱 Seeding CMS… ${resetMode ? "(--reset: will truncate and re-insert all CMS content)" : ""}\n`);
+  console.log(`🌱 Seeding CMS… ${resetMode ? "(--reset: truncating all CMS tables and restarting IDs)" : ""}\n`);
 
   if (resetMode) {
-    console.log("⚠️  Truncating CMS tables…");
-    await db.delete(cmsMedia);
-    await db.delete(cmsFooterLinks);
-    await db.delete(cmsFooter);
-    await db.delete(cmsContactItems);
-    await db.delete(cmsCtaSection);
-    await db.delete(cmsTestimonials);
-    await db.delete(cmsTestimonialsSection);
-    await db.delete(cmsGalleryImages);
-    await db.delete(cmsGallerySection);
-    await db.delete(cmsHowItWorksSteps);
-    await db.delete(cmsHowItWorksSection);
-    await db.delete(cmsServiceCards);
-    await db.delete(cmsServicesSection);
-    await db.delete(cmsHeroStats);
-    await db.delete(cmsHero);
-    await db.delete(cmsNavLinks);
-    await db.delete(cmsNavbar);
-    await db.delete(cmsSiteSettings);
-    console.log("   ✓ All CMS tables cleared\n");
+    await resetAllCmsTables();
   }
 
   // 1. Site Settings
@@ -219,12 +235,7 @@ async function seedCms() {
   console.log("🖼️  Seeding gallery…");
   const [gallerySection] = await db
     .insert(cmsGallerySection)
-    .values({
-      badge:    "Our Facility",
-      headline: "A Glimpse Inside Akiro",
-      subtext:  "Clean space, professional care — see where the magic happens.",
-      isActive: true,
-    })
+    .values({ badge: "Our Facility", headline: "A Glimpse Inside Akiro", subtext: "Clean space, professional care — see where the magic happens.", isActive: true })
     .onConflictDoNothing()
     .returning();
   if (gallerySection) {
