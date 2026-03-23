@@ -31,21 +31,53 @@ const CLOSE_THRESHOLD = 120; // px dragged down before closing
 // ─── Stepper ──────────────────────────────────────────────────────────────────
 
 function Stepper({
-  value, min, max, step = 1, onChange, unit, isFloat = false,
+  value, min, max, step = 1, onChange, onInputChange, unit, isFloat = false,
 }: {
   value: number | null; min: number; max: number; step?: number;
-  onChange: (v: number | null) => void; unit: string; isFloat?: boolean;
+  onChange: (v: number | null) => void;
+  onInputChange?: (v: number | null) => void;
+  unit: string; isFloat?: boolean;
 }) {
-  const val     = value ?? 0;
-  const display = isFloat ? val.toFixed(1) : String(val);
+  const val = value ?? 0;
+
+  // Local string state so typing doesn't fight the controlled value
+  const [inputVal, setInputVal] = useState(val === 0 ? "" : String(val));
+
+  // Keep local string in sync when external value changes (e.g. quick presets)
+  useEffect(() => {
+    setInputVal(val === 0 ? "" : String(val));
+  }, [val]);
+
+  const commit = (raw: string) => {
+    const parsed = parseFloat(raw);
+    if (isNaN(parsed) || parsed <= 0) {
+      onChange(null);
+      onInputChange?.(null);
+      setInputVal("");
+    } else {
+      // Clamp to min/max but preserve the user's exact decimal input
+      const clamped = Math.min(max, Math.max(min, parsed));
+      onChange(clamped);
+      onInputChange?.(clamped);
+      // Only rewrite inputVal if clamping actually changed the number
+      if (clamped !== parsed) {
+        setInputVal(String(clamped));
+      }
+      // Otherwise leave inputVal exactly as the user typed it
+    }
+  };
 
   const decrement = () => {
-    const next = Math.max(min, parseFloat((val - step).toFixed(2)));
-    onChange(next <= 0 && min <= 0 ? null : next < min ? min : next);
+    const next = Math.max(min, val - step);
+    const result = next <= 0 ? null : next;
+    onChange(result);
+    onInputChange?.(result);
   };
+
   const increment = () => {
-    const next = Math.min(max, parseFloat((val + step).toFixed(2)));
+    const next = Math.min(max, val + step);
     onChange(next);
+    onInputChange?.(next);
   };
 
   return (
@@ -65,15 +97,28 @@ function Stepper({
       </button>
 
       <div className="flex-1 flex flex-col items-center gap-1">
-        <div className="relative w-full flex items-center justify-center"
-          style={{ height: 72, borderRadius: 16, background: "linear-gradient(135deg,#edf7fd,#dff0fb)", border: "2px solid #b6def5" }}>
+        <div
+          className="relative w-full flex items-center justify-center"
+          style={{ height: 72, borderRadius: 16, background: "linear-gradient(135deg,#edf7fd,#dff0fb)", border: "2px solid #b6def5" }}
+        >
           <input
-            type="number" min={min} max={max} step={step}
-            value={val === 0 ? "" : display}
+            type="number"
+            inputMode="decimal"
+            min={min} max={max} step={step}
+            value={inputVal}
             onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              onChange(isNaN(v) ? null : Math.min(max, Math.max(min, v)));
+              setInputVal(e.target.value);
+              // Fire live preview on every keystroke
+              const parsed = parseFloat(e.target.value);
+              if (!isNaN(parsed) && parsed > 0) {
+                const clamped = Math.min(max, Math.max(min, parsed));
+                onInputChange?.(clamped);
+              } else {
+                onInputChange?.(null);
+              }
             }}
+            onBlur={(e) => commit(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
             className="w-full text-center bg-transparent outline-none font-black"
             style={{ fontSize: 36, letterSpacing: "-0.04em", color: "#0f5a85", lineHeight: 1 }}
             placeholder="0"
@@ -182,6 +227,11 @@ export function ServiceItemModal({
   const [mounted, setMounted]   = useState(false);
   const [qtyError, setQtyError] = useState("");
 
+  // ── Live preview value — updated on every keystroke, used only for the estimate display ──
+  const [liveQty, setLiveQty] = useState<number | null>(
+    initial.quantity ?? initial.weightKg ?? null,
+  );
+
   // ── Drag-to-close state ────────────────────────────────────────────────────
   const [dragY, setDragY]         = useState(0);
   const isDragging                = useRef(false);
@@ -211,7 +261,7 @@ export function ServiceItemModal({
 
   const handleDragMove = (e: React.PointerEvent) => {
     if (!isDragging.current) return;
-    const delta = Math.max(0, e.clientY - dragStartY.current); // only downward
+    const delta = Math.max(0, e.clientY - dragStartY.current);
     setDragY(delta);
   };
 
@@ -219,11 +269,9 @@ export function ServiceItemModal({
     if (!isDragging.current) return;
     isDragging.current = false;
     if (dragY >= CLOSE_THRESHOLD) {
-      // Crossed threshold — animate out then close
       setDragY(window.innerHeight);
       setTimeout(onClose, 280);
     } else {
-      // Snap back
       setDragY(0);
     }
   };
@@ -268,8 +316,9 @@ export function ServiceItemModal({
     setStep("addons");
   };
 
-  const subtotal = selectedService
-    ? parseFloat(selectedService.basePricePerKg) * (isPerPcs ? (item.quantity ?? 0) : (item.weightKg ?? 0))
+  // ── Use liveQty for the estimate so it updates on every keystroke ──────────
+  const liveSubtotal = selectedService && liveQty
+    ? parseFloat(selectedService.basePricePerKg) * liveQty
     : 0;
 
   if (!mounted) return null;
@@ -281,28 +330,26 @@ export function ServiceItemModal({
   const stepIdx = steps.findIndex((s) => s.key === step);
 
   // ── Sheet transform ────────────────────────────────────────────────────────
-  // Blend open/close animation with live drag offset
-  const baseTranslate = visible ? 0 : 100; // % — CSS animation
+  const baseTranslate = visible ? 0 : 100;
   const sheetStyle: React.CSSProperties = {
     background:    "#f8fafc",
     borderRadius:  "24px 24px 0 0",
     maxHeight:     "92dvh",
-    // When dragging use px offset; otherwise use the CSS % animation
     transform:     isDragging.current || dragY > 0
       ? `translateY(${dragY}px)`
       : `translateY(${baseTranslate}%)`,
     transition:    isDragging.current
-      ? "none"                                              // no transition while dragging
+      ? "none"
       : dragY > 0
-        ? "transform 0.28s cubic-bezier(0.32,0.72,0,1)"   // snap-back or fly-out
-        : "transform 0.32s cubic-bezier(0.32,0.72,0,1)",  // open/close
+        ? "transform 0.28s cubic-bezier(0.32,0.72,0,1)"
+        : "transform 0.32s cubic-bezier(0.32,0.72,0,1)",
     boxShadow:     "0 -12px 60px rgba(0,0,0,0.22)",
     overflow:      "hidden",
     paddingBottom: "env(safe-area-inset-bottom, 0px)",
     display:       "flex",
     flexDirection: "column",
     width:         "100%",
-    maxWidth:      "512px",   // matches max-w-lg from layout
+    maxWidth:      "512px",
   };
 
   const modal = (
@@ -330,7 +377,6 @@ export function ServiceItemModal({
           onPointerUp={handleDragEnd}
           onPointerCancel={handleDragEnd}
         >
-          {/* Pill — grows slightly on hover to hint it's draggable */}
           <div
             style={{
               width: 44, height: 5, borderRadius: 3,
@@ -527,13 +573,19 @@ export function ServiceItemModal({
                 <Stepper
                   value={isPerPcs ? item.quantity : item.weightKg}
                   min={isPerPcs ? 1 : 0.1} max={isPerPcs ? 1000 : 100}
-                  step={isPerPcs ? 1 : 0.5} isFloat={!isPerPcs}
+                  step={isPerPcs ? 1 : 0.1}
+                  isFloat={!isPerPcs}
                   unit={isPerPcs ? "pieces" : "kilograms"}
                   onChange={(v) => {
                     setQtyError("");
+                    setLiveQty(v);
                     setItem((prev) => isPerPcs
                       ? { ...prev, quantity: v != null ? Math.round(v) : null, weightKg: null }
                       : { ...prev, weightKg: v, quantity: null });
+                  }}
+                  onInputChange={(v) => {
+                    // Update live preview on every keystroke without committing to item state
+                    setLiveQty(v);
                   }}
                 />
               </div>
@@ -546,6 +598,7 @@ export function ServiceItemModal({
                   unit={isPerPcs ? " pcs" : " kg"}
                   onSelect={(v) => {
                     setQtyError("");
+                    setLiveQty(v);
                     setItem((prev) => isPerPcs
                       ? { ...prev, quantity: v, weightKg: null }
                       : { ...prev, weightKg: v, quantity: null });
@@ -555,16 +608,17 @@ export function ServiceItemModal({
 
               {qtyError && <p className="text-xs font-semibold" style={{ color: "#e05252" }}>{qtyError}</p>}
 
-              {subtotal > 0 && (
+              {/* Base estimate — driven by liveQty so it updates on every keystroke */}
+              {liveSubtotal > 0 && (
                 <div className="flex items-center justify-between px-4 py-3.5 rounded-2xl"
                   style={{ background: "linear-gradient(135deg,#f0fdf4,#dcfce7)", border: "2px solid #86efac" }}>
                   <div>
                     <p className="text-xs font-black uppercase tracking-widest" style={{ color: "#16a34a" }}>Base estimate</p>
                     <p className="text-[10px] font-semibold mt-0.5" style={{ color: "#4ade80" }}>
-                      {isPerPcs ? item.quantity : item.weightKg} {isPerPcs ? "pcs" : "kg"} × {formatUSD(parseFloat(selectedService.basePricePerKg))}
+                      {liveQty} {isPerPcs ? "pcs" : "kg"} × {formatUSD(parseFloat(selectedService.basePricePerKg))}
                     </p>
                   </div>
-                  <p className="font-black text-xl" style={{ color: "#14532d", letterSpacing: "-0.03em" }}>{formatUSD(subtotal)}</p>
+                  <p className="font-black text-xl" style={{ color: "#14532d", letterSpacing: "-0.03em" }}>{formatUSD(liveSubtotal)}</p>
                 </div>
               )}
             </div>
