@@ -49,21 +49,19 @@ function Stepper({
   }, [val]);
 
   const commit = (raw: string) => {
-    const parsed = parseFloat(raw);
+    const normalized = raw.replace(",", ".");
+    const parsed = parseFloat(normalized);
     if (isNaN(parsed) || parsed <= 0) {
       onChange(null);
       onInputChange?.(null);
       setInputVal("");
     } else {
-      // Clamp to min/max but preserve the user's exact decimal input
       const clamped = Math.min(max, Math.max(min, parsed));
       onChange(clamped);
       onInputChange?.(clamped);
-      // Only rewrite inputVal if clamping actually changed the number
       if (clamped !== parsed) {
         setInputVal(String(clamped));
       }
-      // Otherwise leave inputVal exactly as the user typed it
     }
   };
 
@@ -102,14 +100,16 @@ function Stepper({
           style={{ height: 72, borderRadius: 16, background: "linear-gradient(135deg,#edf7fd,#dff0fb)", border: "2px solid #b6def5" }}
         >
           <input
-            type="number"
+            type="text"
             inputMode="decimal"
-            min={min} max={max} step={step}
+            pattern="[0-9]*[.,]?[0-9]*"
+            min={min} max={max}
             value={inputVal}
             onChange={(e) => {
-              setInputVal(e.target.value);
-              // Fire live preview on every keystroke
-              const parsed = parseFloat(e.target.value);
+              // Normalize comma to dot for locales that use comma as decimal separator
+              const normalized = e.target.value.replace(",", ".");
+              setInputVal(normalized);
+              const parsed = parseFloat(normalized);
               if (!isNaN(parsed) && parsed > 0) {
                 const clamped = Math.min(max, Math.max(min, parsed));
                 onInputChange?.(clamped);
@@ -117,7 +117,7 @@ function Stepper({
                 onInputChange?.(null);
               }
             }}
-            onBlur={(e) => commit(e.target.value)}
+            onBlur={(e) => commit(e.target.value.replace(",", "."))}
             onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
             className="w-full text-center bg-transparent outline-none font-black"
             style={{ fontSize: 36, letterSpacing: "-0.04em", color: "#0f5a85", lineHeight: 1 }}
