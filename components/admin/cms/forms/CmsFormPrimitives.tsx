@@ -1,8 +1,9 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 // components/admin/cms/forms/CmsFormPrimitives.tsx
 "use client";
 
-import { useRef, useState, useCallback } from "react";
-import { Loader2, Upload, X, Image as ImageIcon } from "lucide-react";
+import { useRef, useState, useCallback, useEffect } from "react";
+import { Loader2, Upload, X, Image as ImageIcon, Check } from "lucide-react";
 import { uploadImage } from "@/lib/actions/cms/upload.actions";
 
 // ─── Shared style base ────────────────────────────────────────────────────────
@@ -407,22 +408,131 @@ export function AddButton({ onClick, label }: { onClick: () => void; label: stri
   );
 }
 
-// ─── SaveBar ──────────────────────────────────────────────────────────────────
+// ─── SaveBar (floating sticky) ────────────────────────────────────────────────
 
 export function SaveBar({ pending, onSave }: {
   pending: boolean; onSave: () => void;
 }) {
+  const [saved, setSaved] = useState(false);
+
+  // Show a brief "Saved" confirmation after pending transitions from true → false
+  const prevPendingRef = useRef(false);
+  useEffect(() => {
+    if (prevPendingRef.current && !pending) {
+      setSaved(true);
+      const timer = setTimeout(() => setSaved(false), 2200);
+      return () => clearTimeout(timer);
+    }
+    prevPendingRef.current = pending;
+  }, [pending]);
+
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "12px", marginTop: "32px", paddingTop: "20px", borderTop: "1.5px solid hsl(210 25% 91%)" }}>
-      <button
-        type="button"
-        onClick={onSave}
-        disabled={pending}
-        style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 22px", borderRadius: "12px", border: "none", background: pending ? "rgba(26,127,186,0.45)" : "linear-gradient(135deg, #1a7fba, #2496d6)", color: "white", fontSize: "13px", fontWeight: 800, cursor: pending ? "not-allowed" : "pointer", boxShadow: pending ? "none" : "0 4px 14px rgba(26,127,186,0.30)", fontFamily: "Sora, sans-serif" }}
+    <>
+      {/* Spacer so content isn't hidden behind the floating bar */}
+      <div style={{ height: "80px", flexShrink: 0 }} />
+
+      {/* Floating bar */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: "0",
+          left: "0",
+          right: "0",
+          zIndex: 30,
+          display: "flex",
+          justifyContent: "center",
+          pointerEvents: "none",
+          padding: "0 16px 20px",
+        }}
       >
-        {pending && <Loader2 size={14} className="animate-spin" />}
-        {pending ? "Saving…" : "Save Changes"}
-      </button>
-    </div>
+        <div
+          style={{
+            pointerEvents: "auto",
+            display: "flex",
+            alignItems: "center",
+            gap: "14px",
+            padding: "12px 16px 12px 24px",
+            borderRadius: "16px",
+            background: "rgba(255,255,255,0.92)",
+            backdropFilter: "blur(16px) saturate(1.8)",
+            WebkitBackdropFilter: "blur(16px) saturate(1.8)",
+            border: "1.5px solid hsl(210 25% 91%)",
+            boxShadow: "0 8px 32px rgba(10,31,46,0.12), 0 2px 8px rgba(10,31,46,0.06)",
+            maxWidth: "420px",
+            width: "100%",
+            transition: "transform 0.25s cubic-bezier(0.22,1,0.36,1), opacity 0.25s",
+          }}
+        >
+          {/* Status text */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {saved ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <Check size={14} style={{ color: "#10b981", flexShrink: 0 }} />
+                <span style={{ fontSize: "13px", fontWeight: 700, color: "#10b981" }}>
+                  Changes saved!
+                </span>
+              </div>
+            ) : pending ? (
+              <span style={{ fontSize: "13px", fontWeight: 600, color: "#8ca0b0" }}>
+                Saving changes…
+              </span>
+            ) : (
+              <span style={{ fontSize: "13px", fontWeight: 600, color: "#607080" }}>
+                Unsaved changes
+              </span>
+            )}
+          </div>
+
+          {/* Save button */}
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={pending}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "10px 24px",
+              borderRadius: "12px",
+              border: "none",
+              background: pending
+                ? "rgba(26,127,186,0.45)"
+                : saved
+                  ? "linear-gradient(135deg, #10b981, #0d9488)"
+                  : "linear-gradient(135deg, #1a7fba, #2496d6)",
+              color: "white",
+              fontSize: "13px",
+              fontWeight: 800,
+              cursor: pending ? "not-allowed" : "pointer",
+              boxShadow: pending
+                ? "none"
+                : saved
+                  ? "0 4px 14px rgba(16,185,129,0.30)"
+                  : "0 4px 14px rgba(26,127,186,0.30)",
+              fontFamily: "Sora, sans-serif",
+              transition: "all 0.2s",
+              flexShrink: 0,
+            }}
+          >
+            {pending ? (
+              <>
+                <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+                Saving…
+              </>
+            ) : saved ? (
+              <>
+                <Check size={14} />
+                Saved
+              </>
+            ) : (
+              "Save Changes"
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Keyframes for spinner */}
+      <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
+    </>
   );
 }

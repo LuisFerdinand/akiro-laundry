@@ -4,7 +4,6 @@
 import { db } from "@/lib/db";
 import { orders, orderItems, customers, servicePricing } from "@/lib/db/schema";
 import { eq, gte, lte, and } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -21,9 +20,14 @@ export interface DailySummaryEmailResult {
 }
 
 // ─── Email Recipients Config ──────────────────────────────────────────────────
-// Store recipients in env var as JSON string, e.g.:
-// EMAIL_RECIPIENTS=[{"email":"owner@example.com","name":"Owner"},{"email":"manager@example.com"}]
-// Falls back to EMAIL_TO for single recipient.
+// Priority order:
+// 1. EMAIL_RECIPIENTS env var (JSON array)
+// 2. EMAIL_TO env var (single address)
+// 3. Hardcoded fallback below
+
+const HARDCODED_RECIPIENTS: EmailRecipient[] = [
+  { email: "akirolaundry@gmail.com", name: "Akiro Laundry" },
+];
 
 function getRecipients(): EmailRecipient[] {
   try {
@@ -34,7 +38,9 @@ function getRecipients(): EmailRecipient[] {
   }
   const single = process.env.EMAIL_TO;
   if (single) return [{ email: single }];
-  return [];
+
+  // Hardcoded fallback — always receives the daily summary if no env var is set
+  return HARDCODED_RECIPIENTS;
 }
 
 // ─── HTML Email Builder ───────────────────────────────────────────────────────
@@ -56,8 +62,13 @@ function buildEmailHtml(params: {
 }) {
   const { date, orders: orderList, totalRevenue, paidRevenue, unpaidRevenue } = params;
 
-  const formatIDR = (n: number) =>
-    new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(n);
+  const formatUSD = (n: number) =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n);
 
   const statusBadge = (status: string) => {
     const map: Record<string, { bg: string; color: string; label: string }> = {
@@ -82,7 +93,7 @@ function buildEmailHtml(params: {
       <td style="padding:10px 8px;font-size:12px;color:#64748b;">${o.items.map((i) => i.serviceName + (i.quantity ? ` (${i.quantity})` : "")).join(", ")}</td>
       <td style="padding:10px 8px;">${statusBadge(o.status)}</td>
       <td style="padding:10px 8px;">${payBadge(o.paymentStatus)}</td>
-      <td style="padding:10px 8px;font-size:13px;font-weight:700;color:#1e293b;text-align:right;">${formatIDR(parseFloat(o.totalPrice))}</td>
+      <td style="padding:10px 8px;font-size:13px;font-weight:700;color:#1e293b;text-align:right;">${formatUSD(parseFloat(o.totalPrice))}</td>
     </tr>
   `).join("");
 
@@ -106,15 +117,15 @@ function buildEmailHtml(params: {
       </div>
       <div style="flex:1;padding:20px 24px;border-right:1px solid #f1f5f9;text-align:center;">
         <p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Total Revenue</p>
-        <p style="margin:6px 0 0;font-size:22px;font-weight:900;color:#1a7fba;">${formatIDR(totalRevenue)}</p>
+        <p style="margin:6px 0 0;font-size:22px;font-weight:900;color:#1a7fba;">${formatUSD(totalRevenue)}</p>
       </div>
       <div style="flex:1;padding:20px 24px;border-right:1px solid #f1f5f9;text-align:center;">
         <p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Paid</p>
-        <p style="margin:6px 0 0;font-size:22px;font-weight:900;color:#16a34a;">${formatIDR(paidRevenue)}</p>
+        <p style="margin:6px 0 0;font-size:22px;font-weight:900;color:#16a34a;">${formatUSD(paidRevenue)}</p>
       </div>
       <div style="flex:1;padding:20px 24px;text-align:center;">
         <p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Unpaid</p>
-        <p style="margin:6px 0 0;font-size:22px;font-weight:900;color:#dc2626;">${formatIDR(unpaidRevenue)}</p>
+        <p style="margin:6px 0 0;font-size:22px;font-weight:900;color:#dc2626;">${formatUSD(unpaidRevenue)}</p>
       </div>
     </div>
 
@@ -200,9 +211,7 @@ async function fetchTodayOrders(targetDate?: Date) {
   }));
 }
 
-// ─── Send via Resend (primary) ────────────────────────────────────────────────
-// Install: npm install resend
-// Set env: RESEND_API_KEY, EMAIL_FROM
+// ─── Send via Resend ──────────────────────────────────────────────────────────
 
 async function sendViaResend(params: {
   to: string[];
@@ -229,16 +238,13 @@ async function sendViaResend(params: {
   }
 }
 
-// ─── Send via Nodemailer / SMTP (alternative) ─────────────────────────────────
-// Install: npm install nodemailer
-// Set env: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM
+// ─── Send via SMTP ────────────────────────────────────────────────────────────
 
 async function sendViaSMTP(params: {
   to: string[];
   subject: string;
   html: string;
 }): Promise<void> {
-  // Dynamically import so it only fails if you try to use this path
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const nodemailer = require("nodemailer");
 
@@ -263,7 +269,7 @@ async function sendViaSMTP(params: {
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 
 async function sendEmail(params: { to: string[]; subject: string; html: string }): Promise<void> {
-  const provider = process.env.EMAIL_PROVIDER ?? "resend"; // "resend" | "smtp"
+  const provider = process.env.EMAIL_PROVIDER ?? "resend";
   if (provider === "smtp") {
     await sendViaSMTP(params);
   } else {
@@ -273,21 +279,27 @@ async function sendEmail(params: { to: string[]; subject: string; html: string }
 
 // ─── Public Actions ───────────────────────────────────────────────────────────
 
-/** Send the daily summary for today (or a custom date) to all configured recipients. */
+/**
+ * Send the daily summary for today (or a custom date).
+ * Uses customRecipients if provided, otherwise falls back to env vars → hardcoded list.
+ */
 export async function sendDailySummaryEmail(
   targetDate?: Date,
   customRecipients?: EmailRecipient[],
 ): Promise<DailySummaryEmailResult> {
   try {
-    const recipients = customRecipients ?? getRecipients();
+    const recipients = customRecipients && customRecipients.length > 0
+      ? customRecipients
+      : getRecipients();
+
     if (recipients.length === 0) {
-      return { success: false, error: "No email recipients configured. Set EMAIL_RECIPIENTS or EMAIL_TO in your .env." };
+      return { success: false, error: "No email recipients configured." };
     }
 
     const day       = targetDate ?? new Date();
     const orderList = await fetchTodayOrders(day);
 
-    const dateStr = day.toLocaleDateString("en-ID", {
+    const dateStr = day.toLocaleDateString("en-US", {
       weekday: "long", year: "numeric", month: "long", day: "numeric",
     });
 
@@ -310,53 +322,49 @@ export async function sendDailySummaryEmail(
   }
 }
 
-/** Send a test email with mock data — useful for verifying your email setup. */
+/**
+ * Send a test email using REAL today's data.
+ * If no recipients passed, falls back to env vars then hardcoded list —
+ * so you don't need to fill in the form on the settings page.
+ */
 export async function sendTestEmail(
-  recipients: EmailRecipient[],
+  recipients?: EmailRecipient[],
 ): Promise<DailySummaryEmailResult> {
   try {
-    if (recipients.length === 0) {
-      return { success: false, error: "Please add at least one recipient." };
+    const targets = recipients && recipients.length > 0
+      ? recipients
+      : getRecipients();
+
+    if (targets.length === 0) {
+      return { success: false, error: "No recipients configured." };
     }
 
-    const mockOrders = [
-      {
-        orderNumber: "ORD-TEST-001", customerName: "John Doe",
-        status: "done", paymentStatus: "paid", totalPrice: "85000",
-        createdAt: new Date().toISOString(),
-        items: [{ serviceName: "Regular Wash", quantity: "3 kg" }],
-      },
-      {
-        orderNumber: "ORD-TEST-002", customerName: "Jane Smith",
-        status: "processing", paymentStatus: "unpaid", totalPrice: "120000",
-        createdAt: new Date().toISOString(),
-        items: [
-          { serviceName: "Express Wash", quantity: "2 kg" },
-          { serviceName: "Shoe Wash", quantity: "2 pcs" },
-        ],
-      },
-    ];
+    const today     = new Date();
+    const orderList = await fetchTodayOrders(today);
 
-    const today = new Date();
-    const dateStr = today.toLocaleDateString("en-ID", {
+    const dateStr = today.toLocaleDateString("en-US", {
       weekday: "long", year: "numeric", month: "long", day: "numeric",
     });
 
+    const totalRevenue  = orderList.reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0);
+    const paidRevenue   = orderList.filter((o) => o.paymentStatus === "paid").reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0);
+    const unpaidRevenue = totalRevenue - paidRevenue;
+
     const html = buildEmailHtml({
-      date:          `[TEST] ${dateStr}`,
-      orders:        mockOrders,
-      totalRevenue:  205000,
-      paidRevenue:   85000,
-      unpaidRevenue: 120000,
+      date:   `[TEST] ${dateStr}`,
+      orders: orderList,
+      totalRevenue,
+      paidRevenue,
+      unpaidRevenue,
     });
 
     await sendEmail({
-      to:      recipients.map((r) => r.email),
-      subject: `[TEST] Daily Order Summary – ${dateStr}`,
+      to:      targets.map((r) => r.email),
+      subject: `[TEST] Daily Order Summary – ${dateStr} (${orderList.length} orders)`,
       html,
     });
 
-    return { success: true, recipientCount: recipients.length, orderCount: mockOrders.length };
+    return { success: true, recipientCount: targets.length, orderCount: orderList.length };
   } catch (err) {
     console.error("[sendTestEmail]", err);
     return { success: false, error: err instanceof Error ? err.message : "Unknown error" };

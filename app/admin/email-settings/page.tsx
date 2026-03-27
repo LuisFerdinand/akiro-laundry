@@ -30,31 +30,31 @@ function Badge({ children, variant }: { children: React.ReactNode; variant: "suc
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function EmailSettingsPage() {
-  const [recipients, setRecipients] = useState<EmailRecipient[]>([
-    { email: "", name: "" },
-  ]);
-  const [newEmail, setNewEmail]   = useState("");
-  const [newName,  setNewName]    = useState("");
-  const [emailErr, setEmailErr]   = useState("");
-  const [feedback, setFeedback]   = useState<{ type: "success" | "error"; msg: string } | null>(null);
-  const [loading,  setLoading]    = useState<"test" | "send" | null>(null);
-  const [showEnv,  setShowEnv]    = useState(false);
+  const [recipients, setRecipients] = useState<EmailRecipient[]>([]);
+  const [newEmail,   setNewEmail]   = useState("");
+  const [newName,    setNewName]    = useState("");
+  const [emailErr,   setEmailErr]   = useState("");
+  const [feedback,   setFeedback]   = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [loading,    setLoading]    = useState<"test" | "send" | null>(null);
+  const [showEnv,    setShowEnv]    = useState(false);
 
   // ── Recipients management ──────────────────────────────────────────────────
 
-  const validRecipients = recipients.filter((r) => r.email.trim());
-
   const addRecipient = () => {
-    const email = newEmail.trim();
+    const email = newEmail.trim().toLowerCase();
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setEmailErr("Please enter a valid email address.");
       return;
     }
-    if (validRecipients.some((r) => r.email === email)) {
+    if (email === "akirolaundry@gmail.com") {
+      setEmailErr("This email is already a permanent recipient.");
+      return;
+    }
+    if (recipients.some((r) => r.email === email)) {
       setEmailErr("This email is already added.");
       return;
     }
-    setRecipients((prev) => [...prev.filter((r) => r.email.trim()), { email, name: newName.trim() || undefined }]);
+    setRecipients((prev) => [...prev, { email, name: newName.trim() || undefined }]);
     setNewEmail("");
     setNewName("");
     setEmailErr("");
@@ -65,38 +65,31 @@ export default function EmailSettingsPage() {
   };
 
   // ── Actions ────────────────────────────────────────────────────────────────
+  // Both actions pass the form recipients if any are added, otherwise the
+  // server action falls back to env vars → hardcoded list automatically.
 
   const handleTestEmail = async () => {
-    if (validRecipients.length === 0) {
-      setFeedback({ type: "error", msg: "Add at least one recipient first." });
-      return;
-    }
     setLoading("test");
     setFeedback(null);
-    const result = await sendTestEmail(validRecipients);
+    // Pass recipients only if the user added some in the form;
+    // otherwise pass undefined so the server uses its own fallback.
+    const result = await sendTestEmail(recipients.length > 0 ? recipients : undefined);
     setLoading(null);
     setFeedback(
       result.success
-        ? { type: "success", msg: `Test email sent to ${result.recipientCount} recipient${result.recipientCount !== 1 ? "s" : ""}!` }
+        ? { type: "success", msg: `Test email (real data) sent to ${result.recipientCount} recipient${result.recipientCount !== 1 ? "s" : ""}! (${result.orderCount} orders today)` }
         : { type: "error", msg: result.error ?? "Failed to send test email." },
     );
   };
 
   const handleSendNow = async () => {
-    if (validRecipients.length === 0) {
-      setFeedback({ type: "error", msg: "Add at least one recipient first." });
-      return;
-    }
     setLoading("send");
     setFeedback(null);
-    const result = await sendDailySummaryEmail(undefined, validRecipients);
+    const result = await sendDailySummaryEmail(undefined, recipients.length > 0 ? recipients : undefined);
     setLoading(null);
     setFeedback(
       result.success
-        ? {
-            type: "success",
-            msg: `Summary sent to ${result.recipientCount} recipient${result.recipientCount !== 1 ? "s" : ""}! (${result.orderCount} orders today)`,
-          }
+        ? { type: "success", msg: `Summary sent to ${result.recipientCount} recipient${result.recipientCount !== 1 ? "s" : ""}! (${result.orderCount} orders today)` }
         : { type: "error", msg: result.error ?? "Failed to send summary." },
     );
   };
@@ -108,7 +101,7 @@ export default function EmailSettingsPage() {
 # ── Option A: Resend (recommended) ──
 EMAIL_PROVIDER=resend
 RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxx
-EMAIL_FROM=Laundry POS <no-reply@yourdomain.com>
+EMAIL_FROM=Akiro Laundry <no-reply@akirolaundry.com>
 
 # ── Option B: SMTP (Gmail / Mailtrap / etc.) ──
 # EMAIL_PROVIDER=smtp
@@ -119,8 +112,11 @@ EMAIL_FROM=Laundry POS <no-reply@yourdomain.com>
 # SMTP_PASS=your_app_password
 # EMAIL_FROM=you@gmail.com
 
-# ── Recipients (optional — you can also set them in this UI) ──
-EMAIL_RECIPIENTS=[{"email":"owner@example.com","name":"Owner"},{"email":"manager@example.com"}]`;
+# ── Recipients override (optional) ──
+# If set, these override the hardcoded fallback in daily-email.ts
+EMAIL_TO=akirolaundry@gmail.com
+# Or multiple:
+# EMAIL_RECIPIENTS=[{"email":"owner@example.com","name":"Owner"},{"email":"manager@example.com"}]`;
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -141,17 +137,36 @@ EMAIL_RECIPIENTS=[{"email":"owner@example.com","name":"Owner"},{"email":"manager
       {/* Feedback */}
       {feedback && <Badge variant={feedback.type}>{feedback.msg}</Badge>}
 
+      {/* Info: default recipient */}
+      <Badge variant="info">
+        Summaries are always sent to <strong>akirolaundry@gmail.com</strong> (permanent). You can add more recipients below.
+      </Badge>
+
       {/* Recipient list */}
       <div className="rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-          <p className="text-xs font-black uppercase tracking-widest text-slate-500">Recipients</p>
+          <p className="text-xs font-black uppercase tracking-widest text-slate-500">
+            Recipients
+          </p>
         </div>
 
         <div className="divide-y divide-slate-100">
-          {validRecipients.length === 0 && (
-            <p className="px-4 py-5 text-sm text-slate-400 text-center">No recipients added yet.</p>
-          )}
-          {validRecipients.map((r, i) => (
+          {/* Hardcoded permanent recipient — cannot be removed */}
+          <div className="flex items-center gap-3 px-4 py-3 bg-blue-50/40">
+            <div className="w-8 h-8 rounded-full bg-blue-200 flex items-center justify-center shrink-0">
+              <span className="text-xs font-black text-blue-700">A</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-slate-700 leading-tight">Akiro Laundry</p>
+              <p className="text-xs text-slate-500 font-medium truncate">akirolaundry@gmail.com</p>
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-500 bg-blue-100 px-2 py-0.5 rounded">
+              Permanent
+            </span>
+          </div>
+
+          {/* Dynamic recipients */}
+          {recipients.map((r, i) => (
             <div key={i} className="flex items-center gap-3 px-4 py-3">
               <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
                 <span className="text-xs font-black text-blue-600">
@@ -163,7 +178,7 @@ EMAIL_RECIPIENTS=[{"email":"owner@example.com","name":"Owner"},{"email":"manager
                 <p className="text-xs text-slate-500 font-medium truncate">{r.email}</p>
               </div>
               <button
-                onClick={() => removeRecipient(validRecipients.indexOf(r))}
+                onClick={() => removeRecipient(i)}
                 className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
               >
                 <Trash2 size={14} />
@@ -233,11 +248,13 @@ EMAIL_RECIPIENTS=[{"email":"owner@example.com","name":"Owner"},{"email":"manager
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 space-y-1">
         <p className="text-xs font-black uppercase tracking-widest text-amber-600">Automate Daily Emails</p>
         <p className="text-sm text-amber-800">
-          To send the summary automatically every night, call <code className="bg-amber-100 px-1 rounded font-mono text-xs">sendDailySummaryEmail()</code> from a{" "}
+          To send the summary automatically every night, call{" "}
+          <code className="bg-amber-100 px-1 rounded font-mono text-xs">sendDailySummaryEmail()</code> from a{" "}
           <strong>cron job</strong> or a scheduled API route.
         </p>
         <p className="text-xs text-amber-700 mt-1">
-          Add <code className="bg-amber-100 px-1 rounded font-mono">GET /api/cron/daily-email</code> and hit it daily with Vercel Cron, Railway, or an external scheduler like cron-job.org.
+          Add <code className="bg-amber-100 px-1 rounded font-mono">GET /api/cron/daily-email</code> and hit it daily
+          with Vercel Cron, Railway, or an external scheduler like cron-job.org.
         </p>
       </div>
 
@@ -252,18 +269,21 @@ EMAIL_RECIPIENTS=[{"email":"owner@example.com","name":"Owner"},{"email":"manager
         </button>
         {showEnv && (
           <div className="px-4 py-4">
-            <p className="text-xs text-slate-500 mb-3">Add these to your <code className="bg-slate-100 px-1 rounded font-mono">.env.local</code>:</p>
+            <p className="text-xs text-slate-500 mb-3">
+              Add these to your <code className="bg-slate-100 px-1 rounded font-mono">.env.local</code>:
+            </p>
             <pre className="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs overflow-x-auto leading-relaxed whitespace-pre">{envSnippet}</pre>
           </div>
         )}
       </div>
 
-      {/* Cron API route snippet */}
+      {/* Cron route snippet — shown when env section is open */}
       {showEnv && (
         <div className="rounded-xl border border-slate-200 overflow-hidden">
           <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
             <p className="text-xs font-black uppercase tracking-widest text-slate-500">
-              Cron Route — <code className="font-mono normal-case">app/api/cron/daily-email/route.ts</code>
+              Cron Route —{" "}
+              <code className="font-mono normal-case">app/api/cron/daily-email/route.ts</code>
             </p>
           </div>
           <div className="px-4 py-4">
