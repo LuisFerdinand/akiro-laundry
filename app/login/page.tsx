@@ -38,18 +38,18 @@ const FEATURES = [
 
 // ── Shared input style ────────────────────────────────────────────────────────
 const inputStyle: React.CSSProperties = {
-  width:        "100%",
-  boxSizing:    "border-box",
-  padding:      "13px 16px",
-  background:   "white",
-  border:       "1.5px solid hsl(210 20% 88%)",
-  borderRadius: "12px",
-  color:        "#0a1f2e",
-  fontSize:     "15px",
-  fontWeight:   500,
-  outline:      "none",
-  fontFamily:   "Nunito, sans-serif",
-  transition:   "border-color 0.18s, box-shadow 0.18s",
+  width:            "100%",
+  boxSizing:        "border-box",
+  padding:          "13px 16px",
+  background:       "white",
+  border:           "1.5px solid hsl(210 20% 88%)",
+  borderRadius:     "12px",
+  color:            "#0a1f2e",
+  fontSize:         "15px",
+  fontWeight:       500,
+  outline:          "none",
+  fontFamily:       "Nunito, sans-serif",
+  transition:       "border-color 0.18s, box-shadow 0.18s",
   WebkitAppearance: "none",
 };
 
@@ -91,10 +91,19 @@ export default function LoginPage() {
         password,
         redirect: false,
       });
+
       if (res?.error) {
         setError("Invalid email or password. Please try again.");
       } else {
-        router.push("/");
+        // Read the session to get the role, then redirect accordingly
+        const { getSession } = await import("next-auth/react");
+        const session = await getSession();
+        const role = (session?.user as { role?: string })?.role;
+
+        if (role === "admin")         router.push("/admin");
+        else if (role === "employee") router.push("/employee");
+        else                          router.push("/");
+
         router.refresh();
       }
     });
