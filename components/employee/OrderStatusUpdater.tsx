@@ -10,6 +10,7 @@ import {
 import { updateOrderStatus } from "@/lib/actions/orders";
 import { formatUSD } from "@/lib/utils/order-form";
 import type { Order } from "@/lib/db/schema";
+import type { WaTemplateData } from "@/lib/actions/wa-templates";
 import { PaymentModal } from "./PaymentModal";
 import { WhatsAppNotify } from "./WhatsAppNotify";
 
@@ -76,6 +77,7 @@ interface OrderStatusUpdaterProps {
   customerPhone:  string;
   totalPrice:     string | number;
   serviceName:    string;
+  templateData?:  WaTemplateData | null;
 }
 
 export function OrderStatusUpdater({
@@ -87,6 +89,7 @@ export function OrderStatusUpdater({
   customerPhone,
   totalPrice,
   serviceName,
+  templateData,
 }: OrderStatusUpdaterProps) {
   const [status,         setStatus]         = useState(currentStatus);
   const [paymentStatus,  setPaymentStatus]  = useState(initialPaymentStatus);
@@ -340,6 +343,7 @@ export function OrderStatusUpdater({
             status={status}
             paymentStatus={paymentStatus}
             totalPrice={totalPriceNum}
+            templateData={templateData}
             compact
           />
 

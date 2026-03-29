@@ -271,3 +271,4 @@ export type NewExpenseCategory = typeof expenseCategories.$inferInsert;
 export type CashRegisterTransaction = typeof cashRegisterTransactions.$inferSelect;
 
 export * from "./cms";
+export * from "./whatsapp";

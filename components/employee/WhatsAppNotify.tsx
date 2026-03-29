@@ -1,10 +1,12 @@
 // components/employee/WhatsAppNotify.tsx
 "use client";
 
+import { useEffect, useState } from "react";
 import { MessageCircle } from "lucide-react";
 import { ORDER_STATUS_LABELS, formatUSD } from "@/lib/utils/order-form";
 import { parseE164 } from "@/lib/utils/phone";
 import type { Order } from "@/lib/db/schema";
+import type { WaTemplateData } from "@/lib/actions/wa-templates";
 
 export interface WhatsAppNotifyProps {
   /** Customer's WhatsApp number (local or E.164) */
@@ -20,6 +22,8 @@ export interface WhatsAppNotifyProps {
   notes?:          string | null;
   /** Base URL of the site — used to build the review link */
   siteUrl?:        string;
+  /** Pre-fetched template data from the server (avoids client-side fetch) */
+  templateData?:   WaTemplateData | null;
   /** Render as icon-only button (for tight layouts) */
   compact?:        boolean;
   className?:      string;
@@ -28,30 +32,24 @@ export interface WhatsAppNotifyProps {
 // ── Review page path ──────────────────────────────────────────────────────────
 const REVIEW_PATH = "/review";
 
-// ── Status body lines (Tetum) ─────────────────────────────────────────────────
-const STATUS_BODY: Record<Order["status"], string[]> = {
-  pending: [
-    `📋 Ita-nia pedidu ami *simu no rejista* ona.`,
-    `Ami sei hahú prosesu ropa ita-nia ho lalais.`,
-  ],
-  processing: [
-    `🫧 Ita-nia pedidu iha *prosesu fase* agora.`,
-    `Ami sei hateten fali bainhira remata ona.`,
-  ],
-  done: [
-    `✅ Ita-nia pedidu *remata ona* no prontu atu foti.`,
-    `Favor mai foti lalais. Obrigadu! 🙏`,
-  ],
-  picked_up: [
-    `🎉 Ita-nia pedidu *foti ona*. Obrigadu tan uza ami-nia servisu!`,
-  ],
+// ── Hardcoded fallbacks (used when DB templates aren't available) ──────────────
+const FALLBACK_STATUS_BODY: Record<Order["status"], string> = {
+  pending:
+    "📋 Ita-nia pedidu ami *simu no rejista* ona.\nAmi sei hahú prosesu ropa ita-nia ho lalais.",
+  processing:
+    "🫧 Ita-nia pedidu iha *prosesu fase* agora.\nAmi sei hateten fali bainhira remata ona.",
+  done:
+    "✅ Ita-nia pedidu *remata ona* no prontu atu foti.\nFavor mai foti lalais. Obrigadu! 🙏",
+  picked_up:
+    "🎉 Ita-nia pedidu *foti ona*. Obrigadu tan uza ami-nia servisu!",
 };
 
-// ── Payment line (Tetum) ──────────────────────────────────────────────────────
-function paymentLine(isPaid: boolean, formattedPrice: string): string {
-  return isPaid
-    ? `✅ *Pagamentu:* Kompletu ona`
-    : `⚠️ *Pagamentu:* Seidauk selu — favor prepara ${formattedPrice} bainhira mai foti`;
+// ── Variable interpolation ────────────────────────────────────────────────────
+function interpolate(
+  template: string,
+  vars: Record<string, string>,
+): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
 }
 
 // ── Build the full WA message ─────────────────────────────────────────────────
@@ -64,6 +62,7 @@ function buildMessage({
   totalPrice,
   notes,
   reviewUrl,
+  templateData,
 }: {
   customerName:    string;
   orderNumber:     string;
@@ -73,72 +72,106 @@ function buildMessage({
   totalPrice:      number;
   notes?:          string | null;
   reviewUrl:       string;
+  templateData?:   WaTemplateData | null;
 }): string {
   const statusLabel    = ORDER_STATUS_LABELS[status] ?? status;
   const formattedPrice = formatUSD(isNaN(totalPrice) ? 0 : totalPrice);
   const isPaid         = paymentStatus === "paid";
-  const bodyLines      = STATUS_BODY[status] ?? [`📦 *Status:* ${statusLabel}`];
   const trimmedNotes   = notes?.trim();
 
-  const lines: string[] = [
-    // Greeting
-    `Ola Sr/a *${customerName}*,`,
-    `Ami husi *Akiro Laundry* hakarak informa kona-ba ita-nia pedidu foun.`,
-    `─────────────────────────`,
+  // If we have DB templates, use them; otherwise fall back to hardcoded
+  const settings = templateData?.settings;
 
-    // Order detail block
-    `🧾 *DETALLU PEDIDU*`,
-    `─────────────────────────`,
+  const vars: Record<string, string> = {
+    customerName,
+    orderNumber,
+    servicesSummary,
+    statusLabel,
+    totalPrice:    formattedPrice,
+    reviewUrl,
+    businessName:  settings?.businessName  ?? "Akiro Laundry",
+    businessPhone: settings?.businessPhone ?? "+670 7675 8 7380",
+    businessUrl:   settings?.businessUrl   ?? "akirolaundry.com",
+  };
+
+  const sep = settings?.separator ?? "─────────────────────────";
+
+  // ── Greeting ────────────────────────────────────────────────────────────────
+  const greeting = settings?.greetingTemplate
+    ? interpolate(settings.greetingTemplate, vars)
+    : `Ola Sr/a *${customerName}*,\nAmi husi *Akiro Laundry* hakarak informa kona-ba ita-nia pedidu foun.`;
+
+  // ── Order detail header ─────────────────────────────────────────────────────
+  const detailHeader = settings?.orderDetailHeader ?? "🧾 *DETALLU PEDIDU*";
+
+  // ── Payment line ────────────────────────────────────────────────────────────
+  const paymentLine = isPaid
+    ? interpolate(settings?.paymentPaidTemplate ?? "✅ *Pagamentu:* Kompletu ona", vars)
+    : interpolate(
+        settings?.paymentUnpaidTemplate ??
+          "⚠️ *Pagamentu:* Seidauk selu — favor prepara {{totalPrice}} bainhira mai foti",
+        vars,
+      );
+
+  // ── Status body ─────────────────────────────────────────────────────────────
+  const bodyRaw =
+    templateData?.statusTemplates[status] ??
+    FALLBACK_STATUS_BODY[status] ??
+    `📦 *Status:* ${statusLabel}`;
+  const bodyText = interpolate(bodyRaw, vars);
+
+  // ── Footer ──────────────────────────────────────────────────────────────────
+  const footer = settings?.footerTemplate
+    ? interpolate(settings.footerTemplate, vars)
+    : `Akiro Laundry\n📞 +670 7675 8 7380\n🌐 akirolaundry.com`;
+
+  // ── Review CTA ──────────────────────────────────────────────────────────────
+  const reviewCta = settings?.reviewCtaTemplate
+    ? interpolate(settings.reviewCtaTemplate, vars)
+    : `⭐ *Kontenti ho ami-nia servisu?*\nHusik review ida iha: ${reviewUrl}\nObrigadu barak! 🙏`;
+
+  // ── Notes header ────────────────────────────────────────────────────────────
+  const notesHeader = settings?.notesSectionHeader ?? "📝 *NOTA ESPESIAL*";
+
+  // ── Assemble message ────────────────────────────────────────────────────────
+  const lines: string[] = [
+    greeting,
+    sep,
+    "",
+    detailHeader,
+    sep,
     `📌 *N.º Pedidu:*  ${orderNumber}`,
     `👕 *Servisu:*     ${servicesSummary}`,
     `📦 *Status:*      *${statusLabel}*`,
     `💰 *Total:*       ${formattedPrice}`,
-    paymentLine(isPaid, formattedPrice),
-    `─────────────────────────`,
-
-    // Status-specific body
-    ...bodyLines,
+    paymentLine,
+    sep,
+    "",
+    bodyText,
   ];
 
-  // Optional notes block
   if (trimmedNotes) {
-    lines.push(
-      `─────────────────────────`,
-      `📝 *NOTA ESPESIAL*`,
-      `─────────────────────────`,
-      trimmedNotes,
-    );
+    lines.push("", sep, notesHeader, sep, trimmedNotes);
   }
 
-  // Footer + review link
-  lines.push(
-    `─────────────────────────`,
-    `Akiro Laundry`,
-    `📞 +670 7675 8 7380`,
-    `🌐 akirolaundry.com`,
-    ``,
-    `─────────────────────────`,
-    `⭐ *Kontenti ho ami-nia servisu?*`,
-    `Husik review ida iha: ${reviewUrl}`,
-    `Obrigadu barak! 🙏`,
-  );
+  lines.push("", sep, footer, "", sep, reviewCta);
 
   return lines.join("\n");
 }
 
 // ── Shared button styles ──────────────────────────────────────────────────────
 const baseStyle: React.CSSProperties = {
-  display:         "flex",
-  alignItems:      "center",
-  justifyContent:  "center",
-  borderRadius:    "7px",
-  borderWidth:     "1.5px",
-  borderStyle:     "solid",
-  borderColor:     "#86efac",
-  background:      "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
-  color:           "#16a34a",
-  cursor:          "pointer",
-  transition:      "all 0.15s",
+  display:        "flex",
+  alignItems:     "center",
+  justifyContent: "center",
+  borderRadius:   "7px",
+  borderWidth:    "1.5px",
+  borderStyle:    "solid",
+  borderColor:    "#86efac",
+  background:     "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
+  color:          "#16a34a",
+  cursor:         "pointer",
+  transition:     "all 0.15s",
 };
 
 function onEnter(e: React.MouseEvent<HTMLButtonElement>) {
@@ -161,11 +194,11 @@ export function WhatsAppNotify({
   totalPrice,
   notes,
   siteUrl,
+  templateData,
   compact = false,
   className,
 }: WhatsAppNotifyProps) {
   const handleSend = () => {
-    // Build review URL — use siteUrl prop if provided, otherwise window.location.origin
     const origin    = siteUrl ?? (typeof window !== "undefined" ? window.location.origin : "https://akirolaundry.com");
     const reviewUrl = `${origin}${REVIEW_PATH}`;
 
@@ -178,9 +211,9 @@ export function WhatsAppNotify({
       totalPrice,
       notes,
       reviewUrl,
+      templateData,
     });
 
-    // Normalise phone number
     const parsed     = parseE164(customerPhone);
     const normalized = parsed
       ? `${parsed.country.code}${parsed.localNumber}`
@@ -192,7 +225,6 @@ export function WhatsAppNotify({
     );
   };
 
-  // ── Compact (icon only) ───────────────────────────────────────────────────
   if (compact) {
     return (
       <button
@@ -209,7 +241,6 @@ export function WhatsAppNotify({
     );
   }
 
-  // ── Full button ───────────────────────────────────────────────────────────
   return (
     <button
       type="button"
@@ -217,13 +248,13 @@ export function WhatsAppNotify({
       className={className}
       style={{
         ...baseStyle,
-        gap:         "8px",
-        height:      44,
-        paddingLeft: 16,
+        gap:          "8px",
+        height:       44,
+        paddingLeft:  16,
         paddingRight: 16,
-        fontWeight:  800,
-        fontSize:    "13px",
-        whiteSpace:  "nowrap",
+        fontWeight:   800,
+        fontSize:     "13px",
+        whiteSpace:   "nowrap",
       }}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}

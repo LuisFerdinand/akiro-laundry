@@ -1,9 +1,10 @@
 // app/employee/orders/[id]/page.tsx
 import { notFound }     from "next/navigation";
 import { getOrderById } from "@/lib/actions/orders";
+import { getWaTemplateData } from "@/lib/actions/wa-templates";
 import { formatUSD, ORDER_STATUS_LABELS } from "@/lib/utils/order-form";
 import { OrderStatusUpdater }  from "@/components/employee/OrderStatusUpdater";
-import { PrintReceiptButton }  from "@/components/employee/PrintReceiptButton"; // ← add
+import { PrintReceiptButton }  from "@/components/employee/PrintReceiptButton";
 import {
   ArrowLeft, User, Phone, Layers, Weight, Calendar,
   Clock, FileText, Droplets, Wind, Hash,
@@ -72,7 +73,11 @@ function safeFloat(value: string | null | undefined): number {
 export default async function OrderDetailPage({ params }: PageProps) {
   const { id: rawId } = await params;
   const id    = parseInt(rawId);
-  const order = await getOrderById(id);
+
+  const [order, waTemplateData] = await Promise.all([
+    getOrderById(id),
+    getWaTemplateData(),
+  ]);
 
   if (!order) notFound();
 
@@ -83,14 +88,14 @@ export default async function OrderDetailPage({ params }: PageProps) {
   return (
     <div className="space-y-4 px-4 pb-8 pt-2">
 
-      {/* Back link — unchanged */}
+      {/* Back link */}
       <Link href="/employee/orders"
         className="inline-flex items-center gap-1.5 text-xs font-bold transition-colors text-slate-400 hover:text-[#1a7fba]">
         <ArrowLeft size={13} />
         Back to Orders
       </Link>
 
-      {/* Header card — unchanged */}
+      {/* Header card */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
         <div className="shrink-0 flex items-center justify-center font-black text-white text-xl"
           style={{ width: 46, height: 46, borderRadius: "8px", background: "linear-gradient(135deg,#1a7fba,#2496d6)", boxShadow: "0 4px 12px rgba(26,127,186,0.30)" }}>
@@ -106,7 +111,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
         </span>
       </div>
 
-      {/* Customer details — unchanged */}
+      {/* Customer details */}
       <SectionCard title="Customer">
         <div style={{ padding: "0 16px" }}>
           <DetailRow icon={User}     label="Customer" value={order.customerName}                          theme="brand"  />
@@ -121,7 +126,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
         </div>
       </SectionCard>
 
-      {/* Per-service items — unchanged */}
+      {/* Per-service items */}
       {order.items.map((item, i) => {
         const isPerPcs    = item.quantity != null;
         const soapCost    = safeFloat(item.soapCost);
@@ -190,7 +195,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
         );
       })}
 
-      {/* Grand total — unchanged */}
+      {/* Grand total */}
       <div style={{ borderRadius: "7px", background: "linear-gradient(135deg,#1a7fba,#2496d6 55%,#0f5a85)", boxShadow: "0 4px 16px rgba(26,127,186,0.30)", padding: "13px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.6)" }}>Total</p>
@@ -201,10 +206,10 @@ export default async function OrderDetailPage({ params }: PageProps) {
         <span className="font-black text-2xl tracking-tight" style={{ color: "white" }}>{formatUSD(totalPrice)}</span>
       </div>
 
-      {/* ── Print receipt button ── */}
+      {/* Print receipt button */}
       <PrintReceiptButton order={order} />
 
-      {/* Status updater — unchanged */}
+      {/* Status updater */}
       <OrderStatusUpdater
         orderId={order.id}
         currentStatus={order.status}
@@ -214,6 +219,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
         totalPrice={order.totalPrice}
         serviceName={firstServiceName}
         paymentStatus={order.paymentStatus}
+        templateData={waTemplateData}
       />
     </div>
   );

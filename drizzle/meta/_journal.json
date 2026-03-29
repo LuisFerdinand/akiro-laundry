@@ -8,6 +8,13 @@
       "when": 1774203490971,
       "tag": "0000_luxuriant_wendell_vaughn",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1774761689075,
+      "tag": "0001_cheerful_hellcat",
+      "breakpoints": true
     }
   ]
 }
