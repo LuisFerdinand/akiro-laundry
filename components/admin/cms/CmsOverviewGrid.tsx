@@ -13,19 +13,22 @@ import {
   ChevronRight,
   CheckCircle2,
   AlertCircle,
+  Search,
+  MessageCircle,
 } from "lucide-react";
 
 // SECTIONS lives here — never passed from a Server Component.
 // Icons are plain React components, safe to use in a Client Component.
 const SECTIONS = [
-  { href: "/admin/cms/navbar",       icon: Navigation,     label: "Navbar",        description: "Brand name, logo, navigation links and CTA button.",            color: "#1a7fba" },
-  { href: "/admin/cms/hero",         icon: LayoutTemplate, label: "Hero",          description: "Main headline, subtext, CTA buttons and hero image.",            color: "#8b5cf6" },
-  { href: "/admin/cms/services",     icon: Wrench,         label: "Services",      description: "Service cards with titles, descriptions, prices and images.",    color: "#d97706" },
-  { href: "/admin/cms/how-it-works", icon: FileText,       label: "How It Works",  description: "Step-by-step process cards with images and accent colours.",     color: "#10b981" },
-  { href: "/admin/cms/gallery",      icon: ImageIcon,      label: "Gallery",       description: "Facility photo gallery with captions and layout hints.",         color: "#0d9488" },
-  { href: "/admin/cms/testimonials", icon: Star,           label: "Testimonials",  description: "Customer reviews, ratings and avatar photos.",                   color: "#f59e0b" },
-  { href: "/admin/cms/cta",          icon: Megaphone,      label: "CTA & Contact", description: "Call-to-action banner, contact info items and links.",           color: "#ec4899" },
-  { href: "/admin/cms/footer",       icon: FileText,       label: "Footer",        description: "Brand details, quick links, social icons and map coordinates.", color: "#6366f1" },
+  { href: "/admin/cms/navbar",       icon: Navigation,     label: "Navbar",              description: "Brand name, logo, navigation links and CTA button.",            color: "#1a7fba" },
+  { href: "/admin/cms/hero",         icon: LayoutTemplate, label: "Hero",                description: "Main headline, subtext, CTA buttons and hero image.",            color: "#8b5cf6" },
+  { href: "/admin/cms/services",     icon: Wrench,         label: "Services",            description: "Service cards with titles, descriptions, prices and images.",    color: "#d97706" },
+  { href: "/admin/cms/how-it-works", icon: FileText,       label: "How It Works",        description: "Step-by-step process cards with images and accent colours.",     color: "#10b981" },
+  { href: "/admin/cms/gallery",      icon: ImageIcon,      label: "Gallery",             description: "Facility photo gallery with captions and layout hints.",         color: "#0d9488" },
+  { href: "/admin/cms/testimonials", icon: Star,           label: "Testimonials",        description: "Customer reviews, ratings and avatar photos.",                   color: "#f59e0b" },
+  { href: "/admin/cms/cta",          icon: Megaphone,      label: "CTA & Contact",       description: "Call-to-action banner, contact info items and links.",           color: "#ec4899" },
+  { href: "/admin/cms/footer",       icon: FileText,       label: "Footer",              description: "Brand details, quick links, social icons and map coordinates.", color: "#6366f1" },
+  { href: "/admin/cms/seo",          icon: Search,         label: "SEO",                 description: "Meta tags, Open Graph, Twitter cards and structured data.",     color: "#64748b" },
 ] as const;
 
 interface Props {

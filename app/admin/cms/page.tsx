@@ -1,10 +1,17 @@
 // app/admin/cms/page.tsx
 import { getLandingPageData }          from "@/lib/db/queries/cms.queries";
+import { getWaTemplateSettings }       from "@/lib/actions/wa-templates";
+import { db }                          from "@/lib/db";
+import { cmsSeoSettings }             from "@/lib/db/schema";
 import { CmsOverviewGrid, CMS_SECTION_COUNT } from "@/components/admin/cms/CmsOverviewGrid";
 import { Layers } from "lucide-react";
 
 export default async function CmsOverviewPage() {
-  const data = await getLandingPageData();
+  const [data, waSettings, seoRows] = await Promise.all([
+    getLandingPageData(),
+    getWaTemplateSettings(),
+    db.select({ id: cmsSeoSettings.id }).from(cmsSeoSettings).limit(1),
+  ]);
 
   // Only plain booleans — safe to pass to a Client Component
   const seededMap: Record<string, boolean> = {
@@ -16,6 +23,7 @@ export default async function CmsOverviewPage() {
     "/admin/cms/testimonials": !!data.testimonials,
     "/admin/cms/cta":          !!data.cta,
     "/admin/cms/footer":       !!data.footer,
+    "/admin/cms/seo":          seoRows.length > 0,
   };
 
   const seededCount = Object.values(seededMap).filter(Boolean).length;

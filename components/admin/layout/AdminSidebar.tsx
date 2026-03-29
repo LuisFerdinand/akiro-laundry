@@ -30,6 +30,7 @@ import {
   Layers,
   Mail,
   MessageCircle,
+  Search,
 } from "lucide-react";
 
 // ─── Nav groups ───────────────────────────────────────────────────────────────
@@ -80,6 +81,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/cms/testimonials",     icon: Star,          label: "Testimonials"  },
       { href: "/admin/cms/cta",              icon: Megaphone,     label: "CTA & Contact" },
       { href: "/admin/cms/footer",           icon: FileText,      label: "Footer"        },
+      { href: "/admin/cms/seo",              icon: Search,        label: "SEO"           },
     ],
   },
   {
