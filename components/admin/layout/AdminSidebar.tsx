@@ -31,6 +31,7 @@ import {
   Mail,
   MessageCircle,
   Search,
+  Receipt,
 } from "lucide-react";
 
 // ─── Nav groups ───────────────────────────────────────────────────────────────
@@ -88,6 +89,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "System",
     items: [
       { href: "/admin/wa-templates",         icon: MessageCircle, label: "WhatsApp Templates" },
+       { href: "/admin/receipt-settings",    icon: Receipt,       label: "Receipt Settings" },
       { href: "/admin/email-settings",       icon: Mail,          label: "Email Summary" },
       { href: "/admin/users",                icon: UserCog,       label: "Users & Roles" },
       { href: "/admin/settings",             icon: Settings,      label: "Settings"      },

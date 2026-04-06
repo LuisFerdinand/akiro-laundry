@@ -1,19 +1,62 @@
 // components/employee/PrintReceipt.tsx
 import type { ServicePricing, Soap, Pewangi } from "@/lib/db/schema";
 import type { OrderFormData, OrderPriceBreakdown } from "@/lib/utils/order-form";
+import type { ReceiptSettings } from "@/lib/db/schema/receipt";
 
 export interface ReceiptData {
-  orderNumber:   string;
-  createdAt:     Date;
-  formData:      OrderFormData;
-  services:      ServicePricing[];
-  soaps:         Soap[];
-  pewangis:      Pewangi[];
-  breakdown:     OrderPriceBreakdown;
+  orderNumber:    string;
+  createdAt:      Date;
+  formData:       OrderFormData;
+  services:       ServicePricing[];
+  soaps:          Soap[];
+  pewangis:       Pewangi[];
+  breakdown:      OrderPriceBreakdown;
   paymentMethod?: string;
-  amountPaid?:   number;
-  changeGiven?:  number;
+  amountPaid?:    number;
+  changeGiven?:   number;
+  /** Pass the result of `getReceiptSettings()` — falls back to defaults if null */
+  settings?:      ReceiptSettings | null;
 }
+
+// ─── Default settings (mirrors DB column defaults) ────────────────────────────
+// Used as a fallback when no DB row exists yet.
+const DEFAULTS: Omit<ReceiptSettings, "id" | "updatedAt" | "isActive"> = {
+  paperWidth:          "58mm",
+  paperPadding:        "3mm 4mm 8mm",
+  fontFamily:          "'IBM Plex Mono', 'Courier New', monospace",
+  fontImportUrl:       "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap",
+  baseFontSizePx:      9,
+  shopName:            "Akiro Laundry",
+  shopTagline:         "Premium Laundry & Perfume Service",
+  logoUrl:             "",
+  logoAlt:             "Akiro Laundry",
+  logoMaxHeight:       "32px",
+  accentColor:         "#0f5a85",
+  accentBgColor:       "#f0f7fd",
+  accentBorderColor:   "#b6def5",
+  metaLabelColor:      "#607080",
+  notesBgColor:        "#fffbeb",
+  notesBorderColor:    "#fcd34d",
+  notesAccentColor:    "#f59e0b",
+  notesTextColor:      "#78350f",
+  changeColor:         "#15803d",
+  unpaidColor:         "#d97706",
+  showLogo:            false,
+  showShopName:        true,
+  showTagline:         true,
+  showOrderNumber:     true,
+  showCustomerAddress: true,
+  showPaymentMethod:   true,
+  showAmountPaid:      true,
+  showChangeGiven:     true,
+  showNotes:           true,
+  showFooter:          true,
+  footerThankYou:      "Thank you for choosing {{shopName}}!",
+  footerContact:       "📞 +670 7675 8 7380  ·  akirolaundry.com",
+  printDelayMs:        600,
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatUSD(amount: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -36,16 +79,12 @@ function formatDateTime(date: Date): string {
   }).format(date);
 }
 
-async function toDataURL(src: string): Promise<string> {
-  const res  = await fetch(src);
-  const blob = await res.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror  = reject;
-    reader.readAsDataURL(blob);
-  });
+/** Replace {{placeholder}} tokens in a template string */
+function interpolate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? "");
 }
+
+// ─── Main export ──────────────────────────────────────────────────────────────
 
 export async function printReceipt(data: ReceiptData): Promise<void> {
   const {
@@ -54,22 +93,24 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
     paymentMethod, amountPaid, changeGiven,
   } = data;
 
-  // Normalize notes — treat blank/whitespace-only as absent
+  // Merge DB settings over defaults so every key is always defined
+  const s = { ...DEFAULTS, ...(data.settings ?? {}) };
+
   const notes = formData.notes?.trim() ?? "";
 
-  let logoSrc = "";
-  try {
-    logoSrc = await toDataURL("/logo/4.png");
-  } catch {
-    // Receipt still prints without logo
-  }
+  // ── Derived font sizes ──────────────────────────────────────────────────────
+  const base  = s.baseFontSizePx;
+  const sm    = base - 1;   // 8px @ default
+  const xs    = base - 2;   // 7px @ default
+  const lg    = base + 2;   // 11px @ default
+  const xl    = base + 3;   // 12px @ default
 
-  /* ── Per-item rows ─────────────────────────────────────────────────── */
+  /* ── Per-item rows ─────────────────────────────────────────────────────── */
   const itemRows = formData.items.map((item, i) => {
-    const svc      = services.find((s) => s.id === item.servicePricingId);
-    const soap     = soaps.find((s)    => s.id === item.soapId);
-    const pewangi  = pewangis.find((p) => p.id === item.pewangiId);
-    const b        = breakdown.items[i];
+    const svc     = services.find((s) => s.id === item.servicePricingId);
+    const soap    = soaps.find((s)    => s.id === item.soapId);
+    const pewangi = pewangis.find((p) => p.id === item.pewangiId);
+    const b       = breakdown.items[i];
     const isPerPcs = svc?.pricingUnit === "per_pcs";
 
     const qtyLine = isPerPcs
@@ -102,7 +143,7 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
     `;
   }).join("");
 
-  /* ── Payment rows ──────────────────────────────────────────────────── */
+  /* ── Payment rows ──────────────────────────────────────────────────────── */
   const methodLabel: Record<string, string> = {
     cash:     "Cash",
     transfer: "Transfer",
@@ -110,23 +151,25 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
   };
 
   const paymentRows = amountPaid != null ? `
+    ${s.showPaymentMethod ? `
     <tr class="payment-row">
       <td>Payment Method</td>
       <td class="right">${methodLabel[paymentMethod ?? ""] ?? paymentMethod ?? "—"}</td>
-    </tr>
+    </tr>` : ""}
+    ${s.showAmountPaid ? `
     <tr class="payment-row">
       <td>Amount Paid</td>
       <td class="right">${formatUSD(amountPaid)}</td>
-    </tr>
-    ${changeGiven != null && changeGiven > 0 ? `
+    </tr>` : ""}
+    ${s.showChangeGiven && changeGiven != null && changeGiven > 0 ? `
     <tr class="payment-row change">
       <td>Change</td>
       <td class="right">${formatUSD(changeGiven)}</td>
     </tr>` : ""}
   ` : "";
 
-  /* ── Notes block HTML ──────────────────────────────────────────────── */
-  const notesBlock = notes ? `
+  /* ── Notes block ───────────────────────────────────────────────────────── */
+  const notesBlock = (s.showNotes && notes) ? `
     <hr class="dashed" />
     <div class="notes-section">
       <div class="notes-header">
@@ -137,7 +180,44 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
     </div>
   ` : "";
 
-  /* ── Full receipt HTML ─────────────────────────────────────────────── */
+  /* ── Header block ──────────────────────────────────────────────────────── */
+  const logoHtml = (s.showLogo && s.logoUrl) ? `
+    <div style="text-align:center;margin-bottom:4px;">
+      <img src="${s.logoUrl}" alt="${s.logoAlt}"
+           style="max-height:${s.logoMaxHeight};width:auto;display:inline-block;" />
+    </div>
+  ` : "";
+
+  const shopNameHtml = s.showShopName ? `
+    <div class="shop-name">${s.shopName}</div>
+  ` : "";
+
+  const taglineHtml = s.showTagline ? `
+    <div class="shop-tagline">${s.shopTagline}</div>
+  ` : "";
+
+  /* ── Order number block ────────────────────────────────────────────────── */
+  const orderNumHtml = s.showOrderNumber ? `
+    <div class="order-num-label">Order Number</div>
+    <div class="order-num">${orderNumber}</div>
+  ` : "";
+
+  /* ── Footer block ──────────────────────────────────────────────────────── */
+  const footerHtml = s.showFooter ? `
+    <hr class="dashed" />
+    <div class="receipt-footer">
+      <div class="footer-thankyou">
+        ${interpolate(s.footerThankYou, { shopName: s.shopName })}
+      </div>
+      ${s.footerContact ? `<div class="footer-contact">${s.footerContact}</div>` : ""}
+    </div>
+  ` : "";
+
+  /* ── Full receipt HTML ─────────────────────────────────────────────────── */
+  const fontImport = s.fontImportUrl
+    ? `@import url('${s.fontImportUrl}');`
+    : "";
+
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -145,163 +225,127 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Receipt - ${orderNumber}</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap');
+  ${fontImport}
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    font-family: 'IBM Plex Mono', 'Courier New', monospace;
-    font-size: 11px;
+    font-family: ${s.fontFamily};
+    font-size: ${base}px;
     color: #111;
     background: white;
-    width: 80mm;
-    padding: 4mm 5mm 10mm;
+    width: ${s.paperWidth};
+    padding: ${s.paperPadding};
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  /* ── Header ── */
-  .header { text-align: center; padding-bottom: 6px; }
-  .logo-img {
-    width: 56px; height: 56px; object-fit: contain;
-    margin: 0 auto 5px; display: block;
-  }
-  .shop-name {
-    font-size: 15px; font-weight: 700;
-    letter-spacing: 0.06em; color: #0f2744;
-    text-transform: uppercase;
-  }
-  .shop-sub {
-    font-size: 8.5px; letter-spacing: 0.20em;
-    color: #607080; text-transform: uppercase; margin-top: 1px;
-  }
-  .shop-addr {
-    font-size: 9px; color: #607080;
-    margin-top: 4px; line-height: 1.55;
-  }
-
   /* ── Dividers ── */
-  .dashed { border: none; border-top: 1px dashed #aaa; margin: 6px 0; }
-  .solid  { border: none; border-top: 1px solid  #333; margin: 6px 0; }
-  .double { border: none; border-top: 3px double #333; margin: 6px 0; }
+  .dashed { border: none; border-top: 1px dashed #aaa; margin: 5px 0; }
+  .double { border: none; border-top: 3px double #333; margin: 5px 0; }
+
+  /* ── Shop header ── */
+  .shop-name {
+    text-align: center; font-size: ${lg}px; font-weight: 700;
+    letter-spacing: 0.08em; margin-bottom: 1px;
+  }
+  .shop-tagline {
+    text-align: center; font-size: ${xs}px; color: ${s.metaLabelColor};
+    letter-spacing: 0.06em; margin-bottom: 4px;
+  }
 
   /* ── Meta rows ── */
-  .meta { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
-  .meta td { padding: 1.5px 0; font-size: 10px; vertical-align: top; }
-  .meta .label { color: #607080; width: 36%; }
+  .meta { width: 100%; border-collapse: collapse; margin-bottom: 3px; }
+  .meta td { padding: 1px 0; font-size: ${sm}px; vertical-align: top; }
+  .meta .label { color: ${s.metaLabelColor}; width: 34%; }
   .meta .colon { width: 5%; }
   .meta .value { font-weight: 600; word-break: break-word; }
 
   /* ── Order number ── */
   .order-num-label {
-    font-size: 8px; letter-spacing: 0.2em;
-    text-transform: uppercase; color: #607080;
-    text-align: center; margin-bottom: 3px;
+    font-size: ${xs}px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: ${s.metaLabelColor};
+    text-align: center; margin-bottom: 2px;
   }
   .order-num {
-    text-align: center; font-size: 14px; font-weight: 700;
-    letter-spacing: 0.14em; padding: 5px 0;
-    background: #f0f7fd; border: 1px solid #b6def5;
-    border-radius: 5px; color: #0f5a85; margin-bottom: 5px;
+    text-align: center; font-size: ${lg}px; font-weight: 700;
+    letter-spacing: 0.12em; padding: 4px 0;
+    background: ${s.accentBgColor}; border: 1px solid ${s.accentBorderColor};
+    border-radius: 4px; color: ${s.accentColor}; margin-bottom: 4px;
   }
 
   /* ── Items ── */
   table.items { width: 100%; border-collapse: collapse; }
-  .item-name   { font-weight: 700; font-size: 11px; padding: 3px 0 1px; }
-  .item-detail { font-size: 10px; color: #334155; padding: 0 0 2px 6px; }
-  .item-detail.addon { color: #607080; }
+  .item-name   { font-weight: 700; font-size: ${base}px; padding: 2px 0 1px; }
+  .item-detail { font-size: ${sm}px; color: #334155; padding: 0 0 1px 4px; }
+  .item-detail.addon { color: ${s.metaLabelColor}; }
   .item-price  {
-    font-size: 10px; text-align: right;
-    color: #334155; vertical-align: top; padding: 0 0 2px; white-space: nowrap;
+    font-size: ${sm}px; text-align: right;
+    color: #334155; vertical-align: top; padding: 0 0 1px; white-space: nowrap;
   }
   .subtotal-label {
-    font-size: 10px; font-weight: 600;
-    padding: 2px 0 4px 6px; color: #0f5a85;
+    font-size: ${sm}px; font-weight: 600;
+    padding: 1px 0 3px 4px; color: ${s.accentColor};
   }
   .subtotal-value {
-    font-size: 10px; font-weight: 700;
-    text-align: right; color: #0f5a85; padding: 2px 0 4px;
+    font-size: ${sm}px; font-weight: 700;
+    text-align: right; color: ${s.accentColor}; padding: 1px 0 3px;
     white-space: nowrap;
   }
 
   /* ── Total ── */
   .total-row { width: 100%; border-collapse: collapse; }
-  .total-row td { padding: 3px 0; }
-  .total-label { font-size: 13px; font-weight: 700; }
+  .total-row td { padding: 2px 0; }
+  .total-label { font-size: ${lg}px; font-weight: 700; }
   .total-value {
-    font-size: 15px; font-weight: 700;
-    text-align: right; color: #0f5a85; white-space: nowrap;
+    font-size: ${xl}px; font-weight: 700;
+    text-align: right; color: ${s.accentColor}; white-space: nowrap;
   }
 
   /* ── Payment ── */
-  .payment-row td { font-size: 10px; padding: 1.5px 0; }
+  .payment-row td { font-size: ${sm}px; padding: 1px 0; }
   .payment-row .right { text-align: right; font-weight: 600; white-space: nowrap; }
-  .change td  { color: #15803d; font-weight: 700; }
-  .unpaid td  { color: #d97706; font-weight: 700; font-size: 10.5px; }
+  .change td  { color: ${s.changeColor}; font-weight: 700; }
+  .unpaid td  { color: ${s.unpaidColor}; font-weight: 700; font-size: ${base}px; }
 
   /* ── Notes ── */
   .notes-section { margin: 2px 0; }
-  .notes-header {
-    display: flex; align-items: center; gap: 5px;
-    margin-bottom: 4px;
-  }
-  .notes-icon  { font-size: 11px; line-height: 1; }
-  .notes-label {
-    font-size: 8.5px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.14em;
-    color: #475569;
+  .notes-header  { display: flex; align-items: center; gap: 4px; margin-bottom: 3px; }
+  .notes-icon    { font-size: ${base + 1}px; line-height: 1; }
+  .notes-label   {
+    font-size: ${xs + 0.5}px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.12em; color: #475569;
   }
   .notes-box {
-    background: #fffbeb;
-    border: 1px solid #fcd34d;
-    border-left: 3px solid #f59e0b;
-    border-radius: 4px;
-    padding: 6px 8px;
-    font-size: 10px;
-    color: #78350f;
-    line-height: 1.6;
-    word-break: break-word;
-    white-space: pre-wrap;   /* preserve line breaks from textarea */
+    background: ${s.notesBgColor};
+    border: 1px solid ${s.notesBorderColor};
+    border-left: 3px solid ${s.notesAccentColor};
+    border-radius: 3px;
+    padding: 4px 6px; font-size: ${sm}px; color: ${s.notesTextColor};
+    line-height: 1.5; word-break: break-word; white-space: pre-wrap;
   }
 
   /* ── Footer ── */
-  .footer {
-    text-align: center; margin-top: 10px;
-    font-size: 9px; color: #94a3b8; line-height: 1.7;
+  .receipt-footer { text-align: center; margin-top: 2px; }
+  .footer-thankyou {
+    font-size: ${sm}px; font-weight: 700; margin-bottom: 2px;
   }
-  .footer strong { color: #607080; font-weight: 700; }
-  .footer .domain {
-    display: inline-block; margin-top: 4px;
-    font-size: 9.5px; font-weight: 700;
-    letter-spacing: 0.06em; color: #1a7fba;
-  }
-
-  @media print {
-    html, body { width: 80mm; }
-    @page { size: 80mm auto; margin: 0; }
-  }
+  .footer-contact { font-size: ${xs}px; color: ${s.metaLabelColor}; }
 </style>
 </head>
 <body>
 
-<!-- ── Header ─────────────────────────────────────────────────────────── -->
-<div class="header">
-  ${logoSrc ? `<img src="${logoSrc}" alt="Akiro Laundry" class="logo-img" />` : ""}
-  <div class="shop-name">Akiro Laundry</div>
-  <div class="shop-sub">Kampu Alor &mdash; Timor-Leste</div>
-  <div class="shop-addr">
-    WA: +670 7675 8 7380<br/>
-    akirolaundry.tl
-  </div>
-</div>
+<!-- ── Shop header ── -->
+${logoHtml}
+${shopNameHtml}
+${taglineHtml}
 
-<hr class="solid" />
+<hr class="dashed" />
 
-<!-- ── Order number ────────────────────────────────────────────────────── -->
-<div class="order-num-label">Order Number</div>
-<div class="order-num">${orderNumber}</div>
+<!-- ── Order number ── -->
+${orderNumHtml}
 
-<!-- ── Customer meta ───────────────────────────────────────────────────── -->
+<!-- ── Customer meta ── -->
 <table class="meta">
   <tr>
     <td class="label">Date</td>
@@ -318,7 +362,7 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
     <td class="colon">:</td>
     <td class="value">${formData.customer.phone}</td>
   </tr>
-  ${formData.customer.address ? `
+  ${(s.showCustomerAddress && formData.customer.address) ? `
   <tr>
     <td class="label">Address</td>
     <td class="colon">:</td>
@@ -328,14 +372,14 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
 
 <hr class="dashed" />
 
-<!-- ── Line items ──────────────────────────────────────────────────────── -->
+<!-- ── Line items ── -->
 <table class="items">
   ${itemRows}
 </table>
 
 <hr class="double" />
 
-<!-- ── Grand total ────────────────────────────────────────────────────── -->
+<!-- ── Grand total ── -->
 <table class="total-row">
   <tr>
     <td class="total-label">TOTAL</td>
@@ -345,7 +389,7 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
 
 <hr class="dashed" />
 
-<!-- ── Payment status ─────────────────────────────────────────────────── -->
+<!-- ── Payment status ── -->
 <table class="items">
   ${amountPaid != null ? paymentRows : `
   <tr class="unpaid">
@@ -354,30 +398,14 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
   </tr>`}
 </table>
 
-<!-- ── Notes (only rendered when present) ─────────────────────────────── -->
 ${notesBlock}
 
-<hr class="dashed" />
+${footerHtml}
 
-<!-- ── Footer ─────────────────────────────────────────────────────────── -->
-<div class="footer">
-  <strong>Thank you for your trust!</strong><br/>
-  This receipt is your proof of transaction.<br/>
-  Please keep it for laundry pickup.<br/>
-  <span class="domain">akirolaundry.tl</span>
-</div>
-
-<script>
-  window.onload = function () {
-    window.focus();
-    window.print();
-    setTimeout(function () { window.close(); }, 800);
-  };
-</script>
 </body>
 </html>`;
 
-  /* ── Hidden iframe print ───────────────────────────────────────────── */
+  /* ── Hidden iframe print ───────────────────────────────────────────────── */
   const iframe = document.createElement("iframe");
   iframe.style.cssText =
     "position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;";
@@ -394,5 +422,5 @@ ${notesBlock}
     iframe.contentWindow?.focus();
     iframe.contentWindow?.print();
     setTimeout(() => { document.body.removeChild(iframe); }, 2000);
-  }, 600);
+  }, s.printDelayMs);
 }

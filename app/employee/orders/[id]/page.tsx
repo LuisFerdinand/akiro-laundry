@@ -1,7 +1,8 @@
 // app/employee/orders/[id]/page.tsx
-import { notFound }     from "next/navigation";
-import { getOrderById } from "@/lib/actions/orders";
+import { notFound }          from "next/navigation";
+import { getOrderById }      from "@/lib/actions/orders";
 import { getWaTemplateData } from "@/lib/actions/wa-templates";
+import { getReceiptSettings } from "@/lib/actions/receipt-settings";
 import { formatUSD, ORDER_STATUS_LABELS } from "@/lib/utils/order-form";
 import { OrderStatusUpdater }  from "@/components/employee/OrderStatusUpdater";
 import { PrintReceiptButton }  from "@/components/employee/PrintReceiptButton";
@@ -72,17 +73,18 @@ function safeFloat(value: string | null | undefined): number {
 
 export default async function OrderDetailPage({ params }: PageProps) {
   const { id: rawId } = await params;
-  const id    = parseInt(rawId);
+  const id = parseInt(rawId);
 
-  const [order, waTemplateData] = await Promise.all([
+  const [order, waTemplateData, receiptSettings] = await Promise.all([
     getOrderById(id),
     getWaTemplateData(),
+    getReceiptSettings(),
   ]);
 
   if (!order) notFound();
 
-  const totalPrice  = safeFloat(order.totalPrice);
-  const statusStyle = STATUS_STYLES[order.status] ?? STATUS_STYLES.pending;
+  const totalPrice       = safeFloat(order.totalPrice);
+  const statusStyle      = STATUS_STYLES[order.status] ?? STATUS_STYLES.pending;
   const firstServiceName = order.items[0]?.serviceName ?? "—";
 
   return (
@@ -206,8 +208,8 @@ export default async function OrderDetailPage({ params }: PageProps) {
         <span className="font-black text-2xl tracking-tight" style={{ color: "white" }}>{formatUSD(totalPrice)}</span>
       </div>
 
-      {/* Print receipt button */}
-      <PrintReceiptButton order={order} />
+      {/* Print receipt button — receives DB settings so it prints with live config */}
+      <PrintReceiptButton order={order} receiptSettings={receiptSettings} />
 
       {/* Status updater */}
       <OrderStatusUpdater

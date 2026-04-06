@@ -5,15 +5,15 @@ import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronRight, ChevronLeft, Loader2, CheckCircle2,
-  Sparkles, User, ShoppingBag, ClipboardList, CreditCard,
+  Sparkles, User, ShoppingBag, ClipboardList, CreditCard, Printer,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button }        from "@/components/ui/button";
-import { StepProgress }  from "@/components/employee/StepProgress";
-import { CustomerStep }  from "@/components/employee/order-steps/CustomerStep";
-import { ServiceStep }   from "@/components/employee/order-steps/ServiceStep";
-import { ReviewStep }    from "@/components/employee/order-steps/ReviewStep";
-import { PaymentModal }  from "@/components/employee/PaymentModal";
+import { Button }         from "@/components/ui/button";
+import { StepProgress }   from "@/components/employee/StepProgress";
+import { CustomerStep }   from "@/components/employee/order-steps/CustomerStep";
+import { ServiceStep }    from "@/components/employee/order-steps/ServiceStep";
+import { ReviewStep }     from "@/components/employee/order-steps/ReviewStep";
+import { PaymentModal }   from "@/components/employee/PaymentModal";
 import { WhatsAppNotify } from "@/components/employee/WhatsAppNotify";
 import {
   OrderFormStep,
@@ -32,8 +32,9 @@ import {
   getActivePewangi,
   createOrder,
 } from "@/lib/actions/orders";
+import { getReceiptSettings } from "@/lib/actions/receipt-settings";
 import type { ServicePricing, Soap, Pewangi } from "@/lib/db/schema";
-import { Printer } from "lucide-react";
+import type { ReceiptSettings } from "@/lib/db/schema/receipt";
 import { printReceipt } from "@/components/employee/PrintReceipt";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -79,14 +80,25 @@ export default function NewOrderPage() {
   const [paymentDone,  setPaymentDone]  = useState(false);
   const [changeGiven,  setChangeGiven]  = useState<number | null>(null);
 
-  const [services, setServices] = useState<ServicePricing[]>([]);
-  const [soaps,    setSoaps]    = useState<Soap[]>([]);
-  const [pewangis, setPewangis] = useState<Pewangi[]>([]);
-  const [loading,  setLoading]  = useState(true);
+  const [services,        setServices]        = useState<ServicePricing[]>([]);
+  const [soaps,           setSoaps]           = useState<Soap[]>([]);
+  const [pewangis,        setPewangis]        = useState<Pewangi[]>([]);
+  const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings | null>(null);
+  const [loading,         setLoading]         = useState(true);
 
   useEffect(() => {
-    Promise.all([getActiveServicePricing(), getActiveSoaps(), getActivePewangi()])
-      .then(([s, so, p]) => { setServices(s); setSoaps(so); setPewangis(p); })
+    Promise.all([
+      getActiveServicePricing(),
+      getActiveSoaps(),
+      getActivePewangi(),
+      getReceiptSettings(),          // ← fetch settings alongside other data
+    ])
+      .then(([s, so, p, rs]) => {
+        setServices(s);
+        setSoaps(so);
+        setPewangis(p);
+        setReceiptSettings(rs);      // ← store in state
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -167,9 +179,9 @@ export default function NewOrderPage() {
 
   if (success) {
     const handlePrint = () => {
-      printReceipt({
-        orderNumber:   success.orderNumber,
-        createdAt:     new Date(),
+      void printReceipt({
+        orderNumber: success.orderNumber,
+        createdAt:   new Date(),
         formData,
         services,
         soaps,
@@ -179,12 +191,12 @@ export default function NewOrderPage() {
         amountPaid:    paymentDone && changeGiven != null
           ? success.total + changeGiven
           : undefined,
-        changeGiven:   changeGiven ?? undefined,
+        changeGiven: changeGiven ?? undefined,
+        // ← DB settings forwarded; PrintReceipt falls back to DEFAULTS if null
+        settings: receiptSettings,
       });
     };
 
-    // Payment status for WA: if payment has been processed on this screen use "paid",
-    // otherwise "unpaid" so the message correctly tells the customer to prepare payment.
     const waPaymentStatus = paymentDone ? "paid" : "unpaid";
 
     return (
@@ -250,7 +262,7 @@ export default function NewOrderPage() {
               </button>
             )}
 
-            {/* WhatsApp notify — sends Tetum message to the customer */}
+            {/* WhatsApp notify */}
             <WhatsAppNotify
               customerPhone={formData.customer.phone}
               customerName={formData.customer.name}

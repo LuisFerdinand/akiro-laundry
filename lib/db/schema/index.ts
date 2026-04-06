@@ -272,3 +272,4 @@ export type CashRegisterTransaction = typeof cashRegisterTransactions.$inferSele
 
 export * from "./cms";
 export * from "./whatsapp";
+export * from "./receipt";

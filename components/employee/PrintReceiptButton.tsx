@@ -4,12 +4,14 @@
 import { Printer } from "lucide-react";
 import { printReceipt } from "@/components/employee/PrintReceipt";
 import type { OrderWithDetails } from "@/lib/actions/orders";
+import type { ReceiptSettings } from "@/lib/db/schema/receipt";
 
 interface Props {
-  order: OrderWithDetails;
+  order:           OrderWithDetails;
+  receiptSettings: ReceiptSettings | null;
 }
 
-export function PrintReceiptButton({ order }: Props) {
+export function PrintReceiptButton({ order, receiptSettings }: Props) {
   const handlePrint = () => {
     const formItems = order.items.map((item) => ({
       servicePricingId: item.servicePricingId,
@@ -62,13 +64,7 @@ export function PrintReceiptButton({ order }: Props) {
         const baseServiceCost = parseFloat(item.basePricePerKg) * qty;
         const soapCost        = parseFloat(item.soapCost    ?? "0");
         const pewangiCost     = parseFloat(item.pewangiCost ?? "0");
-
-        return {
-          baseServiceCost,
-          soapCost,
-          pewangiCost,
-          subtotal: parseFloat(item.subtotal),
-        };
+        return { baseServiceCost, soapCost, pewangiCost, subtotal: parseFloat(item.subtotal) };
       }),
     };
 
@@ -91,6 +87,8 @@ export function PrintReceiptButton({ order }: Props) {
       paymentMethod: order.paymentMethod  ?? undefined,
       amountPaid:    order.amountPaid     ? parseFloat(order.amountPaid)  : undefined,
       changeGiven:   order.changeGiven    ? parseFloat(order.changeGiven) : undefined,
+      // ← DB settings forwarded; PrintReceipt falls back to DEFAULTS if null
+      settings: receiptSettings,
     });
   };
 

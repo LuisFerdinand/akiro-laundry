@@ -15,7 +15,8 @@
     "db:seed": "npx tsx scripts/seed.ts",
     "seed:users": "tsx scripts/seed-users.ts",
     "seed:cms": "tsx scripts/seed-cms.ts",
-    "seed:wa": "tsx scripts/seed-wa-templates.ts"
+    "seed:wa": "tsx scripts/seed-wa-templates.ts",
+    "seed:receipts": "tsx scripts/seed-receipt-settings.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",
