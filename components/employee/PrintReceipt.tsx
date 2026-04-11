@@ -2,6 +2,8 @@
 import type { ServicePricing, Soap, Pewangi } from "@/lib/db/schema";
 import type { OrderFormData, OrderPriceBreakdown } from "@/lib/utils/order-form";
 import type { ReceiptSettings } from "@/lib/db/schema/receipt";
+import { printer } from "@/lib/utils/bluetooth-printer";
+import { buildEscPosReceipt } from "@/lib/utils/escpos-receipt";
 
 export interface ReceiptData {
   orderNumber:    string;
@@ -87,6 +89,18 @@ function interpolate(template: string, vars: Record<string, string>): string {
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 export async function printReceipt(data: ReceiptData): Promise<void> {
+  try {
+    if (!printer.isConnected) {
+      await printer.connect(); // triggers browser Bluetooth picker
+    }
+    const bytes = buildEscPosReceipt(data);
+    await printer.write(bytes);
+  } catch (err) {
+    console.error("Bluetooth print failed:", err);
+    // Graceful fallback to iframe/window.print()
+    await printReceipt(data);
+  }
+  
   const {
     orderNumber, createdAt, formData,
     services, soaps, pewangis, breakdown,
