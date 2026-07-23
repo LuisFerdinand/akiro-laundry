@@ -21,13 +21,26 @@ export function isBluetoothSupported(): boolean {
   return typeof navigator !== "undefined" && "bluetooth" in navigator;
 }
 
+type PrinterListener = () => void;
+
 export class BluetoothThermalPrinter {
   private device:         BluetoothDevice | null                    = null;
   private server:         BluetoothRemoteGATTServer | null          = null;
   private characteristic: BluetoothRemoteGATTCharacteristic | null  = null;
+  private listeners       = new Set<PrinterListener>();
 
   private readonly SERVICE_UUID = "000018f0-0000-1000-8000-00805f9b34fb";
   private readonly CHAR_UUID    = "00002af1-0000-1000-8000-00805f9b34fb";
+
+  /** Subscribe to connection-state changes (connect/disconnect). Returns an unsubscribe fn. */
+  subscribe(listener: PrinterListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private notify(): void {
+    this.listeners.forEach((l) => l());
+  }
 
   async connect(): Promise<void> {
     if (!isBluetoothSupported()) {
@@ -39,9 +52,17 @@ export class BluetoothThermalPrinter {
       optionalServices: [this.SERVICE_UUID],
     });
 
+    // Reflect disconnects that happen outside our control (printer turned off, out of range, etc.)
+    this.device.addEventListener("gattserverdisconnected", () => {
+      this.server         = null;
+      this.characteristic = null;
+      this.notify();
+    });
+
     this.server = await this.device.gatt!.connect();
     const service = await this.server.getPrimaryService(this.SERVICE_UUID);
     this.characteristic = await service.getCharacteristic(this.CHAR_UUID);
+    this.notify();
   }
 
   async disconnect(): Promise<void> {
@@ -49,10 +70,15 @@ export class BluetoothThermalPrinter {
     this.device         = null;
     this.server         = null;
     this.characteristic = null;
+    this.notify();
   }
 
   get isConnected(): boolean {
     return this.server?.connected ?? false;
+  }
+
+  get deviceName(): string | null {
+    return this.device?.name ?? null;
   }
 
   async write(data: Uint8Array): Promise<void> {

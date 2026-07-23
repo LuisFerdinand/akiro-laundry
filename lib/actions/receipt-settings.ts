@@ -20,10 +20,18 @@ export async function getReceiptSettings(): Promise<ReceiptSettings | null> {
 
 // ─── Update ───────────────────────────────────────────────────────────────────
 
+// Guards against a malformed CSS width (e.g. "mm" with no number) ever reaching
+// the DB — a broken value here silently breaks every printed receipt's layout.
+const PAPER_WIDTH_RE = /^\d+(\.\d+)?(mm|cm|in|px)$/;
+
 export async function updateReceiptSettings(
   id: number,
   data: Partial<Omit<ReceiptSettings, "id" | "updatedAt" | "isActive">>,
 ): Promise<{ success: boolean; error?: string }> {
+  if (data.paperWidth !== undefined && !PAPER_WIDTH_RE.test(data.paperWidth)) {
+    return { success: false, error: `Invalid paper width "${data.paperWidth}" — use a value like "58mm".` };
+  }
+
   try {
     await db
       .update(receiptSettings)

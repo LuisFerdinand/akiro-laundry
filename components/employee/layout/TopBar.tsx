@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Home, LogOut, User, ShieldCheck } from "lucide-react";
 import type { UserRole } from "@/lib/db/schema";
+import { PrinterStatusButton } from "@/components/employee/PrinterStatusButton";
 
 export function TopBar() {
   const { data: session } = useSession();
@@ -42,6 +43,9 @@ export function TopBar() {
             </p>
           </div>
         </Link>
+
+        <div className="flex items-center gap-2.5">
+          <PrinterStatusButton />
 
         {/* Avatar dropdown */}
         <DropdownMenu>
@@ -124,6 +128,7 @@ export function TopBar() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
 
       </div>
     </header>

@@ -4,7 +4,7 @@
 import { useState, useRef, useEffect } from "react";
 import { User, MapPin, Loader2, X, CheckCircle2, ChevronDown } from "lucide-react";
 import { CustomerFormData } from "@/lib/utils/order-form";
-import { searchCustomersByPhone } from "@/lib/actions/orders";
+import { searchCustomersByPhone, searchCustomersByName } from "@/lib/actions/orders";
 import type { Customer } from "@/lib/db/schema";
 import {
   COUNTRY_CODES,
@@ -48,6 +48,8 @@ function Field({
 function IconInput({
   icon: Icon,
   error,
+  onFocus,
+  onBlur,
   ...props
 }: {
   icon: React.ElementType;
@@ -72,10 +74,12 @@ function IconInput({
           e.currentTarget.style.boxShadow = error
             ? "0 0 0 3.5px rgba(239,68,68,0.12)"
             : "0 0 0 3.5px rgba(26,127,186,0.12)";
+          onFocus?.(e);
         }}
         onBlur={(e) => {
           e.currentTarget.style.borderColor = error ? "#fca5a5" : "#e2e8f0";
           e.currentTarget.style.boxShadow = "none";
+          onBlur?.(e);
         }}
         {...props}
       />
@@ -264,6 +268,12 @@ export function CustomerStep({ data, onChange, errors }: CustomerStepProps) {
   const [phoneError, setPhoneError]     = useState<string | null>(null);
   const debounceRef                     = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Search-by-name (alternative to phone-based lookup) ──────────────────────
+  const [nameSuggestions, setNameSuggestions]     = useState<Customer[]>([]);
+  const [showNameDropdown, setShowNameDropdown]   = useState(false);
+  const [nameLookupState, setNameLookupState]     = useState<"idle" | "loading" | "found" | "not-found">("idle");
+  const nameDebounceRef                           = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const isExistingSelected = !!data.existingCustomerId;
 
   // ── Derived values ──────────────────────────────────────────────────────────
@@ -357,10 +367,42 @@ export function CustomerStep({ data, onChange, errors }: CustomerStepProps) {
     }
   };
 
+  // ── Debounced search-by-name ──────────────────────────────────────────────
+  const handleNameChange = (raw: string) => {
+    onChange({ ...data, name: raw });
+
+    if (nameDebounceRef.current) clearTimeout(nameDebounceRef.current);
+
+    const trimmed = raw.trim();
+    if (trimmed.length < 2) {
+      setNameLookupState("idle");
+      setNameSuggestions([]);
+      setShowNameDropdown(false);
+      return;
+    }
+
+    setNameLookupState("loading");
+    nameDebounceRef.current = setTimeout(async () => {
+      const results = await searchCustomersByName(trimmed);
+      if (results.length > 0) {
+        setNameSuggestions(results);
+        setShowNameDropdown(true);
+        setNameLookupState("found");
+      } else {
+        setNameSuggestions([]);
+        setShowNameDropdown(false);
+        setNameLookupState("not-found");
+      }
+    }, 300);
+  };
+
   const selectCustomer = (c: Customer) => {
     setShowDropdown(false);
     setPhoneError(null);
     setLookupState("found");
+    setShowNameDropdown(false);
+    setNameSuggestions([]);
+    setNameLookupState("idle");
     // Parse stored E.164 back to parts
     const parsed = parseE164(c.phone);
     if (parsed) {
@@ -384,6 +426,9 @@ export function CustomerStep({ data, onChange, errors }: CustomerStepProps) {
     setSuggestions([]);
     setShowDropdown(false);
     setCountry(DEFAULT_COUNTRY);
+    setNameSuggestions([]);
+    setShowNameDropdown(false);
+    setNameLookupState("idle");
     onChange({ name: "", phone: "", address: "" });
   };
 
@@ -583,15 +628,84 @@ export function CustomerStep({ data, onChange, errors }: CustomerStepProps) {
       {/* ── Name & Address ────────────────────────────────────────────────── */}
       {!isExistingSelected && (
         <div className="space-y-4">
-          <Field label="Full Name" error={errors.name}>
-            <IconInput
-              icon={User}
-              placeholder="John Doe"
-              value={data.name}
-              onChange={(e) => onChange({ ...data, name: e.target.value })}
-              error={errors.name}
-            />
-          </Field>
+          <div className="relative">
+            <Field label="Full Name" error={errors.name}>
+              <IconInput
+                icon={User}
+                placeholder="Search by name, or type to create new"
+                value={data.name}
+                onChange={(e) => handleNameChange(e.target.value)}
+                onFocus={() => { if (nameSuggestions.length > 0) setShowNameDropdown(true); }}
+                onBlur={() => setTimeout(() => setShowNameDropdown(false), 150)}
+                error={errors.name}
+              />
+            </Field>
+
+            {/* Live name-search dropdown — alternative to phone-based lookup */}
+            {showNameDropdown && nameSuggestions.length > 0 && (
+              <div
+                className="absolute z-20 left-0 right-0 top-full mt-1.5 rounded-md overflow-hidden"
+                style={{
+                  background: "white",
+                  border: "1.5px solid #c8e9f8",
+                  boxShadow: "0 8px 32px rgba(26,127,186,0.14), 0 2px 8px rgba(0,0,0,0.06)",
+                }}
+              >
+                <div
+                  className="px-4 py-2"
+                  style={{
+                    background: "linear-gradient(135deg, #edf7fd 0%, #dff0fb 100%)",
+                    borderBottom: "1px solid #c8e9f8",
+                  }}
+                >
+                  <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#1a7fba" }}>
+                    {nameSuggestions.length} match{nameSuggestions.length > 1 ? "es" : ""} found
+                  </p>
+                </div>
+
+                {nameSuggestions.map((c, i) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onMouseDown={() => selectCustomer(c)}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors"
+                    style={{ borderBottom: i < nameSuggestions.length - 1 ? "1px solid #f1f5f9" : "none" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fcff")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "white")}
+                  >
+                    <div
+                      className="w-9 h-9 rounded flex items-center justify-center font-bold text-sm shrink-0"
+                      style={{
+                        background: "linear-gradient(135deg, #edf7fd 0%, #c8e9f8 100%)",
+                        border: "1.5px solid #b6def5",
+                        color: "#1a7fba",
+                      }}
+                    >
+                      {c.name[0].toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-800 truncate">{c.name}</p>
+                      <p className="text-xs font-mono font-semibold" style={{ color: "#607080" }}>
+                        {formatPhone(c.phone)}
+                      </p>
+                    </div>
+                    <div
+                      className="shrink-0 text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-sm"
+                      style={{ background: "#edf7fd", color: "#1a7fba", border: "1px solid #b6def5" }}
+                    >
+                      Select
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {nameLookupState === "not-found" && data.name.trim().length >= 2 && (
+              <p className="text-[10px] font-medium text-slate-400 mt-1.5 px-1">
+                No existing customer named &ldquo;{data.name.trim()}&rdquo; — this will create a new customer.
+              </p>
+            )}
+          </div>
 
           <Field label="Address" error={errors.address}>
             <div className="relative">

@@ -4,6 +4,7 @@ import type { OrderFormData, OrderPriceBreakdown } from "@/lib/utils/order-form"
 import type { ReceiptSettings } from "@/lib/db/schema/receipt";
 import { printer, isBluetoothSupported } from "@/lib/utils/bluetooth-printer";
 import { buildEscPosReceipt } from "@/lib/utils/escpos-receipt";
+import { toast } from "sonner";
 
 export interface ReceiptData {
   orderNumber:    string;
@@ -90,11 +91,15 @@ async function printViaBluetooth(data: ReceiptData): Promise<boolean> {
   if (!isBluetoothSupported()) return false;  // Safari / Firefox — skip silently
 
   try {
-    if (!printer.isConnected) await printer.connect();
+    if (!printer.isConnected) {
+      toast.info("Printer not connected — pick your printer to continue.");
+      await printer.connect();
+    }
     await printer.write(buildEscPosReceipt(data));
     return true;
   } catch (err) {
     console.warn("Bluetooth print failed, falling back to window.print():", err);
+    toast.warning("Couldn't reach the thermal printer — opening the browser print dialog instead.");
     return false;
   }
 }

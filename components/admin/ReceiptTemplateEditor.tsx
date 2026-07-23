@@ -547,7 +547,23 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
   const previewHtml = buildPreviewHtml(s);
 
   // ── Paper width numeric stepper (mm) ──────────────────────────────────────
-  const paperMm = parseInt(s.paperWidth) || 58;
+  // Local text buffer so the field can be cleared while typing without ever
+  // committing an invalid width like "mm" (no leading number) to saved state.
+  const [paperMmInput, setPaperMmInput] = useState(String(parseInt(s.paperWidth) || 58));
+  // Re-sync the buffer when paperWidth changes from elsewhere (e.g. the dropdown
+  // preset) — adjusting state during render instead of an effect, per React docs.
+  const [lastSyncedWidth, setLastSyncedWidth] = useState(s.paperWidth);
+  if (s.paperWidth !== lastSyncedWidth) {
+    setLastSyncedWidth(s.paperWidth);
+    setPaperMmInput(String(parseInt(s.paperWidth) || 58));
+  }
+
+  const commitPaperMm = () => {
+    const n = parseInt(paperMmInput);
+    const clamped = Number.isFinite(n) ? Math.min(120, Math.max(40, n)) : 58;
+    setPaperMmInput(String(clamped));
+    update("paperWidth", `${clamped}mm`);
+  };
 
   return (
     <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
@@ -576,10 +592,12 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <input
                       type="number"
-                      value={paperMm}
+                      value={paperMmInput}
                       min={40}
                       max={120}
-                      onChange={(e) => update("paperWidth", `${e.target.value}mm`)}
+                      onChange={(e) => setPaperMmInput(e.target.value)}
+                      onBlur={commitPaperMm}
+                      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
                       style={{
                         width: "100%",
                         padding: "7px 10px",

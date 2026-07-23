@@ -3,6 +3,7 @@
 "use client";
 
 import { useState, useTransition, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   X, Banknote, ArrowLeftRight, QrCode,
   CheckCircle2, Loader2, Calculator,
@@ -80,65 +81,57 @@ export function PaymentModal({
     });
   };
 
-  return (
-    /* Backdrop */
+  // Portalled to <body> — rendering in place would confine "fixed" to the
+  // nearest transformed ancestor (the page-enter transition on <main> leaves a
+  // lingering `transform: translateY(0)`, which creates a containing block),
+  // so the overlay would end up clipped to the page column instead of the
+  // full viewport. Escaping to <body> guarantees true full-screen coverage.
+  return createPortal(
+    /* Full-screen overlay — covers the entire viewport so the cashier's whole
+       attention (and touch input) stays on completing the payment; the layout
+       below is sized to always fit within one screen, no scrolling needed. */
     <div
-      style={{
-        position: "fixed", inset: 0, zIndex: 50,
-        background: "rgba(15,23,42,0.55)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: "16px",
-        backdropFilter: "blur(2px)",
-      }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      role="dialog" aria-modal="true"
+      className="fixed inset-0 z-50 flex flex-col"
+      style={{ background: "white", height: "100dvh" }}
     >
-      {/* Modal */}
+      {/* Header */}
       <div
+        className="shrink-0 flex items-center justify-between"
         style={{
-          background: "white",
-          borderRadius: "12px",
-          border: "1.5px solid #e2e8f0",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
-          width: "100%",
-          maxWidth: "400px",
-          overflow: "hidden",
+          background: "linear-gradient(135deg,#1a7fba 0%,#2496d6 55%,#0f5a85 100%)",
+          padding: "16px 20px",
         }}
       >
-        {/* Header */}
-        <div
+        <div>
+          <p style={{ color: "rgba(255,255,255,0.7)", fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+            Process Payment
+          </p>
+          <p style={{ color: "white", fontWeight: 800, fontSize: "15px", marginTop: "2px" }}>
+            {orderNumber}
+          </p>
+          <p style={{ color: "rgba(255,255,255,0.65)", fontSize: "12px" }}>{customerName}</p>
+        </div>
+        <button
+          onClick={onClose}
           style={{
-            background: "linear-gradient(135deg,#1a7fba 0%,#2496d6 55%,#0f5a85 100%)",
-            padding: "16px 20px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
+            background: "rgba(255,255,255,0.15)",
+            border: "1.5px solid rgba(255,255,255,0.25)",
+            borderRadius: "6px",
+            width: 36, height: 36,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer",
           }}
         >
-          <div>
-            <p style={{ color: "rgba(255,255,255,0.7)", fontSize: "10px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em" }}>
-              Process Payment
-            </p>
-            <p style={{ color: "white", fontWeight: 800, fontSize: "15px", marginTop: "2px" }}>
-              {orderNumber}
-            </p>
-            <p style={{ color: "rgba(255,255,255,0.65)", fontSize: "12px" }}>{customerName}</p>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: "rgba(255,255,255,0.15)",
-              border: "1.5px solid rgba(255,255,255,0.25)",
-              borderRadius: "6px",
-              width: 32, height: 32,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer",
-            }}
-          >
-            <X size={14} style={{ color: "white" }} />
-          </button>
-        </div>
+          <X size={16} style={{ color: "white" }} />
+        </button>
+      </div>
 
-        <div style={{ padding: "20px" }}>
+      {/* Body — single column + scroll on phone; fixed two-column no-scroll layout on tablet+ */}
+      <div className="flex-1 min-h-0 overflow-y-auto sm:overflow-hidden sm:grid sm:grid-cols-2 sm:gap-8 p-5 sm:p-8">
+
+        {/* ── Left column: total + method ─────────────────────────────────── */}
+        <div className="flex flex-col">
 
           {/* Total due */}
           <div
@@ -191,115 +184,10 @@ export function PaymentModal({
             })}
           </div>
 
-          {/* Cash tendered input */}
-          {method === "cash" && (
-            <div style={{ marginBottom: "18px" }}>
-              <p style={{ fontSize: "10px", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "8px" }}>
-                Amount Tendered
-              </p>
-              <div style={{ position: "relative" }}>
-                {/* Dollar sign prefix */}
-                <span style={{
-                  position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)",
-                  fontSize: "14px", fontWeight: 800, color: "#64748b",
-                  pointerEvents: "none",
-                }}>
-                  $
-                </span>
-                <input
-                  type="number"
-                  min={totalPrice}
-                  step="0.01"
-                  value={tendered}
-                  onChange={(e) => setTendered(e.target.value)}
-                  placeholder="0.00"
-                  style={{
-                    width: "100%", boxSizing: "border-box",
-                    padding: "12px 12px 12px 28px",
-                    border: `1.5px solid ${tenderedNum >= totalPrice && tenderedNum > 0 ? "#86efac" : "#e2e8f0"}`,
-                    borderRadius: "8px",
-                    fontSize: "16px", fontWeight: 700, color: "#1e293b",
-                    outline: "none",
-                  }}
-                  onFocus={(e) => {
-                    if (!(tenderedNum >= totalPrice && tenderedNum > 0))
-                      e.currentTarget.style.borderColor = "#1a7fba";
-                    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(26,127,186,0.10)";
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor =
-                      tenderedNum >= totalPrice && tenderedNum > 0 ? "#86efac" : "#e2e8f0";
-                    e.currentTarget.style.boxShadow = "none";
-                  }}
-                />
-              </div>
-
-              {/* Quick-fill amounts */}
-              <div style={{ display: "flex", gap: "6px", marginTop: "8px", flexWrap: "wrap" }}>
-                {quickAmounts.map((amt) => (
-                  <button
-                    key={amt}
-                    onClick={() => setTendered(amt.toString())}
-                    style={{
-                      padding: "4px 10px", borderRadius: "999px",
-                      border: "1.5px solid #e2e8f0",
-                      background: tenderedNum === amt ? "#edf7fd" : "white",
-                      fontSize: "11px", fontWeight: 700,
-                      color: tenderedNum === amt ? "#1a7fba" : "#64748b",
-                      cursor: "pointer",
-                      transition: "all 0.12s",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (tenderedNum !== amt) {
-                        e.currentTarget.style.borderColor = "#b6def5";
-                        e.currentTarget.style.color = "#1a7fba";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (tenderedNum !== amt) {
-                        e.currentTarget.style.borderColor = "#e2e8f0";
-                        e.currentTarget.style.color = "#64748b";
-                      }
-                    }}
-                  >
-                    {formatUSD(amt)}
-                  </button>
-                ))}
-              </div>
-
-              {/* Change display */}
-              {tenderedNum >= totalPrice && tenderedNum > 0 && (
-                <div
-                  style={{
-                    marginTop: "12px",
-                    background: "linear-gradient(135deg,#f0fdf4,#dcfce7)",
-                    border: "1.5px solid #86efac",
-                    borderRadius: "8px",
-                    padding: "12px 14px",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Calculator size={13} style={{ color: "#16a34a" }} />
-                    <span style={{ fontSize: "12px", fontWeight: 700, color: "#16a34a" }}>
-                      Change to return
-                    </span>
-                  </div>
-                  <span style={{ fontSize: "16px", fontWeight: 900, color: "#14532d" }}>
-                    {formatUSD(change)}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Transfer / QRIS confirmation notice */}
           {method !== "cash" && (
             <div
               style={{
-                marginBottom: "18px",
                 background: "linear-gradient(135deg,#fffbeb,#fef3c7)",
                 border: "1.5px solid #fcd34d",
                 borderRadius: "8px",
@@ -311,25 +199,135 @@ export function PaymentModal({
               {method.toUpperCase()} before proceeding.
             </div>
           )}
+        </div>
 
-          {/* Error */}
-          {error && (
-            <div
-              style={{
-                background: "#fff1f2", border: "1.5px solid #fda4af",
-                borderRadius: "6px", padding: "10px 12px", marginBottom: "14px",
-              }}
-            >
-              <p style={{ fontSize: "12px", fontWeight: 600, color: "#be123c" }}>{error}</p>
-            </div>
-          )}
+        {/* ── Right column: amount / error, confirm pinned to bottom ─────── */}
+        <div className="flex flex-col sm:h-full">
+          <div className="flex-1">
+            {/* Cash tendered input */}
+            {method === "cash" && (
+              <div>
+                <p style={{ fontSize: "10px", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "8px" }}>
+                  Amount Tendered
+                </p>
+                <div style={{ position: "relative" }}>
+                  {/* Dollar sign prefix */}
+                  <span style={{
+                    position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)",
+                    fontSize: "14px", fontWeight: 800, color: "#64748b",
+                    pointerEvents: "none",
+                  }}>
+                    $
+                  </span>
+                  <input
+                    type="number"
+                    min={totalPrice}
+                    step="0.01"
+                    value={tendered}
+                    onChange={(e) => setTendered(e.target.value)}
+                    placeholder="0.00"
+                    style={{
+                      width: "100%", boxSizing: "border-box",
+                      padding: "12px 12px 12px 28px",
+                      border: `1.5px solid ${tenderedNum >= totalPrice && tenderedNum > 0 ? "#86efac" : "#e2e8f0"}`,
+                      borderRadius: "8px",
+                      fontSize: "16px", fontWeight: 700, color: "#1e293b",
+                      outline: "none",
+                    }}
+                    onFocus={(e) => {
+                      if (!(tenderedNum >= totalPrice && tenderedNum > 0))
+                        e.currentTarget.style.borderColor = "#1a7fba";
+                      e.currentTarget.style.boxShadow = "0 0 0 3px rgba(26,127,186,0.10)";
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor =
+                        tenderedNum >= totalPrice && tenderedNum > 0 ? "#86efac" : "#e2e8f0";
+                      e.currentTarget.style.boxShadow = "none";
+                    }}
+                  />
+                </div>
 
-          {/* Confirm button */}
+                {/* Quick-fill amounts */}
+                <div style={{ display: "flex", gap: "6px", marginTop: "8px", flexWrap: "wrap" }}>
+                  {quickAmounts.map((amt) => (
+                    <button
+                      key={amt}
+                      onClick={() => setTendered(amt.toString())}
+                      style={{
+                        padding: "4px 10px", borderRadius: "999px",
+                        border: "1.5px solid #e2e8f0",
+                        background: tenderedNum === amt ? "#edf7fd" : "white",
+                        fontSize: "11px", fontWeight: 700,
+                        color: tenderedNum === amt ? "#1a7fba" : "#64748b",
+                        cursor: "pointer",
+                        transition: "all 0.12s",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (tenderedNum !== amt) {
+                          e.currentTarget.style.borderColor = "#b6def5";
+                          e.currentTarget.style.color = "#1a7fba";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (tenderedNum !== amt) {
+                          e.currentTarget.style.borderColor = "#e2e8f0";
+                          e.currentTarget.style.color = "#64748b";
+                        }
+                      }}
+                    >
+                      {formatUSD(amt)}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Change display */}
+                {tenderedNum >= totalPrice && tenderedNum > 0 && (
+                  <div
+                    style={{
+                      marginTop: "12px",
+                      background: "linear-gradient(135deg,#f0fdf4,#dcfce7)",
+                      border: "1.5px solid #86efac",
+                      borderRadius: "8px",
+                      padding: "12px 14px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <Calculator size={13} style={{ color: "#16a34a" }} />
+                      <span style={{ fontSize: "12px", fontWeight: 700, color: "#16a34a" }}>
+                        Change to return
+                      </span>
+                    </div>
+                    <span style={{ fontSize: "16px", fontWeight: 900, color: "#14532d" }}>
+                      {formatUSD(change)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <div
+                style={{
+                  background: "#fff1f2", border: "1.5px solid #fda4af",
+                  borderRadius: "6px", padding: "10px 12px", marginTop: "14px",
+                }}
+              >
+                <p style={{ fontSize: "12px", fontWeight: 600, color: "#be123c" }}>{error}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Confirm button — pinned to the bottom of the right column on tablet+ */}
           <button
             onClick={handleSubmit}
             disabled={isPending || (method === "cash" && !isExact)}
+            className="mt-4 sm:mt-0"
             style={{
-              width: "100%", height: "48px",
+              width: "100%", height: "52px",
               borderRadius: "8px", border: "none",
               background: isPending || (method === "cash" && !isExact)
                 ? "#94a3b8"
@@ -350,9 +348,9 @@ export function PaymentModal({
               <><CheckCircle2 size={16} /> Confirm Payment — {formatUSD(totalPrice)}</>
             )}
           </button>
-
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

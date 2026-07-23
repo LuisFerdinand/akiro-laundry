@@ -54,12 +54,15 @@ export async function lookupCustomerByPhone(phone: string): Promise<Customer | n
 }
 
 export async function searchCustomersByName(query: string): Promise<Customer[]> {
-  if (!query.trim()) return [];
+  const trimmed = query.trim();
+  if (trimmed.length < 2) return [];
+
   return db
     .select()
     .from(customers)
-    .where(ilike(customers.name, `%${query}%`))
-    .limit(10);
+    .where(ilike(customers.name, `%${trimmed}%`))
+    .orderBy(customers.name)
+    .limit(5);
 }
 
 export async function getActiveSoaps(): Promise<Soap[]> {
