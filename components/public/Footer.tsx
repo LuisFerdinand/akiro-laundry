@@ -281,7 +281,7 @@ export default function Footer({ data }: { data: FooterData }) {
             ) : (
               <ul className="flex flex-col gap-2.5">
                 {[
-                  { label: "Home",         href: "#" },
+                  { label: "Home",         href: "/" },
                   { label: "Services",     href: "#services" },
                   { label: "How It Works", href: "#how-it-works" },
                   { label: "Gallery",      href: "#gallery" },

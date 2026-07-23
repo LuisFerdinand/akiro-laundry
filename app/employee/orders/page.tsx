@@ -9,7 +9,7 @@ export default async function OrdersPage() {
   const orders = await getOrders(50);
 
   return (
-    <div className="space-y-5 px-4 pb-24 pt-2">
+    <div className="space-y-5 pb-24 pt-2">
 
       {/* ── Header ─────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
@@ -46,7 +46,7 @@ export default async function OrdersPage() {
           </Link>
         </div>
       ) : (
-        <div className="space-y-2.5">
+        <div className="space-y-2.5 sm:space-y-0 sm:grid sm:grid-cols-2 sm:gap-2.5">
           {orders.map((order) => {
             // Build a compact services summary from items[]
             const servicesSummary = order.items.length > 0

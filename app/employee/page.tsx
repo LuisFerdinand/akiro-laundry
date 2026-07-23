@@ -66,7 +66,7 @@ export default async function EmployeeDashboard() {
         </div>
 
         {/* ── 4-stat grid ── */}
-        <div className="relative z-10 mt-5 grid grid-cols-2 gap-3">
+        <div className="relative z-10 mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
           {statCards.map(({ label, value, icon: Icon, iconBg, iconColor }) => (
             <div key={label} className="akiro-stat-chip">
               <div className={`akiro-stat-icon ${iconBg}`}>
@@ -136,7 +136,7 @@ export default async function EmployeeDashboard() {
               View all →
             </Link>
           </div>
-          <div className="space-y-2.5">
+          <div className="space-y-2.5 sm:space-y-0 sm:grid sm:grid-cols-2 sm:gap-2.5">
             {recentOrders.map((order) => (
               <Link
                 key={order.id}

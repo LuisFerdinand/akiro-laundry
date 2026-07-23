@@ -38,6 +38,22 @@ export default function NavbarClient({ data, dashboardHref, role }: Props) {
   const ctaHref   = data?.ctaHref   ?? "#contact";
   const links     = data?.links     ?? [];
 
+  // ── In-page anchor navigation ──────────────────────────────────────────────
+  // Nav/CTA links are same-page anchors (e.g. "#services"). Letting the browser
+  // handle them natively pushes a new history entry per click, so after a few
+  // taps + "Sign In" the Back button just cycles through old hash states
+  // instead of returning to the homepage. We scroll manually and use
+  // replaceState so clicking anchors never grows the history stack. A bare
+  // "#" (unset in the CMS) is treated as a no-op instead of a dead link.
+  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    setMenuOpen(false);
+    if (href && !href.startsWith("#")) return; // real route — let the browser navigate normally
+    e.preventDefault();
+    if (href.length <= 1) return; // "#" (or unset) placeholder with no target configured yet
+    document.querySelector(href)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.history.replaceState(null, "", href);
+  };
+
   // ── Auth link helpers ──────────────────────────────────────────────────────
   // Desktop: if logged in show "Go to Dashboard / Admin Panel", else "Sign In"
   // Mobile:  same but full-width button style
@@ -118,6 +134,7 @@ export default function NavbarClient({ data, dashboardHref, role }: Props) {
             <a
               key={label}
               href={href}
+              onClick={(e) => handleNavClick(e, href)}
               className="text-sm font-semibold text-[#607080] hover:text-[#1a7fba] transition-colors duration-200"
             >
               {label}
@@ -130,6 +147,7 @@ export default function NavbarClient({ data, dashboardHref, role }: Props) {
           <AuthDesktop />
           <a
             href={ctaHref}
+            onClick={(e) => handleNavClick(e, ctaHref)}
             className="text-sm font-bold text-white px-4 py-2.5 rounded-xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
             style={{
               background: "linear-gradient(135deg, #2496d6 0%, #1a7fba 100%)",
@@ -163,7 +181,7 @@ export default function NavbarClient({ data, dashboardHref, role }: Props) {
               key={label}
               href={href}
               className="text-sm font-semibold text-[#607080]"
-              onClick={() => setMenuOpen(false)}
+              onClick={(e) => handleNavClick(e, href)}
             >
               {label}
             </a>
@@ -174,7 +192,7 @@ export default function NavbarClient({ data, dashboardHref, role }: Props) {
               href={ctaHref}
               className="flex-1 text-sm font-bold text-white py-2.5 rounded-xl text-center"
               style={{ background: "linear-gradient(135deg, #2496d6, #1a7fba)" }}
-              onClick={() => setMenuOpen(false)}
+              onClick={(e) => handleNavClick(e, ctaHref)}
             >
               {ctaLabel}
             </a>

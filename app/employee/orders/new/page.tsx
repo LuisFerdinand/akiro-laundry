@@ -381,7 +381,7 @@ export default function NewOrderPage() {
       </div>
 
       {/* ── Floating action bar ──────────────────────────────────────────── */}
-      <div className="fixed bottom-22 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-120 z-40"
+      <div className="fixed bottom-22 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-120 sm:max-w-2xl lg:max-w-3xl z-40"
         style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1.5px solid hsl(210 25% 91%)", borderRadius: "14px", padding: "12px 14px", boxShadow: "0 -2px 20px rgba(26,127,186,0.07),0 8px 32px rgba(0,0,0,0.10)" }}>
 
         {/* Live total preview on service step */}

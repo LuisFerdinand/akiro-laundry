@@ -14,44 +14,51 @@ export function CashRegisterClient({ initialState }: Props) {
   const { balance, lastUpdatedAt, recentTransactions } = initialState;
 
   return (
-    <div style={{ maxWidth: 520, margin: "0 auto", padding: "24px 16px", display: "flex", flexDirection: "column", gap: "20px" }}>
+    <div
+      className="flex flex-col gap-5 md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] md:items-start md:gap-5 lg:gap-6"
+      style={{ padding: "24px 16px" }}
+    >
 
-      {/* ── Balance card ───────────────────────────────────── */}
-      <div style={{
-        borderRadius: "12px",
-        background: "linear-gradient(135deg,#1a7fba 0%,#2496d6 55%,#0f5a85 100%)",
-        boxShadow: "0 8px 30px rgba(26,127,186,0.35)",
-        padding: "24px",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
-          <Wallet size={16} style={{ color: "rgba(255,255,255,0.7)" }} />
-          <p style={{ fontSize: "11px", fontWeight: 800, color: "rgba(255,255,255,0.7)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
-            Cash Register Balance
+      {/* ── Left column: balance + notice ────────────────────── */}
+      <div className="flex flex-col gap-5">
+
+        {/* ── Balance card ───────────────────────────────────── */}
+        <div style={{
+          borderRadius: "12px",
+          background: "linear-gradient(135deg,#1a7fba 0%,#2496d6 55%,#0f5a85 100%)",
+          boxShadow: "0 8px 30px rgba(26,127,186,0.35)",
+          padding: "24px",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+            <Wallet size={16} style={{ color: "rgba(255,255,255,0.7)" }} />
+            <p style={{ fontSize: "11px", fontWeight: 800, color: "rgba(255,255,255,0.7)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+              Cash Register Balance
+            </p>
+          </div>
+          <p style={{ fontSize: "36px", fontWeight: 900, color: "white", letterSpacing: "-0.02em" }}>
+            {formatUSD(balance)}
+          </p>
+          <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.55)", marginTop: "4px" }}>
+            Last updated: {new Date(lastUpdatedAt).toLocaleString()}
           </p>
         </div>
-        <p style={{ fontSize: "36px", fontWeight: 900, color: "white", letterSpacing: "-0.02em" }}>
-          {formatUSD(balance)}
-        </p>
-        <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.55)", marginTop: "4px" }}>
-          Last updated: {new Date(lastUpdatedAt).toLocaleString()}
-        </p>
+
+        {/* ── Read-only notice ───────────────────────────────── */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: "10px",
+          padding: "12px 16px",
+          borderRadius: "8px",
+          background: "#f8fafc",
+          border: "1.5px solid #e2e8f0",
+        }}>
+          <Lock size={13} style={{ color: "#94a3b8", flexShrink: 0 }} />
+          <p style={{ fontSize: "12px", color: "#64748b", fontWeight: 600 }}>
+            Cash register adjustments are restricted to admins only.
+          </p>
+        </div>
       </div>
 
-      {/* ── Read-only notice ───────────────────────────────── */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: "10px",
-        padding: "12px 16px",
-        borderRadius: "8px",
-        background: "#f8fafc",
-        border: "1.5px solid #e2e8f0",
-      }}>
-        <Lock size={13} style={{ color: "#94a3b8", flexShrink: 0 }} />
-        <p style={{ fontSize: "12px", color: "#64748b", fontWeight: 600 }}>
-          Cash register adjustments are restricted to admins only.
-        </p>
-      </div>
-
-      {/* ── Recent transactions ────────────────────────────── */}
+      {/* ── Right column: recent transactions ────────────────── */}
       <div style={{
         background: "white",
         borderRadius: "10px",
@@ -74,7 +81,7 @@ export function CashRegisterClient({ initialState }: Props) {
             No transactions yet.
           </p>
         ) : (
-          <div>
+          <div className="md:max-h-[560px] md:overflow-y-auto">
             {recentTransactions.map((tx) => {
               const isIncome    = (tx as any).direction
                 ? (tx as any).direction === "income"

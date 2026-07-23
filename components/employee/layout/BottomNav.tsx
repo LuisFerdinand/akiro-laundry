@@ -22,7 +22,7 @@ export function BottomNav() {
 
   return (
     <nav className="fixed bottom-0 inset-x-0 z-50 bg-white/95 backdrop-blur-md border-t border-blue-100/50">
-      <div className="flex items-end h-[68px] max-w-lg mx-auto px-3 pb-3">
+      <div className="flex items-end h-[68px] max-w-lg sm:max-w-2xl lg:max-w-3xl mx-auto px-3 sm:px-6 pb-3">
         {NAV_ITEMS.map(({ href, label, icon: Icon, exact, isCTA, exclude }) => {
           const isActive = exact
             ? pathname === href

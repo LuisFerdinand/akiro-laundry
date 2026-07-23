@@ -78,7 +78,7 @@ export function CmsFooterForm({ data }: { data: FooterData }) {
     (data?.links ?? []).map((l) => ({ id: l.id, column: l.column, label: l.label, href: l.href, sortOrder: l.sortOrder }))
   );
 
-  const addLink    = () => setLinks((p) => [...p, { column: "quick_links", label: "", href: "#", sortOrder: p.length }]);
+  const addLink    = () => setLinks((p) => [...p, { column: "quick_links", label: "", href: "", sortOrder: p.length }]);
   const removeLink = (i: number) => setLinks((p) => p.filter((_, idx) => idx !== i));
   const updateLink = (i: number, field: keyof LinkState, val: string) =>
     setLinks((p) => p.map((l, idx) => idx === i ? { ...l, [field]: val } : l));

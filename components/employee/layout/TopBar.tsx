@@ -26,7 +26,7 @@ export function TopBar() {
 
   return (
     <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-blue-100/60">
-      <div className="flex items-center justify-between px-4 h-14 max-w-lg mx-auto">
+      <div className="flex items-center justify-between px-4 sm:px-6 h-14 max-w-lg sm:max-w-2xl lg:max-w-3xl mx-auto">
 
         {/* Logo */}
         <Link href="/employee" className="flex items-center gap-2.5 select-none">

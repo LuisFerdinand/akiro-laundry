@@ -32,7 +32,7 @@ export function CmsNavbarForm({ data }: { data: NavbarData }) {
     (data?.links ?? []).map((l) => ({ id: l.id, label: l.label, href: l.href, sortOrder: l.sortOrder }))
   );
 
-  const addLink    = () => setLinks((p) => [...p, { label: "", href: "#", sortOrder: p.length }]);
+  const addLink    = () => setLinks((p) => [...p, { label: "", href: "", sortOrder: p.length }]);
   const removeLink = (i: number) => setLinks((p) => p.filter((_, idx) => idx !== i));
   const updateLink = (i: number, field: "label" | "href", v: string) =>
     setLinks((p) => p.map((l, idx) => (idx === i ? { ...l, [field]: v } : l)));
