@@ -1,61 +1,15 @@
 // components/employee/PrintReceipt.tsx
-import type { ServicePricing, Soap, Pewangi } from "@/lib/db/schema";
-import type { OrderFormData, OrderPriceBreakdown } from "@/lib/utils/order-form";
-import type { ReceiptSettings } from "@/lib/db/schema/receipt";
-import { printer, isBluetoothSupported, getBluetoothPrinterPreference } from "@/lib/utils/bluetooth-printer";
+//
+// Bluetooth thermal printing (ESC/POS text) is the one and only print path —
+// this is the printer actually in use, on every device. The browser/PDF HTML
+// path below only ever runs as a last resort when Web Bluetooth itself isn't
+// supported by the browser (Safari/Firefox), never as an equal alternative.
+import { mergeReceiptSettings, type ReceiptData } from "@/lib/utils/receipt-lines";
+import { printer, isBluetoothSupported } from "@/lib/utils/bluetooth-printer";
 import { buildEscPosReceipt } from "@/lib/utils/escpos-receipt";
 import { toast } from "sonner";
 
-export interface ReceiptData {
-  orderNumber:    string;
-  createdAt:      Date;
-  formData:       OrderFormData;
-  services:       ServicePricing[];
-  soaps:          Soap[];
-  pewangis:       Pewangi[];
-  breakdown:      OrderPriceBreakdown;
-  paymentMethod?: string;
-  amountPaid?:    number;
-  changeGiven?:   number;
-  settings?:      ReceiptSettings | null;
-}
-
-// ─── Default settings ─────────────────────────────────────────────────────────
-const DEFAULTS: Omit<ReceiptSettings, "id" | "updatedAt" | "isActive"> = {
-  paperWidth:          "58mm",
-  paperPadding:        "3mm 4mm 8mm",
-  fontFamily:          "'IBM Plex Mono', 'Courier New', monospace",
-  fontImportUrl:       "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap",
-  baseFontSizePx:      9,
-  shopName:            "Akiro Laundry",
-  shopTagline:         "Premium Laundry & Perfume Service",
-  logoUrl:             "",
-  logoAlt:             "Akiro Laundry",
-  logoMaxHeight:       "32px",
-  accentColor:         "#0f5a85",
-  accentBgColor:       "#f0f7fd",
-  accentBorderColor:   "#b6def5",
-  metaLabelColor:      "#607080",
-  notesBgColor:        "#fffbeb",
-  notesBorderColor:    "#fcd34d",
-  notesAccentColor:    "#f59e0b",
-  notesTextColor:      "#78350f",
-  changeColor:         "#15803d",
-  unpaidColor:         "#d97706",
-  showLogo:            false,
-  showShopName:        true,
-  showTagline:         true,
-  showOrderNumber:     true,
-  showCustomerAddress: true,
-  showPaymentMethod:   true,
-  showAmountPaid:      true,
-  showChangeGiven:     true,
-  showNotes:           true,
-  showFooter:          true,
-  footerThankYou:      "Thank you for choosing {{shopName}}!",
-  footerContact:       "📞 +670 7675 8 7380  ·  akirolaundry.com",
-  printDelayMs:        600,
-};
+export type { ReceiptData };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -84,15 +38,10 @@ function interpolate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? "");
 }
 
-// ─── Bluetooth print ──────────────────────────────────────────────────────────
-// Only runs when this device has explicitly opted in (see getBluetoothPrinterPreference)
-// — otherwise every device would silently pick whichever path its browser happens to
-// support, producing inconsistent output between e.g. a tablet and a laptop.
-// Falls through to the iframe/window.print() path on failure or when opted out.
+// ─── Bluetooth print (the only real print path) ────────────────────────────────
 
 async function printViaBluetooth(data: ReceiptData): Promise<boolean> {
-  if (!isBluetoothSupported()) return false;      // Safari / Firefox — skip silently
-  if (!getBluetoothPrinterPreference()) return false; // not opted in on this device
+  if (!isBluetoothSupported()) return false; // Safari / Firefox — no Web Bluetooth at all
 
   try {
     if (!printer.isConnected) {
@@ -104,13 +53,13 @@ async function printViaBluetooth(data: ReceiptData): Promise<boolean> {
   } catch (err) {
     console.warn("Bluetooth print failed:", err);
     toast.error("Couldn't print the receipt. Reconnect the Bluetooth printer and try again.");
-    // The Bluetooth route was selected, so do not silently switch to the
-    // differently-scaled browser/PDF template after a connection error.
+    // Bluetooth is the only real printer here — don't silently fall back to a
+    // differently-formatted browser print dialog after a connection error.
     return true;
   }
 }
 
-// ─── iframe / window.print() fallback ────────────────────────────────────────
+// ─── iframe / window.print() — last resort only, unsupported browsers ────────
 
 function printViaIframe(html: string, delayMs: number): void {
   // Use Blob URL instead of document.write() — avoids Safari crashes
@@ -136,21 +85,14 @@ function printViaIframe(html: string, delayMs: number): void {
   };
 }
 
-// ─── Main export ──────────────────────────────────────────────────────────────
-
-export async function printReceipt(data: ReceiptData): Promise<void> {
-  // 1. Try Bluetooth first — if it works, we're done
-  const printedViaBluetooth = await printViaBluetooth(data);
-  if (printedViaBluetooth) return;
-
-  // 2. Build HTML and fall back to iframe/window.print()
+function buildFallbackHtml(data: ReceiptData): string {
   const {
     orderNumber, createdAt, formData,
     services, soaps, pewangis, breakdown,
     paymentMethod, amountPaid, changeGiven,
   } = data;
 
-  const s     = { ...DEFAULTS, ...(data.settings ?? {}) };
+  const s     = mergeReceiptSettings(data.settings);
   const notes = formData.notes?.trim() ?? "";
 
   const base = s.baseFontSizePx;
@@ -159,7 +101,6 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
   const lg   = base + 2;
   const xl   = base + 3;
 
-  /* ── Per-item rows ── */
   const itemRows = formData.items.map((item, i) => {
     const svc      = services.find((sv) => sv.id === item.servicePricingId);
     const soap     = soaps.find((so)    => so.id === item.soapId);
@@ -193,7 +134,6 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
     `;
   }).join("");
 
-  /* ── Payment rows ── */
   const methodLabel: Record<string, string> = {
     cash: "Cash", transfer: "Transfer", qris: "QRIS",
   };
@@ -213,7 +153,6 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
     </tr>` : ""}
   ` : "";
 
-  /* ── Notes block ── */
   const notesBlock = (s.showNotes && notes) ? `
     <hr class="dashed" />
     <div class="notes-section">
@@ -225,7 +164,6 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
     </div>
   ` : "";
 
-  /* ── Header blocks ── */
   const logoHtml     = (s.showLogo && s.logoUrl)
     ? `<div style="text-align:center;margin-bottom:4px;">
         <img src="${s.logoUrl}" alt="${s.logoAlt}"
@@ -248,8 +186,7 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
 
   const fontImport = s.fontImportUrl ? `@import url('${s.fontImportUrl}');` : "";
 
-  /* ── Full HTML ── */
-  const html = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
@@ -330,6 +267,17 @@ ${notesBlock}
 ${footerHtml}
 </body>
 </html>`;
+}
 
-  printViaIframe(html, s.printDelayMs);
+// ─── Main export ──────────────────────────────────────────────────────────────
+
+export async function printReceipt(data: ReceiptData): Promise<void> {
+  // 1. Bluetooth thermal printing — the only real print path
+  const printedViaBluetooth = await printViaBluetooth(data);
+  if (printedViaBluetooth) return;
+
+  // 2. Last resort only: browser this app is running in has no Web Bluetooth
+  // support at all (Safari/Firefox) — open the OS print dialog instead.
+  const s = mergeReceiptSettings(data.settings);
+  printViaIframe(buildFallbackHtml(data), s.printDelayMs);
 }

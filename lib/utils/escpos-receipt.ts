@@ -1,6 +1,16 @@
 // lib/utils/escpos-receipt.ts
+//
+// Converts the shared receipt line model (lib/utils/receipt-lines.ts) into raw
+// ESC/POS bytes for direct Bluetooth thermal printing. Text-mode printing is
+// used deliberately instead of rasterizing an image — it's universally
+// supported even by cheap/clone thermal printers, whereas image raster
+// commands (GS v 0) are inconsistently implemented and produced illegible
+// output on the printer actually in use here.
+
 import { ESC_POS } from "./bluetooth-printer";
-import type { ReceiptData } from "@/components/employee/PrintReceipt";
+import { buildReceiptLines, charsPerLineFor, type ReceiptData } from "./receipt-lines";
+
+export type { ReceiptData };
 
 function toBytes(commands: (number[] | string)[]): Uint8Array {
   const encoder = new TextEncoder();
@@ -14,134 +24,22 @@ function toBytes(commands: (number[] | string)[]): Uint8Array {
   return result;
 }
 
-function formatUSD(n: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency", currency: "USD",
-    minimumFractionDigits: 2,
-  }).format(n);
-}
-
-function padLine(left: string, right: string, width = 32): string {
-  const spaces = Math.max(1, width - left.length - right.length);
-  return left + " ".repeat(spaces) + right + "\n";
-}
-
 export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
-  const { orderNumber, createdAt, formData, services,
-          soaps, pewangis, breakdown, paymentMethod,
-          amountPaid, changeGiven } = data;
+  const paperWidth   = data.settings?.paperWidth ?? "58mm";
+  const charsPerLine = charsPerLineFor(paperWidth);
+  const lines        = buildReceiptLines(data, charsPerLine);
 
-  const s = data.settings;
-  const shopName = s?.shopName ?? "Akiro Laundry";
+  const commands: (number[] | string)[] = [ESC_POS.INIT];
 
-  const showShopName        = s?.showShopName        ?? true;
-  const showTagline         = s?.showTagline          ?? true;
-  const showOrderNumber     = s?.showOrderNumber      ?? true;
-  const showCustomerAddress = s?.showCustomerAddress  ?? true;
-  const showPaymentMethod   = s?.showPaymentMethod    ?? true;
-  const showAmountPaid      = s?.showAmountPaid       ?? true;
-  const showChangeGiven     = s?.showChangeGiven      ?? true;
-  const showNotes           = s?.showNotes            ?? true;
-  const showFooter          = s?.showFooter           ?? true;
-  const footerThankYou      = (s?.footerThankYou ?? "Thank you for choosing {{shopName}}!")
-    .replace(/\{\{shopName\}\}/g, shopName);
+  for (const line of lines) {
+    commands.push(line.align === "center" ? ESC_POS.ALIGN_CENTER : ESC_POS.ALIGN_LEFT);
+    if (line.bold) commands.push(ESC_POS.BOLD_ON);
+    if (line.big)  commands.push(ESC_POS.DOUBLE_HEIGHT);
+    commands.push(`${line.text}\n`);
+    if (line.big)  commands.push(ESC_POS.NORMAL_SIZE);
+    if (line.bold) commands.push(ESC_POS.BOLD_OFF);
+  }
 
-  const commands: (number[] | string)[] = [
-    ESC_POS.INIT,
-    ESC_POS.ALIGN_CENTER,
-    ...(showShopName ? [
-      ESC_POS.BOLD_ON,
-      ESC_POS.DOUBLE_HEIGHT,
-      `${shopName}\n`,
-      ESC_POS.NORMAL_SIZE,
-      ESC_POS.BOLD_OFF,
-    ] : []),
-    ...(showTagline ? [`${s?.shopTagline ?? "Premium Laundry & Perfume Service"}\n`] : []),
-    ESC_POS.DASHED_LINE,
-
-    // Order number
-    ...(showOrderNumber ? [
-      ESC_POS.BOLD_ON,
-      `Order: ${orderNumber}\n`,
-      ESC_POS.BOLD_OFF,
-    ] : []),
-
-    ESC_POS.ALIGN_LEFT,
-    `Date    : ${new Intl.DateTimeFormat("en-US", {
-      day: "2-digit", month: "short", year: "numeric",
-      hour: "2-digit", minute: "2-digit", hour12: false,
-      timeZone: "Asia/Dili",
-    }).format(createdAt)}\n`,
-    `Customer: ${formData.customer.name}\n`,
-    `Phone   : ${formData.customer.phone}\n`,
-    ...(showCustomerAddress && formData.customer.address?.trim()
-      ? [`Address : ${formData.customer.address}\n`]
-      : []),
-    ESC_POS.DASHED_LINE,
-
-    // Line items
-    ...formData.items.flatMap((item, i) => {
-      const svc     = services.find((sv) => sv.id === item.servicePricingId);
-      const soap    = soaps.find((so)    => so.id === item.soapId);
-      const pewangi = pewangis.find((p)  => p.id === item.pewangiId);
-      const b       = breakdown.items[i];
-      const isPerPcs = svc?.pricingUnit === "per_pcs";
-
-      const qtyLine = isPerPcs
-        ? `  ${item.quantity}pcs x ${formatUSD(parseFloat(svc?.basePricePerKg ?? "0"))}/pcs`
-        : `  ${item.weightKg}kg x ${formatUSD(parseFloat(svc?.basePricePerKg ?? "0"))}/kg`;
-
-      return [
-        ESC_POS.BOLD_ON,
-        `${svc?.name ?? "Service"}\n`,
-        ESC_POS.BOLD_OFF,
-        `${padLine(qtyLine, formatUSD(b?.baseServiceCost ?? 0))}`,
-        ...(soap    ? [`${padLine(`  +Soap: ${soap.name}`,      formatUSD(b?.soapCost    ?? 0))}`] : []),
-        ...(pewangi ? [`${padLine(`  +Frag: ${pewangi.name}`,   formatUSD(b?.pewangiCost ?? 0))}`] : []),
-        padLine("  Subtotal", formatUSD(b?.subtotal ?? 0)),
-      ];
-    }),
-
-    ESC_POS.DASHED_LINE,
-
-    // Total
-    ESC_POS.BOLD_ON,
-    ESC_POS.DOUBLE_HEIGHT,
-    ESC_POS.ALIGN_CENTER,
-    `TOTAL: ${formatUSD(breakdown.totalPrice)}\n`,
-    ESC_POS.NORMAL_SIZE,
-    ESC_POS.BOLD_OFF,
-    ESC_POS.ALIGN_LEFT,
-    ESC_POS.DASHED_LINE,
-
-    // Payment
-    ...(amountPaid != null ? [
-      ...(showPaymentMethod ? [padLine("Payment", paymentMethod ?? "—")] : []),
-      ...(showAmountPaid    ? [padLine("Amount Paid", formatUSD(amountPaid))] : []),
-      ...(showChangeGiven && changeGiven && changeGiven > 0
-        ? [padLine("Change", formatUSD(changeGiven))]
-        : []),
-    ] : ["  ⚠ UNPAID\n"]),
-
-    // Notes
-    ...(showNotes && formData.notes?.trim() ? [
-      ESC_POS.DASHED_LINE,
-      "Note:\n",
-      `${formData.notes.trim()}\n`,
-    ] : []),
-
-    // Footer
-    ...(showFooter ? [
-      ESC_POS.DASHED_LINE,
-      ESC_POS.ALIGN_CENTER,
-      `${footerThankYou}\n`,
-      `${s?.footerContact ?? ""}\n`,
-    ] : []),
-
-    // Feed & cut
-    "\n\n\n",
-    ESC_POS.CUT_PAPER,
-  ];
-
+  commands.push(ESC_POS.ALIGN_LEFT, "\n\n\n", ESC_POS.CUT_PAPER);
   return toBytes(commands);
 }

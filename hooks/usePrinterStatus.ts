@@ -2,11 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  printer,
-  isBluetoothSupported,
-  setBluetoothPrinterPreference,
-} from "@/lib/utils/bluetooth-printer";
+import { printer, isBluetoothSupported } from "@/lib/utils/bluetooth-printer";
 
 export function usePrinterStatus() {
   // Starts false on both server and the first client render (avoids a
@@ -32,9 +28,6 @@ export function usePrinterStatus() {
     setConnecting(true);
     try {
       await printer.connect();
-      // Connecting from the header means this device intends to print through
-      // the thermal printer, including from the new-order success screen.
-      setBluetoothPrinterPreference(true);
       return true;
     } finally {
       setConnecting(false);

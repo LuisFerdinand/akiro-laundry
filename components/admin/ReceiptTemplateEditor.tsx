@@ -8,6 +8,7 @@ import {
   Type, Palette, Layout, Eye, Printer,
 } from "lucide-react";
 import { updateReceiptSettings } from "@/lib/actions/receipt-settings";
+import { buildReceiptLines, charsPerLineFor, type ReceiptData, type ReceiptLine } from "@/lib/utils/receipt-lines";
 import type { ReceiptSettings } from "@/lib/db/schema/receipt";
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -55,159 +56,74 @@ const COLOR_FIELDS: { key: keyof ReceiptSettings; label: string }[] = [
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   LIVE RECEIPT PREVIEW (pure HTML string → srcdoc iframe)
+   LIVE RECEIPT PREVIEW
+   Renders through the EXACT same buildReceiptLines() used by the real ESC/POS
+   print path (lib/utils/receipt-lines.ts) with sample order data — so this
+   preview can never again show something different from what actually prints.
    ═══════════════════════════════════════════════════════════════════════════════ */
 
-function buildPreviewHtml(s: ReceiptSettings): string {
-  const base = s.baseFontSizePx;
-  const sm   = base - 1;
-  const xs   = base - 2;
-  const lg   = base + 2;
-  const xl   = base + 3;
+const SAMPLE_RECEIPT_DATA: Omit<ReceiptData, "settings"> = {
+  orderNumber: "AK-20260406-042",
+  createdAt:   new Date("2026-04-06T14:32:00"),
+  formData: {
+    customer: { name: "Maria Silva", phone: "+670 7712 3456", address: "Rua Formosa, Dili" },
+    items: [
+      { servicePricingId: 1, weightKg: 3.5,  quantity: null, soapId: 1,    pewangiId: 1 },
+      { servicePricingId: 2, weightKg: null, quantity: 2,    soapId: null, pewangiId: null },
+    ],
+    notes: "Handle the silk shirt with extra care please.",
+  },
+  services: [
+    { id: 1, name: "Wash & Dry — Regular", basePricePerKg: "3.00", category: "package", pricingUnit: "per_kg",  minimumKg: null, duration: null, notes: null, isActive: true, createdAt: new Date() },
+    { id: 2, name: "Shoes — Sneakers",     basePricePerKg: "4.00", category: "package", pricingUnit: "per_pcs", minimumKg: null, duration: null, notes: null, isActive: true, createdAt: new Date() },
+  ],
+  soaps:    [{ id: 1, name: "Rinso Colour", brand: null, pricePerKg: "0.30", isActive: true, createdAt: new Date() }],
+  pewangis: [{ id: 1, name: "Molto Pink",   brand: null, pricePerKg: "0.20", isActive: true, createdAt: new Date() }],
+  breakdown: {
+    items: [
+      { baseServiceCost: 10.50, soapCost: 1.05, pewangiCost: 0.70, subtotal: 12.25 },
+      { baseServiceCost: 8.00,  soapCost: 0,    pewangiCost: 0,    subtotal: 8.00 },
+    ],
+    totalPrice: 20.25,
+  },
+  paymentMethod: "cash",
+  amountPaid:    25.00,
+  changeGiven:   4.75,
+};
 
-  const fontImport = s.fontImportUrl
-    ? `@import url('${s.fontImportUrl}');`
-    : "";
+function buildPreviewLines(s: ReceiptSettings): ReceiptLine[] {
+  const charsPerLine = charsPerLineFor(s.paperWidth);
+  return buildReceiptLines({ ...SAMPLE_RECEIPT_DATA, settings: s }, charsPerLine);
+}
 
-  const footerText = s.footerThankYou.replace("{{shopName}}", s.shopName);
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8"/>
-<style>
-  ${fontImport}
-  *{margin:0;padding:0;box-sizing:border-box;}
-  body{
-    font-family:${s.fontFamily};
-    font-size:${base}px;
-    color:#111;
-    background:white;
-    width:${s.paperWidth};
-    padding:${s.paperPadding};
-  }
-  .dashed{border:none;border-top:1px dashed #aaa;margin:5px 0;}
-  .double{border:none;border-top:3px double #333;margin:5px 0;}
-
-  .shop-name{text-align:center;font-size:${lg}px;font-weight:700;letter-spacing:0.08em;margin-bottom:1px;}
-  .shop-tagline{text-align:center;font-size:${xs}px;color:${s.metaLabelColor};letter-spacing:0.06em;margin-bottom:4px;}
-
-  .order-num-label{font-size:${xs}px;letter-spacing:0.18em;text-transform:uppercase;color:${s.metaLabelColor};text-align:center;margin-bottom:2px;}
-  .order-num{text-align:center;font-size:${lg}px;font-weight:700;letter-spacing:0.12em;padding:4px 0;background:${s.accentBgColor};border:1px solid ${s.accentBorderColor};border-radius:4px;color:${s.accentColor};margin-bottom:4px;}
-
-  .meta{width:100%;border-collapse:collapse;margin-bottom:3px;}
-  .meta td{padding:1px 0;font-size:${sm}px;vertical-align:top;}
-  .meta .label{color:${s.metaLabelColor};width:34%;}
-  .meta .colon{width:5%;}
-  .meta .value{font-weight:600;word-break:break-word;}
-
-  table.items{width:100%;border-collapse:collapse;}
-  .item-name{font-weight:700;font-size:${base}px;padding:2px 0 1px;}
-  .item-detail{font-size:${sm}px;color:#334155;padding:0 0 1px 4px;}
-  .item-detail.addon{color:${s.metaLabelColor};}
-  .item-price{font-size:${sm}px;text-align:right;color:#334155;vertical-align:top;padding:0 0 1px;white-space:nowrap;}
-  .subtotal-label{font-size:${sm}px;font-weight:600;padding:1px 0 3px 4px;color:${s.accentColor};}
-  .subtotal-value{font-size:${sm}px;font-weight:700;text-align:right;color:${s.accentColor};padding:1px 0 3px;white-space:nowrap;}
-
-  .total-row{width:100%;border-collapse:collapse;}
-  .total-row td{padding:2px 0;}
-  .total-label{font-size:${lg}px;font-weight:700;}
-  .total-value{font-size:${xl}px;font-weight:700;text-align:right;color:${s.accentColor};white-space:nowrap;}
-
-  .payment-row td{font-size:${sm}px;padding:1px 0;}
-  .payment-row .right{text-align:right;font-weight:600;white-space:nowrap;}
-  .change td{color:${s.changeColor};font-weight:700;}
-  .unpaid td{color:${s.unpaidColor};font-weight:700;font-size:${base}px;}
-
-  .notes-section{margin:2px 0;}
-  .notes-header{display:flex;align-items:center;gap:4px;margin-bottom:3px;}
-  .notes-icon{font-size:${base + 1}px;line-height:1;}
-  .notes-label{font-size:${xs}px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:#475569;}
-  .notes-box{background:${s.notesBgColor};border:1px solid ${s.notesBorderColor};border-left:3px solid ${s.notesAccentColor};border-radius:3px;padding:4px 6px;font-size:${sm}px;color:${s.notesTextColor};line-height:1.5;word-break:break-word;white-space:pre-wrap;}
-
-  .receipt-footer{text-align:center;margin-top:2px;}
-  .footer-thankyou{font-size:${sm}px;font-weight:700;margin-bottom:2px;}
-  .footer-contact{font-size:${xs}px;color:${s.metaLabelColor};}
-
-  /* Bluetooth thermal printers are monochrome and use their built-in font.
-     These overrides make this preview represent the receipt actually sent as
-     ESC/POS instead of the decorative browser/PDF template. */
-  body{font-family:"Courier New",monospace;font-size:12px;width:58mm;padding:3mm;color:#000;}
-  .shop-name{font-size:17px;color:#000;letter-spacing:0;text-transform:uppercase;}
-  .shop-tagline,.meta .label,.item-detail,.item-detail.addon,.item-price,
-  .subtotal-label,.subtotal-value,.total-value,.change td,.unpaid td,
-  .notes-label,.notes-box,.footer-contact{color:#000;}
-  .order-num-label{display:none;}
-  .order-num{font-size:13px;color:#000;background:none;border:0;border-radius:0;padding:2px 0;}
-  .notes-box{background:none;border:0;border-radius:0;padding:0;}
-  .notes-icon{display:none;}
-</style>
-</head>
-<body>
-
-${s.showShopName ? `<div class="shop-name">${s.shopName}</div>` : ""}
-${s.showTagline  ? `<div class="shop-tagline">${s.shopTagline}</div>` : ""}
-
-<hr class="dashed"/>
-
-${s.showOrderNumber ? `<div class="order-num-label">Order Number</div><div class="order-num">AK-20260406-042</div>` : ""}
-
-<table class="meta">
-  <tr><td class="label">Date</td><td class="colon">:</td><td class="value">06 April 2026, 14:32</td></tr>
-  <tr><td class="label">Customer</td><td class="colon">:</td><td class="value">Maria Silva</td></tr>
-  <tr><td class="label">Phone</td><td class="colon">:</td><td class="value">+670 7712 3456</td></tr>
-  ${s.showCustomerAddress ? `<tr><td class="label">Address</td><td class="colon">:</td><td class="value">Rua Formosa, Dili</td></tr>` : ""}
-</table>
-
-<hr class="dashed"/>
-
-<table class="items">
-  <tr><td colspan="2" class="item-name">Wash & Dry — Regular</td></tr>
-  <tr><td class="item-detail">3.5 kg × $3.00/kg</td><td class="item-price">$10.50</td></tr>
-  <tr><td class="item-detail addon">+ Soap: Rinso Colour</td><td class="item-price">$1.05</td></tr>
-  <tr><td class="item-detail addon">+ Fragrance: Molto Pink</td><td class="item-price">$0.70</td></tr>
-  <tr><td class="subtotal-label">Subtotal</td><td class="subtotal-value">$12.25</td></tr>
-  <tr><td colspan="2" class="item-divider"></td></tr>
-
-  <tr><td colspan="2" class="item-name">Shoes — Sneakers</td></tr>
-  <tr><td class="item-detail">2 pcs × $4.00/pcs</td><td class="item-price">$8.00</td></tr>
-  <tr><td class="subtotal-label">Subtotal</td><td class="subtotal-value">$8.00</td></tr>
-  <tr><td colspan="2" class="item-divider"></td></tr>
-</table>
-
-<hr class="double"/>
-
-<table class="total-row">
-  <tr><td class="total-label">TOTAL</td><td class="total-value">$20.25</td></tr>
-</table>
-
-<hr class="dashed"/>
-
-<table class="items">
-  ${s.showPaymentMethod ? `<tr class="payment-row"><td>Payment Method</td><td class="right">Cash</td></tr>` : ""}
-  ${s.showAmountPaid    ? `<tr class="payment-row"><td>Amount Paid</td><td class="right">$25.00</td></tr>` : ""}
-  ${s.showChangeGiven   ? `<tr class="payment-row change"><td>Change</td><td class="right">$4.75</td></tr>` : ""}
-</table>
-
-${s.showNotes ? `
-<hr class="dashed"/>
-<div class="notes-section">
-  <div class="notes-header">
-    <span class="notes-icon">📝</span>
-    <span class="notes-label">Special Instructions</span>
-  </div>
-  <div class="notes-box">Handle the silk shirt with extra care please.</div>
-</div>` : ""}
-
-${s.showFooter ? `
-<hr class="dashed"/>
-<div class="receipt-footer">
-  <div class="footer-thankyou">${footerText}</div>
-  ${s.footerContact ? `<div class="footer-contact">${s.footerContact}</div>` : ""}
-</div>` : ""}
-
-</body>
-</html>`;
+function ReceiptLinesPreview({ lines }: { lines: ReceiptLine[] }) {
+  return (
+    <div
+      style={{
+        fontFamily: "'Courier New', monospace",
+        fontSize: 12,
+        lineHeight: 1.55,
+        color: "#000",
+        background: "white",
+        padding: "14px 10px",
+      }}
+    >
+      {lines.map((line, i) => (
+        <div
+          key={i}
+          style={{
+            textAlign:  line.align === "center" ? "center" : "left",
+            fontWeight: line.bold ? 700 : 400,
+            fontSize:   line.big ? 16 : 12,
+            whiteSpace: "pre-wrap",
+            wordBreak:  "break-word",
+          }}
+        >
+          {line.text || " "}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -555,7 +471,7 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
     });
   };
 
-  const previewHtml = buildPreviewHtml(s);
+  const previewLines = buildPreviewLines(s);
 
   // ── Paper width numeric stepper (mm) ──────────────────────────────────────
   // Local text buffer so the field can be cleared while typing without ever
@@ -960,34 +876,18 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
               }}
             />
 
-            {/* The receipt paper itself — iframe for live HTML */}
-            <iframe
-              key={previewHtml}          // re-mount on change so srcdoc updates reliably
-              srcDoc={previewHtml}
-              title="Receipt Preview"
-              sandbox="allow-same-origin"
-              scrolling="no"
+            {/* The receipt paper itself — plain monospace text, exactly what prints */}
+            <div
               style={{
-                border: "none",
-                display: "block",
                 width: s.paperWidth,
                 minHeight: 200,
-                height: "auto",
                 background: "white",
                 position: "relative",
                 zIndex: 0,
               }}
-              onLoad={(e) => {
-                // Auto-resize iframe to content height
-                const iframe = e.currentTarget;
-                try {
-                  const body = iframe.contentDocument?.body;
-                  if (body) {
-                    iframe.style.height = body.scrollHeight + "px";
-                  }
-                } catch {}
-              }}
-            />
+            >
+              <ReceiptLinesPreview lines={previewLines} />
+            </div>
 
             {/* Tear edge at bottom */}
             <div

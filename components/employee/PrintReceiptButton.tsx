@@ -5,12 +5,7 @@
 import { useEffect, useState } from "react";
 import { Printer, Bluetooth, BluetoothConnected } from "lucide-react";
 import { printReceipt } from "@/components/employee/PrintReceipt";
-import {
-  printer,
-  isBluetoothSupported,
-  getBluetoothPrinterPreference,
-  setBluetoothPrinterPreference,
-} from "@/lib/utils/bluetooth-printer";
+import { printer, isBluetoothSupported } from "@/lib/utils/bluetooth-printer";
 import type { OrderWithDetails } from "@/lib/actions/orders";
 import type { ReceiptSettings } from "@/lib/db/schema/receipt";
 
@@ -20,27 +15,17 @@ interface Props {
 }
 
 export function PrintReceiptButton({ order, receiptSettings }: Props) {
-  // SSR-safe defaults; real values (localStorage / Bluetooth state) only exist client-side,
-  // so they're read post-mount below rather than in the initializer (avoids hydration mismatch).
-  // `bluetoothSupported` in particular must never be checked directly during render —
-  // navigator doesn't exist on the server, so the button would render on the client but
-  // not on the server, tripping a hydration mismatch.
+  // SSR-safe defaults; real values (Bluetooth state) only exist client-side, so
+  // they're read post-mount below rather than in the initializer (avoids a
+  // hydration mismatch — navigator doesn't exist on the server).
   const [bluetoothSupported, setBluetoothSupported] = useState(false);
-  const [useBluetooth, setUseBluetooth]              = useState(false);
-  const [connected, setConnected]                    = useState(false);
+  const [connected, setConnected]                   = useState(false);
 
   useEffect(() => {
     setBluetoothSupported(isBluetoothSupported());
-    setUseBluetooth(getBluetoothPrinterPreference());
     setConnected(printer.isConnected);
     return printer.subscribe(() => setConnected(printer.isConnected));
   }, []);
-
-  const toggleBluetooth = () => {
-    const next = !useBluetooth;
-    setUseBluetooth(next);
-    setBluetoothPrinterPreference(next);
-  };
 
   const handlePrint = () => {
     const formItems = order.items.map((item) => ({
@@ -147,26 +132,20 @@ export function PrintReceiptButton({ order, receiptSettings }: Props) {
         Print Receipt
       </button>
 
-      {/* Per-device print method — defaults to the browser print dialog (matches the
-          receipt template exactly) on every device. Only enable this on a device that
-          has an actual Bluetooth thermal printer paired. */}
+      {/* Informational only — the thermal printer is always the print target,
+          this just shows whether it's currently paired. */}
       {bluetoothSupported && (
-        <button
-          type="button"
-          onClick={toggleBluetooth}
-          title="Only turn this on for a device with a paired Bluetooth thermal printer — otherwise receipts will look different from the template."
-          className="flex items-center justify-center gap-1.5 w-full h-7 rounded-md text-[11px] font-bold transition-all"
+        <div
+          className="flex items-center justify-center gap-1.5 w-full h-6 rounded-md text-[10px] font-bold"
           style={{
-            background: useBluetooth ? "#edf7fd" : "transparent",
-            border:     `1px solid ${useBluetooth ? "#b6def5" : "#e2e8f0"}`,
-            color:      useBluetooth ? "#1a7fba" : "#94a3b8",
+            background: connected ? "#f0fdf4" : "#f8fafc",
+            border:     `1px solid ${connected ? "#86efac" : "#e2e8f0"}`,
+            color:      connected ? "#16a34a" : "#94a3b8",
           }}
         >
-          {connected ? <BluetoothConnected size={11} /> : <Bluetooth size={11} />}
-          {useBluetooth
-            ? connected ? `Bluetooth printer: ${printer.deviceName ?? "connected"}` : "Bluetooth printer (on)"
-            : "Use browser print (default)"}
-        </button>
+          {connected ? <BluetoothConnected size={10} /> : <Bluetooth size={10} />}
+          {connected ? `Connected: ${printer.deviceName ?? "thermal printer"}` : "Thermal printer not connected yet"}
+        </div>
       )}
     </div>
   );
