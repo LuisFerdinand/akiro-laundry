@@ -96,6 +96,13 @@ export const receiptSettings = pgTable("receipt_settings", {
     .notNull()
     .default("📞 +670 7675 8 7380  ·  akirolaundry.com"),
 
+  // ── Unpaid message ─────────────────────────────────────────────────────────
+  // Shown instead of the payment/amount-paid/change rows when an order hasn't
+  // been paid yet. Supports {{totalPrice}} placeholder.
+  unpaidMessageTemplate: text("unpaid_message_template")
+    .notNull()
+    .default("*** AMOUNT DUE: {{totalPrice}} ***"),
+
   // ── Print delay ────────────────────────────────────────────────────────────
   // Milliseconds to wait before triggering window.print() — increase if fonts
   // are slow to load on the target printer device

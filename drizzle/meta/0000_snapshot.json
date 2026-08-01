@@ -1,5 +1,5 @@
 {
-  "id": "975c68cd-57fb-4ea4-a69c-e0d7cc63d2a1",
+  "id": "3d8d16f5-2909-49b7-b526-63a31b23964e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -2237,6 +2237,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'admin'"
         }
       },
       "indexes": {},
@@ -2304,6 +2311,455 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'2,400+'"
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.wa_status_templates": {
+      "name": "wa_status_templates",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "order_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body_template": {
+          "name": "body_template",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "wa_status_templates_status_unique": {
+          "name": "wa_status_templates_status_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "status"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.wa_template_settings": {
+      "name": "wa_template_settings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "business_name": {
+          "name": "business_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Akiro Laundry'"
+        },
+        "business_phone": {
+          "name": "business_phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'+670 7675 8 7380'"
+        },
+        "business_url": {
+          "name": "business_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'akirolaundry.com'"
+        },
+        "greeting_template": {
+          "name": "greeting_template",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Ola Sr/a *{{customerName}}*,\nAmi husi *{{businessName}}* hakarak informa kona-ba ita-nia pedidu foun.'"
+        },
+        "order_detail_header": {
+          "name": "order_detail_header",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'🧾 *DETALLU PEDIDU*'"
+        },
+        "order_detail_body": {
+          "name": "order_detail_body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'📌 *N.º Pedidu:*  {{orderNumber}}\n👕 *Servisu:*     {{servicesSummary}}\n📦 *Status:*      *{{statusLabel}}*\n💰 *Total:*       {{totalPrice}}\n{{paymentLine}}'"
+        },
+        "footer_template": {
+          "name": "footer_template",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{{businessName}}\n📞 {{businessPhone}}\n🌐 {{businessUrl}}'"
+        },
+        "review_cta_template": {
+          "name": "review_cta_template",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'⭐ *Kontenti ho ami-nia servisu?*\nHusik review ida iha: {{reviewUrl}}\nObrigadu barak! 🙏'"
+        },
+        "payment_paid_template": {
+          "name": "payment_paid_template",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'✅ *Pagamentu:* Kompletu ona'"
+        },
+        "payment_unpaid_template": {
+          "name": "payment_unpaid_template",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'⚠️ *Pagamentu:* Seidauk selu — favor prepara {{totalPrice}} bainhira mai foti'"
+        },
+        "notes_section_header": {
+          "name": "notes_section_header",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'📝 *NOTA ESPESIAL*'"
+        },
+        "separator": {
+          "name": "separator",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'─────────────────────────'"
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.receipt_settings": {
+      "name": "receipt_settings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "paper_width": {
+          "name": "paper_width",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'58mm'"
+        },
+        "paper_padding": {
+          "name": "paper_padding",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'3mm 4mm 8mm'"
+        },
+        "font_family": {
+          "name": "font_family",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'''IBM Plex Mono'', ''Courier New'', monospace'"
+        },
+        "font_import_url": {
+          "name": "font_import_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap'"
+        },
+        "base_font_size_px": {
+          "name": "base_font_size_px",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 9
+        },
+        "shop_name": {
+          "name": "shop_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Akiro Laundry'"
+        },
+        "shop_tagline": {
+          "name": "shop_tagline",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Premium Laundry & Perfume Service'"
+        },
+        "logo_url": {
+          "name": "logo_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "logo_alt": {
+          "name": "logo_alt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Akiro Laundry'"
+        },
+        "logo_max_height": {
+          "name": "logo_max_height",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'32px'"
+        },
+        "accent_color": {
+          "name": "accent_color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#0f5a85'"
+        },
+        "accent_bg_color": {
+          "name": "accent_bg_color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#f0f7fd'"
+        },
+        "accent_border_color": {
+          "name": "accent_border_color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#b6def5'"
+        },
+        "meta_label_color": {
+          "name": "meta_label_color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#607080'"
+        },
+        "notes_bg_color": {
+          "name": "notes_bg_color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#fffbeb'"
+        },
+        "notes_border_color": {
+          "name": "notes_border_color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#fcd34d'"
+        },
+        "notes_accent_color": {
+          "name": "notes_accent_color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#f59e0b'"
+        },
+        "notes_text_color": {
+          "name": "notes_text_color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#78350f'"
+        },
+        "change_color": {
+          "name": "change_color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#15803d'"
+        },
+        "unpaid_color": {
+          "name": "unpaid_color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#d97706'"
+        },
+        "show_logo": {
+          "name": "show_logo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "show_shop_name": {
+          "name": "show_shop_name",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "show_tagline": {
+          "name": "show_tagline",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "show_order_number": {
+          "name": "show_order_number",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "show_customer_address": {
+          "name": "show_customer_address",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "show_payment_method": {
+          "name": "show_payment_method",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "show_amount_paid": {
+          "name": "show_amount_paid",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "show_change_given": {
+          "name": "show_change_given",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "show_notes": {
+          "name": "show_notes",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "show_footer": {
+          "name": "show_footer",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "footer_thank_you": {
+          "name": "footer_thank_you",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Thank you for choosing {{shopName}}!'"
+        },
+        "footer_contact": {
+          "name": "footer_contact",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'📞 +670 7675 8 7380  ·  akirolaundry.com'"
+        },
+        "unpaid_message_template": {
+          "name": "unpaid_message_template",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'*** AMOUNT DUE: {{totalPrice}} ***'"
+        },
+        "print_delay_ms": {
+          "name": "print_delay_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 600
         },
         "is_active": {
           "name": "is_active",

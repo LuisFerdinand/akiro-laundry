@@ -5,36 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1774203490971,
-      "tag": "0000_luxuriant_wendell_vaughn",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1774761689075,
-      "tag": "0001_cheerful_hellcat",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1775479627718,
-      "tag": "0002_flawless_reavers",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1785554784176,
-      "tag": "0003_wooden_marvel_boy",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1785556795521,
-      "tag": "0004_grey_morph",
+      "when": 1785576502770,
+      "tag": "0000_ordinary_talon",
       "breakpoints": true
     }
   ]

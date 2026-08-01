@@ -61,6 +61,7 @@ const DEFAULTS: Omit<ReceiptSettings, "id" | "updatedAt" | "isActive"> = {
   showFooter:          true,
   footerThankYou:      "Thank you for choosing {{shopName}}!",
   footerContact:       "📞 +670 7675 8 7380  ·  akirolaundry.com",
+  unpaidMessageTemplate: "*** AMOUNT DUE: {{totalPrice}} ***",
   printDelayMs:        600,
 };
 
@@ -86,6 +87,11 @@ function formatUSD(n: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency", currency: "USD", minimumFractionDigits: 2,
   }).format(n);
+}
+
+/** Substitutes {{token}} placeholders — used by footerThankYou and unpaidMessageTemplate. */
+export function interpolate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
 }
 
 function padLine(left: string, right: string, width: number): string {
@@ -150,7 +156,10 @@ export function buildReceiptLines(data: ReceiptData, charsPerLine: number): Rece
       push({ text: padLine("Change", formatUSD(data.changeGiven), charsPerLine) });
     }
   } else {
-    push({ text: "*** UNPAID ***", align: "center", bold: true });
+    const dueText = interpolate(s.unpaidMessageTemplate, {
+      totalPrice: formatUSD(data.breakdown.totalPrice),
+    });
+    push({ text: dueText, align: "center", bold: true });
   }
 
   const notes = data.formData.notes?.trim();
@@ -162,7 +171,7 @@ export function buildReceiptLines(data: ReceiptData, charsPerLine: number): Rece
 
   if (s.showFooter) {
     dashed();
-    const thankYou = s.footerThankYou.replace(/\{\{shopName\}\}/g, s.shopName);
+    const thankYou = interpolate(s.footerThankYou, { shopName: s.shopName });
     push({ text: thankYou, align: "center", bold: true });
     if (s.footerContact) push({ text: s.footerContact, align: "center" });
   }

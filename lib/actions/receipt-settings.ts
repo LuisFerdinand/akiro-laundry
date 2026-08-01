@@ -38,8 +38,13 @@ export async function updateReceiptSettings(
       .set({ ...data, updatedAt: new Date() })
       .where(eq(receiptSettings.id, id));
 
+    // Also revalidate the dynamic order-detail page that renders the print
+    // button with these settings — plain revalidatePath("/employee/orders")
+    // alone doesn't cover /employee/orders/[id], which is where receipts
+    // actually get printed from.
     revalidatePath("/admin/receipt-settings");
     revalidatePath("/employee/orders");
+    revalidatePath("/employee/orders/[id]", "page");
     return { success: true };
   } catch (err) {
     console.error("[updateReceiptSettings]", err);

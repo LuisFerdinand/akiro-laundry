@@ -350,7 +350,8 @@ CREATE TABLE "cms_testimonials" (
 	"body" text NOT NULL,
 	"sort_order" integer DEFAULT 0 NOT NULL,
 	"is_active" boolean DEFAULT true NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"source" text DEFAULT 'admin' NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_testimonials_section" (
@@ -360,6 +361,83 @@ CREATE TABLE "cms_testimonials_section" (
 	"subtext" text NOT NULL,
 	"aggregate_rating" text DEFAULT '4.9' NOT NULL,
 	"review_count" text DEFAULT '2,400+' NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "wa_status_templates" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"status" "order_status" NOT NULL,
+	"body_template" text NOT NULL,
+	"sort_order" integer DEFAULT 0 NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "wa_status_templates_status_unique" UNIQUE("status")
+);
+--> statement-breakpoint
+CREATE TABLE "wa_template_settings" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"business_name" text DEFAULT 'Akiro Laundry' NOT NULL,
+	"business_phone" text DEFAULT '+670 7675 8 7380' NOT NULL,
+	"business_url" text DEFAULT 'akirolaundry.com' NOT NULL,
+	"greeting_template" text DEFAULT 'Ola Sr/a *{{customerName}}*,
+Ami husi *{{businessName}}* hakarak informa kona-ba ita-nia pedidu foun.' NOT NULL,
+	"order_detail_header" text DEFAULT '🧾 *DETALLU PEDIDU*' NOT NULL,
+	"order_detail_body" text DEFAULT '📌 *N.º Pedidu:*  {{orderNumber}}
+👕 *Servisu:*     {{servicesSummary}}
+📦 *Status:*      *{{statusLabel}}*
+💰 *Total:*       {{totalPrice}}
+{{paymentLine}}' NOT NULL,
+	"footer_template" text DEFAULT '{{businessName}}
+📞 {{businessPhone}}
+🌐 {{businessUrl}}' NOT NULL,
+	"review_cta_template" text DEFAULT '⭐ *Kontenti ho ami-nia servisu?*
+Husik review ida iha: {{reviewUrl}}
+Obrigadu barak! 🙏' NOT NULL,
+	"payment_paid_template" text DEFAULT '✅ *Pagamentu:* Kompletu ona' NOT NULL,
+	"payment_unpaid_template" text DEFAULT '⚠️ *Pagamentu:* Seidauk selu — favor prepara {{totalPrice}} bainhira mai foti' NOT NULL,
+	"notes_section_header" text DEFAULT '📝 *NOTA ESPESIAL*' NOT NULL,
+	"separator" text DEFAULT '─────────────────────────' NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "receipt_settings" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"paper_width" text DEFAULT '58mm' NOT NULL,
+	"paper_padding" text DEFAULT '3mm 4mm 8mm' NOT NULL,
+	"font_family" text DEFAULT '''IBM Plex Mono'', ''Courier New'', monospace' NOT NULL,
+	"font_import_url" text DEFAULT 'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap' NOT NULL,
+	"base_font_size_px" integer DEFAULT 9 NOT NULL,
+	"shop_name" text DEFAULT 'Akiro Laundry' NOT NULL,
+	"shop_tagline" text DEFAULT 'Premium Laundry & Perfume Service' NOT NULL,
+	"logo_url" text DEFAULT '' NOT NULL,
+	"logo_alt" text DEFAULT 'Akiro Laundry' NOT NULL,
+	"logo_max_height" text DEFAULT '32px' NOT NULL,
+	"accent_color" text DEFAULT '#0f5a85' NOT NULL,
+	"accent_bg_color" text DEFAULT '#f0f7fd' NOT NULL,
+	"accent_border_color" text DEFAULT '#b6def5' NOT NULL,
+	"meta_label_color" text DEFAULT '#607080' NOT NULL,
+	"notes_bg_color" text DEFAULT '#fffbeb' NOT NULL,
+	"notes_border_color" text DEFAULT '#fcd34d' NOT NULL,
+	"notes_accent_color" text DEFAULT '#f59e0b' NOT NULL,
+	"notes_text_color" text DEFAULT '#78350f' NOT NULL,
+	"change_color" text DEFAULT '#15803d' NOT NULL,
+	"unpaid_color" text DEFAULT '#d97706' NOT NULL,
+	"show_logo" boolean DEFAULT false NOT NULL,
+	"show_shop_name" boolean DEFAULT true NOT NULL,
+	"show_tagline" boolean DEFAULT true NOT NULL,
+	"show_order_number" boolean DEFAULT true NOT NULL,
+	"show_customer_address" boolean DEFAULT true NOT NULL,
+	"show_payment_method" boolean DEFAULT true NOT NULL,
+	"show_amount_paid" boolean DEFAULT true NOT NULL,
+	"show_change_given" boolean DEFAULT true NOT NULL,
+	"show_notes" boolean DEFAULT true NOT NULL,
+	"show_footer" boolean DEFAULT true NOT NULL,
+	"footer_thank_you" text DEFAULT 'Thank you for choosing {{shopName}}!' NOT NULL,
+	"footer_contact" text DEFAULT '📞 +670 7675 8 7380  ·  akirolaundry.com' NOT NULL,
+	"unpaid_message_template" text DEFAULT '*** AMOUNT DUE: {{totalPrice}} ***' NOT NULL,
+	"print_delay_ms" integer DEFAULT 600 NOT NULL,
 	"is_active" boolean DEFAULT true NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
