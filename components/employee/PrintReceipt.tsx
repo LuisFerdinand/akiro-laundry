@@ -3,7 +3,7 @@ import type { ServicePricing, Soap, Pewangi } from "@/lib/db/schema";
 import type { OrderFormData, OrderPriceBreakdown } from "@/lib/utils/order-form";
 import type { ReceiptSettings } from "@/lib/db/schema/receipt";
 import { printer, isBluetoothSupported, getBluetoothPrinterPreference } from "@/lib/utils/bluetooth-printer";
-import { buildEscPosReceipt } from "@/lib/utils/escpos-receipt";
+import { buildReceiptRaster, dotWidthFor } from "@/lib/utils/receipt-raster";
 import { toast } from "sonner";
 
 export interface ReceiptData {
@@ -84,71 +84,27 @@ function interpolate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? "");
 }
 
-// ─── Bluetooth print ──────────────────────────────────────────────────────────
-// Only runs when this device has explicitly opted in (see getBluetoothPrinterPreference)
-// — otherwise every device would silently pick whichever path its browser happens to
-// support, producing inconsistent output between e.g. a tablet and a laptop.
-// Falls through to the iframe/window.print() path on failure or when opted out.
-
-async function printViaBluetooth(data: ReceiptData): Promise<boolean> {
-  if (!isBluetoothSupported()) return false;      // Safari / Firefox — skip silently
-  if (!getBluetoothPrinterPreference()) return false; // not opted in on this device
-
-  try {
-    if (!printer.isConnected) {
-      toast.info("Printer not connected — pick your printer to continue.");
-      await printer.connect();
-    }
-    await printer.write(buildEscPosReceipt(data));
-    return true;
-  } catch (err) {
-    console.warn("Bluetooth print failed, falling back to window.print():", err);
-    toast.warning("Couldn't reach the thermal printer — opening the browser print dialog instead.");
-    return false;
-  }
+export function mergeReceiptSettings(settings?: ReceiptSettings | null) {
+  return { ...DEFAULTS, ...(settings ?? {}) };
 }
 
-// ─── iframe / window.print() fallback ────────────────────────────────────────
+// ─── Receipt HTML builder ──────────────────────────────────────────────────────
+// Single source of truth for the receipt's visual template — used by BOTH the
+// browser-print (iframe) path and the Bluetooth thermal path (which rasterizes
+// this exact HTML into an image, see lib/utils/receipt-raster.ts). This is what
+// guarantees the two print methods produce identical-looking receipts.
 
-function printViaIframe(html: string, delayMs: number): void {
-  // Use Blob URL instead of document.write() — avoids Safari crashes
-  const blob = new Blob([html], { type: "text/html" });
-  const url  = URL.createObjectURL(blob);
-
-  const iframe = document.createElement("iframe");
-  iframe.style.cssText =
-    "position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;";
-  iframe.src = url;
-
-  document.body.appendChild(iframe);
-
-  iframe.onload = () => {
-    setTimeout(() => {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-      setTimeout(() => {
-        document.body.removeChild(iframe);
-        URL.revokeObjectURL(url); // free memory
-      }, 2000);
-    }, delayMs);
-  };
-}
-
-// ─── Main export ──────────────────────────────────────────────────────────────
-
-export async function printReceipt(data: ReceiptData): Promise<void> {
-  // 1. Try Bluetooth first — if it works, we're done
-  const printedViaBluetooth = await printViaBluetooth(data);
-  if (printedViaBluetooth) return;
-
-  // 2. Build HTML and fall back to iframe/window.print()
+export function buildReceiptHtml(
+  data: ReceiptData,
+  opts?: { widthPx?: number },
+): string {
   const {
     orderNumber, createdAt, formData,
     services, soaps, pewangis, breakdown,
     paymentMethod, amountPaid, changeGiven,
   } = data;
 
-  const s     = { ...DEFAULTS, ...(data.settings ?? {}) };
+  const s     = mergeReceiptSettings(data.settings);
   const notes = formData.notes?.trim() ?? "";
 
   const base = s.baseFontSizePx;
@@ -226,7 +182,7 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
   /* ── Header blocks ── */
   const logoHtml     = (s.showLogo && s.logoUrl)
     ? `<div style="text-align:center;margin-bottom:4px;">
-        <img src="${s.logoUrl}" alt="${s.logoAlt}"
+        <img src="${s.logoUrl}" alt="${s.logoAlt}" crossorigin="anonymous"
              style="max-height:${s.logoMaxHeight};width:auto;display:inline-block;" />
        </div>`
     : "";
@@ -245,9 +201,10 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
   ` : "";
 
   const fontImport = s.fontImportUrl ? `@import url('${s.fontImportUrl}');` : "";
+  const bodyWidth  = opts?.widthPx ? `${opts.widthPx}px` : s.paperWidth;
 
   /* ── Full HTML ── */
-  const html = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
@@ -258,7 +215,7 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: ${s.fontFamily}; font-size: ${base}px;
-    color: #111; background: white; width: ${s.paperWidth};
+    color: #111; background: white; width: ${bodyWidth};
     padding: ${s.paperPadding};
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
@@ -326,6 +283,74 @@ ${notesBlock}
 ${footerHtml}
 </body>
 </html>`;
+}
 
+// ─── Bluetooth print ──────────────────────────────────────────────────────────
+// Only runs when this device has explicitly opted in (see getBluetoothPrinterPreference)
+// — otherwise every device would silently pick whichever path its browser happens to
+// support, producing inconsistent output between e.g. a tablet and a laptop.
+// Rasterizes the exact same HTML used for browser printing (buildReceiptHtml) so the
+// thermal output matches the template pixel-for-pixel, instead of being reconstructed
+// with plain ESC/POS text commands that can't replicate fonts, colors, or spacing.
+// Falls through to the iframe/window.print() path on failure or when opted out.
+
+async function printViaBluetooth(data: ReceiptData): Promise<boolean> {
+  if (!isBluetoothSupported()) return false;      // Safari / Firefox — skip silently
+  if (!getBluetoothPrinterPreference()) return false; // not opted in on this device
+
+  try {
+    if (!printer.isConnected) {
+      toast.info("Printer not connected — pick your printer to continue.");
+      await printer.connect();
+    }
+    const s       = mergeReceiptSettings(data.settings);
+    const widthPx = dotWidthFor(s.paperWidth);
+    const html    = buildReceiptHtml(data, { widthPx });
+    const bytes   = await buildReceiptRaster(html, widthPx);
+    await printer.write(bytes);
+    return true;
+  } catch (err) {
+    console.warn("Bluetooth print failed, falling back to window.print():", err);
+    toast.warning("Couldn't reach the thermal printer — opening the browser print dialog instead.");
+    return false;
+  }
+}
+
+// ─── iframe / window.print() fallback ────────────────────────────────────────
+
+function printViaIframe(html: string, delayMs: number): void {
+  // Use Blob URL instead of document.write() — avoids Safari crashes
+  const blob = new Blob([html], { type: "text/html" });
+  const url  = URL.createObjectURL(blob);
+
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText =
+    "position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;";
+  iframe.src = url;
+
+  document.body.appendChild(iframe);
+
+  iframe.onload = () => {
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        document.body.removeChild(iframe);
+        URL.revokeObjectURL(url); // free memory
+      }, 2000);
+    }, delayMs);
+  };
+}
+
+// ─── Main export ──────────────────────────────────────────────────────────────
+
+export async function printReceipt(data: ReceiptData): Promise<void> {
+  // 1. Try Bluetooth first — if it works, we're done
+  const printedViaBluetooth = await printViaBluetooth(data);
+  if (printedViaBluetooth) return;
+
+  // 2. Build HTML and fall back to iframe/window.print()
+  const s    = mergeReceiptSettings(data.settings);
+  const html = buildReceiptHtml(data);
   printViaIframe(html, s.printDelayMs);
 }
