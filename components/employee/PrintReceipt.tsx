@@ -102,9 +102,11 @@ async function printViaBluetooth(data: ReceiptData): Promise<boolean> {
     await printer.write(buildEscPosReceipt(data));
     return true;
   } catch (err) {
-    console.warn("Bluetooth print failed, falling back to window.print():", err);
-    toast.warning("Couldn't reach the thermal printer — opening the browser print dialog instead.");
-    return false;
+    console.warn("Bluetooth print failed:", err);
+    toast.error("Couldn't print the receipt. Reconnect the Bluetooth printer and try again.");
+    // The Bluetooth route was selected, so do not silently switch to the
+    // differently-scaled browser/PDF template after a connection error.
+    return true;
   }
 }
 
@@ -255,7 +257,9 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
 <title>Receipt - ${orderNumber}</title>
 <style>
   ${fontImport}
+  @page { size: ${s.paperWidth} auto; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { width: ${s.paperWidth}; background: white; }
   body {
     font-family: ${s.fontFamily}; font-size: ${base}px;
     color: #111; background: white; width: ${s.paperWidth};

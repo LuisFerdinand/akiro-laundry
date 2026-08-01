@@ -30,16 +30,15 @@ const FONT_OPTIONS = [
 ];
 
 const SECTION_TOGGLES: { key: keyof ReceiptSettings; label: string; description: string }[] = [
-  { key: "showLogo",            label: "Logo",             description: "Print shop logo image" },
-  { key: "showShopName",        label: "Shop Name",        description: "Shop name text header" },
-  { key: "showTagline",         label: "Tagline",          description: "Subtitle below shop name" },
-  { key: "showOrderNumber",     label: "Order Number",     description: "Order number badge" },
-  { key: "showCustomerAddress", label: "Customer Address", description: "Address line in customer info" },
-  { key: "showPaymentMethod",   label: "Payment Method",   description: "Cash / Transfer / QRIS label" },
-  { key: "showAmountPaid",      label: "Amount Paid",      description: "How much the customer paid" },
-  { key: "showChangeGiven",     label: "Change Given",     description: "Change returned to customer" },
-  { key: "showNotes",           label: "Order Notes",      description: "Special instruction block" },
-  { key: "showFooter",          label: "Footer",           description: "Thank-you + contact line" },
+  { key: "showShopName",        label: "Business name",    description: "Name at the top of the receipt" },
+  { key: "showTagline",         label: "Short description", description: "Small line below the business name" },
+  { key: "showOrderNumber",     label: "Order number",     description: "Reference number for the order" },
+  { key: "showCustomerAddress", label: "Customer address", description: "Customer's address" },
+  { key: "showPaymentMethod",   label: "Payment type",     description: "Cash, Transfer, or QRIS" },
+  { key: "showAmountPaid",      label: "Amount paid",      description: "Money received from the customer" },
+  { key: "showChangeGiven",     label: "Change",           description: "Money returned to the customer" },
+  { key: "showNotes",           label: "Order notes",      description: "Special washing instructions" },
+  { key: "showFooter",          label: "Closing message",  description: "Thank-you and contact information" },
 ];
 
 const COLOR_FIELDS: { key: keyof ReceiptSettings; label: string }[] = [
@@ -129,11 +128,23 @@ function buildPreviewHtml(s: ReceiptSettings): string {
   .receipt-footer{text-align:center;margin-top:2px;}
   .footer-thankyou{font-size:${sm}px;font-weight:700;margin-bottom:2px;}
   .footer-contact{font-size:${xs}px;color:${s.metaLabelColor};}
+
+  /* Bluetooth thermal printers are monochrome and use their built-in font.
+     These overrides make this preview represent the receipt actually sent as
+     ESC/POS instead of the decorative browser/PDF template. */
+  body{font-family:"Courier New",monospace;font-size:12px;width:58mm;padding:3mm;color:#000;}
+  .shop-name{font-size:17px;color:#000;letter-spacing:0;text-transform:uppercase;}
+  .shop-tagline,.meta .label,.item-detail,.item-detail.addon,.item-price,
+  .subtotal-label,.subtotal-value,.total-value,.change td,.unpaid td,
+  .notes-label,.notes-box,.footer-contact{color:#000;}
+  .order-num-label{display:none;}
+  .order-num{font-size:13px;color:#000;background:none;border:0;border-radius:0;padding:2px 0;}
+  .notes-box{background:none;border:0;border-radius:0;padding:0;}
+  .notes-icon{display:none;}
 </style>
 </head>
 <body>
 
-${s.showLogo && s.logoUrl ? `<div style="text-align:center;margin-bottom:4px;"><img src="${s.logoUrl}" alt="${s.logoAlt}" style="max-height:${s.logoMaxHeight};width:auto;display:inline-block;" /></div>` : ""}
 ${s.showShopName ? `<div class="shop-name">${s.shopName}</div>` : ""}
 ${s.showTagline  ? `<div class="shop-tagline">${s.shopTagline}</div>` : ""}
 
@@ -502,8 +513,8 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
 
   // Section collapse state
   const [openSections, setOpenSections] = useState({
-    paper: true,
-    typography: true,
+    paper: false,
+    typography: false,
     header: true,
     colors: false,
     toggles: true,
@@ -566,16 +577,24 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
   };
 
   return (
-    <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+    <div className="flex flex-col xl:flex-row" style={{ gap: 20, alignItems: "flex-start" }}>
 
       {/* ════════════════════════════════════════════════════════════════════
           LEFT — Controls
           ════════════════════════════════════════════════════════════════════ */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
 
+        <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: 8, padding: "12px 14px" }}>
+          <p style={{ fontSize: 13, fontWeight: 800, color: "#1e3a8a" }}>Edit the Bluetooth receipt</p>
+          <p style={{ fontSize: 11, lineHeight: 1.6, color: "#475569", marginTop: 3 }}>
+            Change the business details, choose what information appears, then press <strong>Save changes</strong>.
+            The preview shows the black-and-white receipt printed by the EPOS printer.
+          </p>
+        </div>
+
         {/* ── Paper ──────────────────────────────────────────────────────── */}
         <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
-          <SectionHeader icon={Printer} label="Paper & Layout" open={openSections.paper} onToggle={() => toggleSection("paper")} />
+          <SectionHeader icon={Printer} label="Browser/PDF paper settings (advanced)" open={openSections.paper} onToggle={() => toggleSection("paper")} />
           {openSections.paper && (
             <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
               <div className="grid grid-cols-2 gap-3">
@@ -652,7 +671,7 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
 
         {/* ── Typography ─────────────────────────────────────────────────── */}
         <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
-          <SectionHeader icon={Type} label="Typography" open={openSections.typography} onToggle={() => toggleSection("typography")} />
+          <SectionHeader icon={Type} label="Browser/PDF font settings (advanced)" open={openSections.typography} onToggle={() => toggleSection("typography")} />
           {openSections.typography && (
             <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
@@ -717,21 +736,24 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
 
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
-          <SectionHeader icon={Receipt} label="Header & Branding" open={openSections.header} onToggle={() => toggleSection("header")} />
+          <SectionHeader icon={Receipt} label="Business details" open={openSections.header} onToggle={() => toggleSection("header")} />
           {openSections.header && (
             <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <FieldLabel>Shop Name</FieldLabel>
+                  <FieldLabel>Business name</FieldLabel>
                   <TextInput value={s.shopName} onChange={(v) => update("shopName", v)} />
                 </div>
                 <div>
-                  <FieldLabel>Tagline</FieldLabel>
+                  <FieldLabel>Short description</FieldLabel>
                   <TextInput value={s.shopTagline} onChange={(v) => update("shopTagline", v)} />
                 </div>
               </div>
               <div>
-                <FieldLabel>Logo URL</FieldLabel>
+                <p style={{ fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 8 }}>
+                  Logo settings apply only to browser/PDF printing. The Bluetooth printer uses text only.
+                </p>
+                <FieldLabel>Logo image link (Browser/PDF only)</FieldLabel>
                 <TextInput
                   value={s.logoUrl}
                   onChange={(v) => update("logoUrl", v)}
@@ -741,11 +763,11 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <FieldLabel>Logo Alt Text</FieldLabel>
+                  <FieldLabel>Logo description</FieldLabel>
                   <TextInput value={s.logoAlt} onChange={(v) => update("logoAlt", v)} />
                 </div>
                 <div>
-                  <FieldLabel>Logo Max Height</FieldLabel>
+                  <FieldLabel>Logo height</FieldLabel>
                   <TextInput value={s.logoMaxHeight} onChange={(v) => update("logoMaxHeight", v)} mono placeholder="32px" />
                 </div>
               </div>
@@ -755,7 +777,7 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
 
         {/* ── Colors ─────────────────────────────────────────────────────── */}
         <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
-          <SectionHeader icon={Palette} label="Colors" open={openSections.colors} onToggle={() => toggleSection("colors")} />
+          <SectionHeader icon={Palette} label="Browser/PDF colors (advanced)" open={openSections.colors} onToggle={() => toggleSection("colors")} />
           {openSections.colors && (
             <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
               {COLOR_FIELDS.map(({ key, label }) => (
@@ -772,7 +794,7 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
 
         {/* ── Section Toggles ────────────────────────────────────────────── */}
         <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
-          <SectionHeader icon={Layout} label="Show / Hide Sections" open={openSections.toggles} onToggle={() => toggleSection("toggles")} />
+          <SectionHeader icon={Layout} label="Information to print" open={openSections.toggles} onToggle={() => toggleSection("toggles")} />
           {openSections.toggles && (
             <div style={{ padding: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               {SECTION_TOGGLES.map(({ key, label, description }) => (
@@ -790,11 +812,11 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
 
         {/* ── Footer ─────────────────────────────────────────────────────── */}
         <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
-          <SectionHeader icon={Settings} label="Footer Text" open={openSections.footer} onToggle={() => toggleSection("footer")} />
+          <SectionHeader icon={Settings} label="Closing message" open={openSections.footer} onToggle={() => toggleSection("footer")} />
           {openSections.footer && (
             <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
               <div>
-                <FieldLabel>Thank-you Line</FieldLabel>
+                <FieldLabel>Thank-you message</FieldLabel>
                 <TextInput
                   value={s.footerThankYou}
                   onChange={(v) => update("footerThankYou", v)}
@@ -805,7 +827,7 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
                 </p>
               </div>
               <div>
-                <FieldLabel>Contact Line</FieldLabel>
+                <FieldLabel>Phone number or website</FieldLabel>
                 <TextInput
                   value={s.footerContact}
                   onChange={(v) => update("footerContact", v)}
@@ -846,7 +868,7 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
           ) : saved ? (
             <><CheckCircle2 size={14} /> Saved!</>
           ) : (
-            <><Save size={14} /> Save Receipt Settings</>
+            <><Save size={14} /> Save changes</>
           )}
         </button>
       </div>
@@ -856,7 +878,7 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
           ════════════════════════════════════════════════════════════════════ */}
       <div
         style={{
-          width: 340,
+          width: "min(340px, 100%)",
           flexShrink: 0,
           position: "sticky",
           top: 16,
@@ -877,7 +899,7 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
         >
           <Eye size={13} style={{ color: "#1a7fba" }} />
           <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#64748b" }}>
-            Live Preview
+            Bluetooth print preview
           </span>
           <span
             style={{
@@ -995,7 +1017,7 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
           className="text-center mt-2"
           style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 600 }}
         >
-          Preview updates live as you edit
+          Example details are replaced automatically with the real order when printing.
         </p>
       </div>
     </div>

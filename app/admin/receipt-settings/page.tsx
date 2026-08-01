@@ -43,11 +43,11 @@ export default async function ReceiptSettingsPage() {
           className="font-black text-lg tracking-tight"
           style={{ color: "#1e293b" }}
         >
-          Receipt Template
+          Printed Receipt
         </h1>
         <p className="text-xs mt-1" style={{ color: "#94a3b8" }}>
-          Customize the thermal receipt printed when an order is created or paid.
-          Changes apply immediately — no code deployment required.
+          Choose the business details and information shown on customer receipts.
+          Save your changes when the preview looks right.
         </p>
       </div>
 

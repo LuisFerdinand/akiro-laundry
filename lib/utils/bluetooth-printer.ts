@@ -34,7 +34,9 @@ const PREF_KEY = "akiro:useBluetoothPrinter";
 
 export function getBluetoothPrinterPreference(): boolean {
   if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(PREF_KEY) === "1";
+  // An active GATT connection always means the user selected the thermal
+  // printer, even if an older saved preference is missing or disabled.
+  return printer.isConnected || window.localStorage.getItem(PREF_KEY) === "1";
 }
 
 export function setBluetoothPrinterPreference(enabled: boolean): void {
