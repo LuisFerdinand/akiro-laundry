@@ -77,6 +77,7 @@ interface OrderStatusUpdaterProps {
   customerPhone:  string;
   totalPrice:     string | number;
   serviceName:    string;
+  notes?:         string | null;
   templateData?:  WaTemplateData | null;
 }
 
@@ -89,6 +90,7 @@ export function OrderStatusUpdater({
   customerPhone,
   totalPrice,
   serviceName,
+  notes,
   templateData,
 }: OrderStatusUpdaterProps) {
   const [status,         setStatus]         = useState(currentStatus);
@@ -343,6 +345,7 @@ export function OrderStatusUpdater({
             status={status}
             paymentStatus={paymentStatus}
             totalPrice={totalPriceNum}
+            notes={notes}
             templateData={templateData}
             compact
           />

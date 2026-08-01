@@ -73,6 +73,13 @@ function buildMessage({
   // If we have DB templates, use them; otherwise fall back to hardcoded
   const settings = templateData?.settings;
 
+  // `??` only falls back on null/undefined — if a business field was ever saved
+  // as an empty string (e.g. accidentally cleared in the admin panel), it would
+  // render as a blank gap in the message instead of a sensible default. Treat
+  // blank/whitespace-only the same as missing.
+  const orDefault = (value: string | undefined, fallback: string): string =>
+    value?.trim() ? value : fallback;
+
   const vars: Record<string, string> = {
     customerName,
     orderNumber,
@@ -81,9 +88,9 @@ function buildMessage({
     totalPrice:    formattedPrice,
     reviewUrl,
     notes:         notes?.trim() ?? "",
-    businessName:  settings?.businessName  ?? "Akiro Laundry",
-    businessPhone: settings?.businessPhone ?? "+670 7675 8 7380",
-    businessUrl:   settings?.businessUrl   ?? "akirolaundry.com",
+    businessName:  orDefault(settings?.businessName,  "Akiro Laundry"),
+    businessPhone: orDefault(settings?.businessPhone, "+670 7675 8 7380"),
+    businessUrl:   orDefault(settings?.businessUrl,   "akirolaundry.com"),
   };
 
   // {{paymentLine}} is available as a variable inside the status message, but is
