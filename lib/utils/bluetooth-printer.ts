@@ -105,10 +105,23 @@ export class BluetoothThermalPrinter {
   async write(data: Uint8Array): Promise<void> {
     if (!this.characteristic) throw new Error("Printer not connected.");
 
-    const CHUNK = 512;
+    // Cheap BLE thermal printers commonly expose a 20-byte GATT write payload.
+    // A larger write can resolve successfully in Web Bluetooth while the printer
+    // silently keeps only the first part (or overruns its very small input
+    // buffer), which produces a receipt that stops after the header. Keep writes
+    // at the universally-safe BLE payload size and pace them so long receipts are
+    // delivered completely.
+    const CHUNK = 20;
+    const WRITE_DELAY_MS = 20;
+
     for (let i = 0; i < data.length; i += CHUNK) {
       await this.characteristic.writeValueWithoutResponse(data.slice(i, i + CHUNK));
+      await delay(WRITE_DELAY_MS);
     }
+
+    // Let the printer drain its receive buffer before the caller reports success
+    // (and before a subsequent print can start).
+    await delay(100);
   }
 
   async printText(text: string): Promise<void> {
@@ -118,6 +131,10 @@ export class BluetoothThermalPrinter {
   async printBytes(bytes: number[]): Promise<void> {
     await this.write(new Uint8Array(bytes));
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export const printer = new BluetoothThermalPrinter();
