@@ -1,7 +1,7 @@
 // lib/db/queries/cms.queries.ts
 
 import { db } from "@/lib/db";
-import { eq, asc, desc } from "drizzle-orm";
+import { eq, and, asc, desc } from "drizzle-orm";
 import * as cms from "@/lib/db/schema/cms";
 import { cmsSeoSettings } from "@/lib/db/schema/cms";
 
@@ -100,10 +100,15 @@ export async function getTestimonialsSection() {
     .orderBy(desc(cms.cmsTestimonialsSection.id))
     .limit(1);
   if (!section) return null;
+  // Only approved (isActive) testimonials — pending customer submissions are
+  // moderated separately via the admin Reviews page, not shown publicly yet.
   const testimonials = await db
     .select()
     .from(cms.cmsTestimonials)
-    .where(eq(cms.cmsTestimonials.sectionId, section.id))
+    .where(and(
+      eq(cms.cmsTestimonials.sectionId, section.id),
+      eq(cms.cmsTestimonials.isActive, true),
+    ))
     .orderBy(asc(cms.cmsTestimonials.sortOrder));
   return { ...section, testimonials };
 }

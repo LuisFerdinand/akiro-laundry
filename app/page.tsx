@@ -2,6 +2,7 @@
 import { getLandingPageData } from "@/lib/db/queries/cms.queries";
 import Navbar from "@/components/public/Navbar";
 import HeroSection from "@/components/public/HeroSection";
+import LocationSection from "@/components/public/LocationSection";
 import ServicesSection from "@/components/public/ServicesSection";
 import HowItWorksSection from "@/components/public/HowItWorksSection";
 import GallerySection from "@/components/public/GallerySection";
@@ -16,6 +17,7 @@ export default async function RootPage() {
     <main className="akiro-page-bg">
       <Navbar data={data.navbar} />
       <HeroSection data={data.hero} />
+      <LocationSection />
       <ServicesSection data={data.services} />
       <HowItWorksSection data={data.howItWorks} />
       <GallerySection data={data.gallery} />

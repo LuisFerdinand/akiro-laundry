@@ -90,7 +90,8 @@ export async function submitTestimonial(
       rating:      input.rating,
       body:        input.body.trim(),
       sortOrder:   nextOrder,
-      isActive:    false, // pending admin approval
+      isActive:    false,       // pending admin approval
+      source:      "customer",  // submitted via the public review form
     });
 
     return { success: true };

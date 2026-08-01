@@ -5,7 +5,7 @@
 import { db } from "@/lib/db";
 import { customers, orders } from "@/lib/db/schema";
 import type { Customer } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -235,5 +235,34 @@ export async function updateCustomer(
   } catch (err: any) {
     if (err?.message?.includes("unique")) return { success: false, error: "Phone number already exists." };
     return { success: false, error: "Failed to update customer." };
+  }
+}
+
+// ─── Delete customer ──────────────────────────────────────────────────────────
+
+export async function deleteCustomer(id: number): Promise<{ success: boolean; error?: string }> {
+  try {
+    const [target] = await db.select().from(customers).where(eq(customers.id, id)).limit(1);
+    if (!target) return { success: false, error: "Customer not found." };
+
+    // orders.customerId is NOT NULL with no cascade rule — a customer with existing
+    // orders can't be deleted without breaking that FK. Refuse instead of erroring.
+    const [{ value: orderCount }] = await db
+      .select({ value: count() })
+      .from(orders)
+      .where(eq(orders.customerId, id));
+
+    if (Number(orderCount) > 0) {
+      return {
+        success: false,
+        error: `Cannot delete — this customer has ${orderCount} order${Number(orderCount) !== 1 ? "s" : ""}. Delete their orders first.`,
+      };
+    }
+
+    await db.delete(customers).where(eq(customers.id, id));
+    revalidatePath("/admin/customers");
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message ?? "Failed to delete customer." };
   }
 }

@@ -67,6 +67,19 @@ export async function getWaTemplateData(): Promise<WaTemplateData | null> {
   return { settings, statusTemplates };
 }
 
+// ─── Revalidation ─────────────────────────────────────────────────────────────
+// Every page that reads WA template data (list pages AND the dynamic order-detail
+// pages) needs to be invalidated on save — otherwise Next.js can keep serving a
+// cached render of an order detail page from before the template changed.
+
+function revalidateWaConsumers(): void {
+  revalidatePath("/admin/wa-templates");
+  revalidatePath("/admin/orders");
+  revalidatePath("/admin/orders/[id]", "page");
+  revalidatePath("/employee/orders");
+  revalidatePath("/employee/orders/[id]", "page");
+}
+
 // ─── Update settings ──────────────────────────────────────────────────────────
 
 export async function updateWaTemplateSettings(
@@ -79,8 +92,7 @@ export async function updateWaTemplateSettings(
       .set({ ...data, updatedAt: new Date() })
       .where(eq(waTemplateSettings.id, id));
 
-    revalidatePath("/admin/wa-templates");
-    revalidatePath("/employee/orders");
+    revalidateWaConsumers();
     return { success: true };
   } catch (err) {
     console.error("[updateWaTemplateSettings]", err);
@@ -100,8 +112,7 @@ export async function updateWaStatusTemplate(
       .set({ bodyTemplate, updatedAt: new Date() })
       .where(eq(waStatusTemplates.id, id));
 
-    revalidatePath("/admin/wa-templates");
-    revalidatePath("/employee/orders");
+    revalidateWaConsumers();
     return { success: true };
   } catch (err) {
     console.error("[updateWaStatusTemplate]", err);

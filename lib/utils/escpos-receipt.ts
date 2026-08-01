@@ -34,21 +34,37 @@ export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
   const s = data.settings;
   const shopName = s?.shopName ?? "Akiro Laundry";
 
+  const showShopName        = s?.showShopName        ?? true;
+  const showTagline         = s?.showTagline          ?? true;
+  const showOrderNumber     = s?.showOrderNumber      ?? true;
+  const showCustomerAddress = s?.showCustomerAddress  ?? true;
+  const showPaymentMethod   = s?.showPaymentMethod    ?? true;
+  const showAmountPaid      = s?.showAmountPaid       ?? true;
+  const showChangeGiven     = s?.showChangeGiven      ?? true;
+  const showNotes           = s?.showNotes            ?? true;
+  const showFooter          = s?.showFooter           ?? true;
+  const footerThankYou      = (s?.footerThankYou ?? "Thank you for choosing {{shopName}}!")
+    .replace(/\{\{shopName\}\}/g, shopName);
+
   const commands: (number[] | string)[] = [
     ESC_POS.INIT,
     ESC_POS.ALIGN_CENTER,
-    ESC_POS.BOLD_ON,
-    ESC_POS.DOUBLE_HEIGHT,
-    `${shopName}\n`,
-    ESC_POS.NORMAL_SIZE,
-    ESC_POS.BOLD_OFF,
-    `${s?.shopTagline ?? "Premium Laundry & Perfume Service"}\n`,
+    ...(showShopName ? [
+      ESC_POS.BOLD_ON,
+      ESC_POS.DOUBLE_HEIGHT,
+      `${shopName}\n`,
+      ESC_POS.NORMAL_SIZE,
+      ESC_POS.BOLD_OFF,
+    ] : []),
+    ...(showTagline ? [`${s?.shopTagline ?? "Premium Laundry & Perfume Service"}\n`] : []),
     ESC_POS.DASHED_LINE,
 
     // Order number
-    ESC_POS.BOLD_ON,
-    `Order: ${orderNumber}\n`,
-    ESC_POS.BOLD_OFF,
+    ...(showOrderNumber ? [
+      ESC_POS.BOLD_ON,
+      `Order: ${orderNumber}\n`,
+      ESC_POS.BOLD_OFF,
+    ] : []),
 
     ESC_POS.ALIGN_LEFT,
     `Date    : ${new Intl.DateTimeFormat("en-US", {
@@ -58,6 +74,9 @@ export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
     }).format(createdAt)}\n`,
     `Customer: ${formData.customer.name}\n`,
     `Phone   : ${formData.customer.phone}\n`,
+    ...(showCustomerAddress && formData.customer.address?.trim()
+      ? [`Address : ${formData.customer.address}\n`]
+      : []),
     ESC_POS.DASHED_LINE,
 
     // Line items
@@ -97,25 +116,27 @@ export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
 
     // Payment
     ...(amountPaid != null ? [
-      padLine("Payment", paymentMethod ?? "—"),
-      padLine("Amount Paid", formatUSD(amountPaid)),
-      ...(changeGiven && changeGiven > 0
+      ...(showPaymentMethod ? [padLine("Payment", paymentMethod ?? "—")] : []),
+      ...(showAmountPaid    ? [padLine("Amount Paid", formatUSD(amountPaid))] : []),
+      ...(showChangeGiven && changeGiven && changeGiven > 0
         ? [padLine("Change", formatUSD(changeGiven))]
         : []),
     ] : ["  ⚠ UNPAID\n"]),
 
     // Notes
-    ...(formData.notes?.trim() ? [
+    ...(showNotes && formData.notes?.trim() ? [
       ESC_POS.DASHED_LINE,
       "Note:\n",
       `${formData.notes.trim()}\n`,
     ] : []),
 
     // Footer
-    ESC_POS.DASHED_LINE,
-    ESC_POS.ALIGN_CENTER,
-    `Thank you for choosing ${shopName}!\n`,
-    `${s?.footerContact ?? ""}\n`,
+    ...(showFooter ? [
+      ESC_POS.DASHED_LINE,
+      ESC_POS.ALIGN_CENTER,
+      `${footerThankYou}\n`,
+      `${s?.footerContact ?? ""}\n`,
+    ] : []),
 
     // Feed & cut
     "\n\n\n",

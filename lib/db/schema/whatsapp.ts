@@ -61,6 +61,15 @@ export const waTemplateSettings = pgTable("wa_template_settings", {
     .notNull()
     .default("🧾 *DETALLU PEDIDU*"),
 
+  // Order detail body — the actual order-number/services/status/total/payment lines.
+  // Fully editable/removable; supports {{orderNumber}}, {{servicesSummary}}, {{statusLabel}},
+  // {{totalPrice}}, {{paymentLine}} placeholders.
+  orderDetailBody: text("order_detail_body")
+    .notNull()
+    .default(
+      "📌 *N.º Pedidu:*  {{orderNumber}}\n👕 *Servisu:*     {{servicesSummary}}\n📦 *Status:*      *{{statusLabel}}*\n💰 *Total:*       {{totalPrice}}\n{{paymentLine}}",
+    ),
+
   // Footer template (bottom of message)
   footerTemplate: text("footer_template")
     .notNull()

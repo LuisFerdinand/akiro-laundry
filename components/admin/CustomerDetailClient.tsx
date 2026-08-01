@@ -10,6 +10,7 @@ import {
   CheckCircle2, ArrowUpRight, Clock, Waves, PackageCheck,
 } from "lucide-react";
 import { updateCustomer } from "@/lib/actions/admin-customers";
+import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { formatUSD, ORDER_STATUS_LABELS } from "@/lib/utils/order-form";
 import type { CustomerDetail } from "@/lib/actions/admin-customers";
 
@@ -93,14 +94,21 @@ export function CustomerDetailClient({ customer }: Props) {
           </div>
         </div>
         {!editing && (
-          <button onClick={() => setEditing(true)} style={{
-            display: "flex", alignItems: "center", gap: "7px",
-            padding: "9px 16px", borderRadius: "8px",
-            border: "1.5px solid #e2e8f0", background: "white",
-            fontSize: "13px", fontWeight: 700, color: "#475569", cursor: "pointer",
-          }}>
-            <Edit2 size={13} /> Edit
-          </button>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button onClick={() => setEditing(true)} style={{
+              display: "flex", alignItems: "center", gap: "7px",
+              padding: "9px 16px", borderRadius: "8px",
+              border: "1.5px solid #e2e8f0", background: "white",
+              fontSize: "13px", fontWeight: 700, color: "#475569", cursor: "pointer",
+            }}>
+              <Edit2 size={13} /> Edit
+            </button>
+            <DeleteCustomerButton
+              customerId={customer.id}
+              customerName={customer.name}
+              redirectTo="/admin/customers"
+            />
+          </div>
         )}
       </div>
 

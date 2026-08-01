@@ -1,5 +1,6 @@
 // app/admin/orders/[id]/page.tsx
 import { getAdminOrderById }              from "@/lib/actions/admin-orders";
+import { getWaTemplateData }               from "@/lib/actions/wa-templates";
 import { notFound }                        from "next/navigation";
 import { formatUSD, ORDER_STATUS_LABELS }  from "@/lib/utils/order-form";
 import Link                                from "next/link";
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import type { AdminOrderItem } from "@/lib/actions/admin-orders";
 import { WhatsAppNotify } from "@/components/employee/WhatsAppNotify";
+import { DeleteOrderButton } from "@/components/shared/DeleteOrderButton";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -247,7 +249,10 @@ export default async function AdminOrderDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const order = await getAdminOrderById(parseInt(id));
+  const [order, waTemplateData] = await Promise.all([
+    getAdminOrderById(parseInt(id)),
+    getWaTemplateData(),
+  ]);
   if (!order) notFound();
 
   const sc     = STATUS_CONFIG[order.status];
@@ -326,6 +331,13 @@ export default async function AdminOrderDetailPage({
               paymentStatus={order.paymentStatus as "paid" | "unpaid"}
               totalPrice={total}
               notes={order.notes}
+              templateData={waTemplateData}
+            />
+
+            <DeleteOrderButton
+              orderId={order.id}
+              orderNumber={order.orderNumber}
+              redirectTo="/admin/orders"
             />
           </div>
         </div>

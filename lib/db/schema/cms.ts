@@ -240,6 +240,10 @@ export const cmsTestimonials = pgTable("cms_testimonials", {
   sortOrder:   integer("sort_order").notNull().default(0),
   isActive:    boolean("is_active").default(true).notNull(),
   createdAt:   timestamp("created_at").defaultNow().notNull(),
+  // "admin" = curated via the CMS Testimonials editor, "customer" = submitted through
+  // the public /review form. Lets the admin Reviews page list customer submissions
+  // independently of whatever the CMS Testimonials editor is currently curating.
+  source:      text("source").notNull().default("admin"),
 });
 
 // ─── CTA Section ─────────────────────────────────────────────────────────────

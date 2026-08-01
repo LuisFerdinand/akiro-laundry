@@ -1,10 +1,10 @@
 // components/employee/WhatsAppNotify.tsx
 "use client";
 
-import { useEffect, useState } from "react";
 import { MessageCircle } from "lucide-react";
 import { ORDER_STATUS_LABELS, formatUSD } from "@/lib/utils/order-form";
 import { parseE164 } from "@/lib/utils/phone";
+import { interpolate } from "@/lib/utils/wa-message";
 import type { Order } from "@/lib/db/schema";
 import type { WaTemplateData } from "@/lib/actions/wa-templates";
 
@@ -44,14 +44,6 @@ const FALLBACK_STATUS_BODY: Record<Order["status"], string> = {
     "🎉 Ita-nia pedidu *foti ona*. Obrigadu tan uza ami-nia servisu!",
 };
 
-// ── Variable interpolation ────────────────────────────────────────────────────
-function interpolate(
-  template: string,
-  vars: Record<string, string>,
-): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
-}
-
 // ── Build the full WA message ─────────────────────────────────────────────────
 function buildMessage({
   customerName,
@@ -77,7 +69,6 @@ function buildMessage({
   const statusLabel    = ORDER_STATUS_LABELS[status] ?? status;
   const formattedPrice = formatUSD(isNaN(totalPrice) ? 0 : totalPrice);
   const isPaid         = paymentStatus === "paid";
-  const trimmedNotes   = notes?.trim();
 
   // If we have DB templates, use them; otherwise fall back to hardcoded
   const settings = templateData?.settings;
@@ -89,23 +80,15 @@ function buildMessage({
     statusLabel,
     totalPrice:    formattedPrice,
     reviewUrl,
+    notes:         notes?.trim() ?? "",
     businessName:  settings?.businessName  ?? "Akiro Laundry",
     businessPhone: settings?.businessPhone ?? "+670 7675 8 7380",
     businessUrl:   settings?.businessUrl   ?? "akirolaundry.com",
   };
 
-  const sep = settings?.separator ?? "─────────────────────────";
-
-  // ── Greeting ────────────────────────────────────────────────────────────────
-  const greeting = settings?.greetingTemplate
-    ? interpolate(settings.greetingTemplate, vars)
-    : `Ola Sr/a *${customerName}*,\nAmi husi *Akiro Laundry* hakarak informa kona-ba ita-nia pedidu foun.`;
-
-  // ── Order detail header ─────────────────────────────────────────────────────
-  const detailHeader = settings?.orderDetailHeader ?? "🧾 *DETALLU PEDIDU*";
-
-  // ── Payment line ────────────────────────────────────────────────────────────
-  const paymentLine = isPaid
+  // {{paymentLine}} is available as a variable inside the status message, but is
+  // never inserted on its own — the admin opts in by typing the token themselves.
+  vars.paymentLine = isPaid
     ? interpolate(settings?.paymentPaidTemplate ?? "✅ *Pagamentu:* Kompletu ona", vars)
     : interpolate(
         settings?.paymentUnpaidTemplate ??
@@ -113,50 +96,14 @@ function buildMessage({
         vars,
       );
 
-  // ── Status body ─────────────────────────────────────────────────────────────
+  // The status message IS the entire outgoing message, verbatim — nothing is
+  // ever prepended or appended to it.
   const bodyRaw =
     templateData?.statusTemplates[status] ??
     FALLBACK_STATUS_BODY[status] ??
     `📦 *Status:* ${statusLabel}`;
-  const bodyText = interpolate(bodyRaw, vars);
 
-  // ── Footer ──────────────────────────────────────────────────────────────────
-  const footer = settings?.footerTemplate
-    ? interpolate(settings.footerTemplate, vars)
-    : `Akiro Laundry\n📞 +670 7675 8 7380\n🌐 akirolaundry.com`;
-
-  // ── Review CTA ──────────────────────────────────────────────────────────────
-  const reviewCta = settings?.reviewCtaTemplate
-    ? interpolate(settings.reviewCtaTemplate, vars)
-    : `⭐ *Kontenti ho ami-nia servisu?*\nHusik review ida iha: ${reviewUrl}\nObrigadu barak! 🙏`;
-
-  // ── Notes header ────────────────────────────────────────────────────────────
-  const notesHeader = settings?.notesSectionHeader ?? "📝 *NOTA ESPESIAL*";
-
-  // ── Assemble message ────────────────────────────────────────────────────────
-  const lines: string[] = [
-    greeting,
-    sep,
-    "",
-    detailHeader,
-    sep,
-    `📌 *N.º Pedidu:*  ${orderNumber}`,
-    `👕 *Servisu:*     ${servicesSummary}`,
-    `📦 *Status:*      *${statusLabel}*`,
-    `💰 *Total:*       ${formattedPrice}`,
-    paymentLine,
-    sep,
-    "",
-    bodyText,
-  ];
-
-  if (trimmedNotes) {
-    lines.push("", sep, notesHeader, sep, trimmedNotes);
-  }
-
-  lines.push("", sep, footer, "", sep, reviewCta);
-
-  return lines.join("\n");
+  return interpolate(bodyRaw, vars);
 }
 
 // ── Shared button styles ──────────────────────────────────────────────────────

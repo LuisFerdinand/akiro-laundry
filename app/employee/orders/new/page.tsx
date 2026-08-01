@@ -33,8 +33,10 @@ import {
   createOrder,
 } from "@/lib/actions/orders";
 import { getReceiptSettings } from "@/lib/actions/receipt-settings";
+import { getWaTemplateData } from "@/lib/actions/wa-templates";
 import type { ServicePricing, Soap, Pewangi } from "@/lib/db/schema";
 import type { ReceiptSettings } from "@/lib/db/schema/receipt";
+import type { WaTemplateData } from "@/lib/actions/wa-templates";
 import { printReceipt } from "@/components/employee/PrintReceipt";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -84,6 +86,7 @@ export default function NewOrderPage() {
   const [soaps,           setSoaps]           = useState<Soap[]>([]);
   const [pewangis,        setPewangis]        = useState<Pewangi[]>([]);
   const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings | null>(null);
+  const [waTemplateData,  setWaTemplateData]  = useState<WaTemplateData | null>(null);
   const [loading,         setLoading]         = useState(true);
 
   useEffect(() => {
@@ -92,12 +95,14 @@ export default function NewOrderPage() {
       getActiveSoaps(),
       getActivePewangi(),
       getReceiptSettings(),          // ← fetch settings alongside other data
+      getWaTemplateData(),           // ← fetch WA template so the notify button uses it
     ])
-      .then(([s, so, p, rs]) => {
+      .then(([s, so, p, rs, wd]) => {
         setServices(s);
         setSoaps(so);
         setPewangis(p);
         setReceiptSettings(rs);      // ← store in state
+        setWaTemplateData(wd);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -272,6 +277,7 @@ export default function NewOrderPage() {
               paymentStatus={waPaymentStatus}
               totalPrice={success.total}
               notes={formData.notes}
+              templateData={waTemplateData}
               className="w-full"
             />
 

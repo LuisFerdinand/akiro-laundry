@@ -14,6 +14,7 @@ import { formatUSD, ORDER_STATUS_LABELS } from "@/lib/utils/order-form";
 import { getOrdersForExport } from "@/lib/actions/export";
 import { exportToXlsx } from "@/lib/utils/export-xlsx";
 import { ExportModal, type ExportDateRange } from "@/components/admin/ExportModal";
+import { DeleteOrderButton } from "@/components/shared/DeleteOrderButton";
 import type { PaginatedOrders, OrderFilters } from "@/lib/actions/admin-orders";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -370,9 +371,12 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
                         </span>
                       </td>
                       <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}>
-                        <Link href={`/admin/orders/${order.id}`} style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", fontWeight: 700, color: "#1a7fba", textDecoration: "none", background: "#edf7fd", padding: "4px 10px", borderRadius: "6px", border: "1px solid #b6def5", whiteSpace: "nowrap" }}>
-                          View <ArrowUpRight size={10} />
-                        </Link>
+                        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                          <Link href={`/admin/orders/${order.id}`} style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", fontWeight: 700, color: "#1a7fba", textDecoration: "none", background: "#edf7fd", padding: "4px 10px", borderRadius: "6px", border: "1px solid #b6def5", whiteSpace: "nowrap" }}>
+                            View <ArrowUpRight size={10} />
+                          </Link>
+                          <DeleteOrderButton orderId={order.id} orderNumber={order.orderNumber} />
+                        </div>
                       </td>
                     </tr>
                   );

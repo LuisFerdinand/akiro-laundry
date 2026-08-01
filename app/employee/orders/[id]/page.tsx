@@ -6,6 +6,7 @@ import { getReceiptSettings } from "@/lib/actions/receipt-settings";
 import { formatUSD, ORDER_STATUS_LABELS } from "@/lib/utils/order-form";
 import { OrderStatusUpdater }  from "@/components/employee/OrderStatusUpdater";
 import { PrintReceiptButton }  from "@/components/employee/PrintReceiptButton";
+import { DeleteOrderButton }   from "@/components/shared/DeleteOrderButton";
 import {
   ArrowLeft, User, Phone, Layers, Weight, Calendar,
   Clock, FileText, Droplets, Wind, Hash,
@@ -222,6 +223,14 @@ export default async function OrderDetailPage({ params }: PageProps) {
         serviceName={firstServiceName}
         paymentStatus={order.paymentStatus}
         templateData={waTemplateData}
+      />
+
+      {/* Delete order */}
+      <DeleteOrderButton
+        orderId={order.id}
+        orderNumber={order.orderNumber}
+        redirectTo="/employee/orders"
+        fullWidth
       />
     </div>
   );

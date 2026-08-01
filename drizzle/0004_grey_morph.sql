@@ -1,0 +1,1 @@
+ALTER TABLE "cms_testimonials" ADD COLUMN "source" text DEFAULT 'admin' NOT NULL;

@@ -2,7 +2,7 @@
 import type { ServicePricing, Soap, Pewangi } from "@/lib/db/schema";
 import type { OrderFormData, OrderPriceBreakdown } from "@/lib/utils/order-form";
 import type { ReceiptSettings } from "@/lib/db/schema/receipt";
-import { printer, isBluetoothSupported } from "@/lib/utils/bluetooth-printer";
+import { printer, isBluetoothSupported, getBluetoothPrinterPreference } from "@/lib/utils/bluetooth-printer";
 import { buildEscPosReceipt } from "@/lib/utils/escpos-receipt";
 import { toast } from "sonner";
 
@@ -85,10 +85,14 @@ function interpolate(template: string, vars: Record<string, string>): string {
 }
 
 // ─── Bluetooth print ──────────────────────────────────────────────────────────
-// Tries BLE first; falls through to the iframe/window.print() path on failure.
+// Only runs when this device has explicitly opted in (see getBluetoothPrinterPreference)
+// — otherwise every device would silently pick whichever path its browser happens to
+// support, producing inconsistent output between e.g. a tablet and a laptop.
+// Falls through to the iframe/window.print() path on failure or when opted out.
 
 async function printViaBluetooth(data: ReceiptData): Promise<boolean> {
-  if (!isBluetoothSupported()) return false;  // Safari / Firefox — skip silently
+  if (!isBluetoothSupported()) return false;      // Safari / Firefox — skip silently
+  if (!getBluetoothPrinterPreference()) return false; // not opted in on this device
 
   try {
     if (!printer.isConnected) {

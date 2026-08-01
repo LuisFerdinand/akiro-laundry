@@ -151,7 +151,7 @@ export default function TestimonialsSection({ data }: { data: TestimonialsData }
   const subtext         = data?.subtext         ?? "";
   const aggregateRating = data?.aggregateRating ?? "4.9";
   const reviewCount     = data?.reviewCount     ?? "";
-  const testimonials    = data?.testimonials    ?? [];
+  const testimonials    = (data?.testimonials ?? []).filter((t) => t.isActive);
 
   // Section entrance reveal
   useEffect(() => {

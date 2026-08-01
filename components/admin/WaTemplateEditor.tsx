@@ -1,13 +1,12 @@
-/* eslint-disable react-hooks/immutability */
 // components/admin/WaTemplateEditor.tsx
 "use client";
 
-import { useState, useTransition, useRef, useCallback, useEffect } from "react";
+import { useState, useTransition, useRef, useEffect } from "react";
 import {
-  Save, CheckCircle2, Loader2, MessageCircle,
+  Save, CheckCircle2, Loader2,
   Bold, Italic, Strikethrough, Code, Variable,
-  Eye, EyeOff, Smartphone, ChevronDown, Type,
-  Settings, Info, Undo2, RotateCcw,
+  Eye, EyeOff, ChevronDown,
+  Settings, RotateCcw,
 } from "lucide-react";
 import {
   updateWaTemplateSettings,
@@ -38,6 +37,8 @@ const VARIABLES: { token: string; label: string; sample: string }[] = [
   { token: "{{servicesSummary}}", label: "Services",        sample: "Wash & Dry, Shoes"  },
   { token: "{{statusLabel}}",     label: "Status Label",    sample: "Remata ona"         },
   { token: "{{totalPrice}}",      label: "Total Price",     sample: "$12.50"             },
+  { token: "{{paymentLine}}",     label: "Payment Line",    sample: "✅ *Pagamentu:* Kompletu ona" },
+  { token: "{{notes}}",           label: "Order Notes",     sample: "Handle ropa ne'e ho kuidadu." },
   { token: "{{reviewUrl}}",       label: "Review URL",      sample: "https://akirolaundry.com/review" },
   { token: "{{businessName}}",    label: "Business Name",   sample: "Akiro Laundry"      },
   { token: "{{businessPhone}}",   label: "Business Phone",  sample: "+670 7675 8 7380"   },
@@ -45,51 +46,20 @@ const VARIABLES: { token: string; label: string; sample: string }[] = [
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   HELPERS — assemble / disassemble the full message from DB fields
+   HELPERS
    ═══════════════════════════════════════════════════════════════════════════════ */
 
-function assembleFullMessage(
-  settings: WaTemplateSettings,
-  statusBody: string,
-  includeNotes: boolean,
-): string {
-  const sep = settings.separator;
-  const lines: string[] = [
-    settings.greetingTemplate,
-    sep,
-    "",
-    settings.orderDetailHeader,
-    sep,
-    "📌 *N.º Pedidu:*  {{orderNumber}}",
-    "👕 *Servisu:*     {{servicesSummary}}",
-    "📦 *Status:*      *{{statusLabel}}*",
-    "💰 *Total:*       {{totalPrice}}",
-    "{{paymentLine}}",
-    sep,
-    "",
-    statusBody,
-  ];
-
-  if (includeNotes) {
-    lines.push("", sep, settings.notesSectionHeader, sep, "{{notes}}");
-  }
-
-  lines.push("", sep, settings.footerTemplate, "", sep, settings.reviewCtaTemplate);
-
-  return lines.join("\n");
-}
-
+/** Substitutes every known token with a representative sample value, for the live preview only. */
 function interpolatePreview(text: string, settings: WaTemplateSettings): string {
   let out = text;
   for (const v of VARIABLES) {
+    if (v.token === "{{paymentLine}}") continue; // handled below (depends on settings)
     out = out.replaceAll(v.token, v.sample);
   }
-  // Payment line preview
   out = out.replaceAll(
     "{{paymentLine}}",
     settings.paymentUnpaidTemplate.replaceAll("{{totalPrice}}", "$12.50"),
   );
-  out = out.replaceAll("{{notes}}", "Handle ropa ne'e ho kuidadu.");
   return out;
 }
 
@@ -106,75 +76,6 @@ function waToHtml(text: string): string {
     .replace(/`(.*?)`/g, '<code style="background:#e2e8f0;padding:1px 4px;border-radius:3px;font-size:12px">$1</code>')
     // Newlines
     .replace(/\n/g, "<br/>");
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════════
-   DISASSEMBLE — parse edited full message back into DB fields
-   ═══════════════════════════════════════════════════════════════════════════════ */
-
-interface DisassembledFields {
-  greetingTemplate:    string;
-  orderDetailHeader:   string;
-  footerTemplate:      string;
-  reviewCtaTemplate:   string;
-  notesSectionHeader:  string;
-  separator:           string;
-  statusBody:          string;
-}
-
-function disassembleMessage(
-  fullText: string,
-  originalSettings: WaTemplateSettings,
-): DisassembledFields {
-  const sep = originalSettings.separator;
-  const sections = fullText.split(sep);
-
-  // Default fallback = keep original values
-  const result: DisassembledFields = {
-    greetingTemplate:   originalSettings.greetingTemplate,
-    orderDetailHeader:  originalSettings.orderDetailHeader,
-    footerTemplate:     originalSettings.footerTemplate,
-    reviewCtaTemplate:  originalSettings.reviewCtaTemplate,
-    notesSectionHeader: originalSettings.notesSectionHeader,
-    separator:          sep,
-    statusBody:         "",
-  };
-
-  if (sections.length < 4) {
-    // Can't reliably parse — treat entire text as status body
-    result.statusBody = fullText;
-    return result;
-  }
-
-  // Section 0: greeting
-  result.greetingTemplate = sections[0].trim();
-
-  // Section 1: order detail header + detail lines + payment line
-  const detailBlock = sections[1].trim();
-  const detailLines = detailBlock.split("\n").filter((l) => l.trim());
-  if (detailLines.length > 0) {
-    // First non-empty line is the header
-    result.orderDetailHeader = detailLines[0].trim();
-  }
-
-  // Section 2: status body (everything between detail block separator and notes/footer)
-  result.statusBody = sections[2].trim();
-
-  // Find notes section header if present
-  const notesSectionIdx = sections.findIndex(
-    (s) => s.trim().startsWith(originalSettings.notesSectionHeader.trim().substring(0, 5)),
-  );
-
-  // Last two sections: footer and review CTA
-  const lastSections = sections.slice(-2);
-  if (lastSections.length >= 2) {
-    result.reviewCtaTemplate = lastSections[1].trim();
-    result.footerTemplate = lastSections[0].trim();
-  } else if (lastSections.length === 1) {
-    result.footerTemplate = lastSections[0].trim();
-  }
-
-  return result;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -199,7 +100,7 @@ function ToolBtn({
       title={label}
       onClick={onClick}
       style={{
-        width: 32, height: 32,
+        width: 28, height: 28,
         display: "flex", alignItems: "center", justifyContent: "center",
         borderRadius: "6px",
         border: active ? "1.5px solid #1a7fba" : "1.5px solid transparent",
@@ -207,6 +108,7 @@ function ToolBtn({
         color: active ? "#1a7fba" : "#64748b",
         cursor: "pointer",
         transition: "all 0.12s",
+        flexShrink: 0,
       }}
       onMouseEnter={(e) => {
         if (!active) {
@@ -221,14 +123,166 @@ function ToolBtn({
         }
       }}
     >
-      <Icon size={14} />
+      <Icon size={13} />
     </button>
   );
 }
 
-/** Divider line in toolbar */
-function ToolDivider() {
-  return <div style={{ width: 1, height: 20, background: "#e2e8f0", margin: "0 2px" }} />;
+/**
+ * A single editable template field — its own Bold/Italic/Strike/Mono formatting
+ * toolbar + variable inserter, bound directly to one DB field. No assembling or
+ * parsing: what you type here is exactly what gets saved.
+ */
+function FormattableField({
+  label,
+  value,
+  onChange,
+  rows = 3,
+  placeholder,
+  extra,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  rows?: number;
+  placeholder?: string;
+  /** Extra node rendered in the field header, right-aligned before the toolbar (e.g. a Reset button). */
+  extra?: React.ReactNode;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const [showVarMenu, setShowVarMenu] = useState(false);
+  const varMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (varMenuRef.current && !varMenuRef.current.contains(e.target as Node)) {
+        setShowVarMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const wrapSelection = (before: string, after: string) => {
+    const ta = ref.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end   = ta.selectionEnd;
+    const text  = ta.value;
+    const selected = text.substring(start, end);
+
+    const beforeMatch = text.substring(Math.max(0, start - before.length), start);
+    const afterMatch  = text.substring(end, end + after.length);
+    if (beforeMatch === before && afterMatch === after) {
+      const newText = text.substring(0, start - before.length) + selected + text.substring(end + after.length);
+      onChange(newText);
+      requestAnimationFrame(() => {
+        ta.selectionStart = start - before.length;
+        ta.selectionEnd   = end - before.length;
+        ta.focus();
+      });
+      return;
+    }
+
+    const newText = text.substring(0, start) + before + selected + after + text.substring(end);
+    onChange(newText);
+    requestAnimationFrame(() => {
+      ta.selectionStart = start + before.length;
+      ta.selectionEnd   = end + before.length;
+      ta.focus();
+    });
+  };
+
+  const insertAtCursor = (insert: string) => {
+    const ta = ref.current;
+    if (!ta) return;
+    const start   = ta.selectionStart;
+    const text    = ta.value;
+    const newText = text.substring(0, start) + insert + text.substring(start);
+    onChange(newText);
+    requestAnimationFrame(() => {
+      ta.selectionStart = ta.selectionEnd = start + insert.length;
+      ta.focus();
+    });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "b") { e.preventDefault(); wrapSelection("*", "*"); }
+    else if ((e.ctrlKey || e.metaKey) && e.key === "i") { e.preventDefault(); wrapSelection("_", "_"); }
+  };
+
+  return (
+    <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
+      <div
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "6px 10px", borderBottom: "1.5px solid #f1f5f9", background: "#fafbfc",
+          flexWrap: "wrap", gap: 4,
+        }}
+      >
+        <span style={{ fontSize: "10px", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+          {label}
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 1 }}>
+          {extra}
+          <ToolBtn icon={Bold}          label="Bold (*text*) — Ctrl+B"   onClick={() => wrapSelection("*", "*")} />
+          <ToolBtn icon={Italic}        label="Italic (_text_) — Ctrl+I" onClick={() => wrapSelection("_", "_")} />
+          <ToolBtn icon={Strikethrough} label="Strikethrough (~text~)"   onClick={() => wrapSelection("~", "~")} />
+          <ToolBtn icon={Code}          label="Monospace (`text`)"       onClick={() => wrapSelection("`", "`")} />
+          <div style={{ position: "relative" }} ref={varMenuRef}>
+            <ToolBtn icon={Variable} label="Insert variable" active={showVarMenu} onClick={() => setShowVarMenu((v) => !v)} />
+            {showVarMenu && (
+              <div
+                style={{
+                  position: "absolute", top: "100%", right: 0, zIndex: 50,
+                  marginTop: 4, minWidth: 230,
+                  background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden",
+                  maxHeight: 300, overflowY: "auto",
+                }}
+              >
+                {VARIABLES.map((v) => (
+                  <button
+                    key={v.token}
+                    type="button"
+                    onClick={() => { insertAtCursor(v.token); setShowVarMenu(false); }}
+                    style={{
+                      width: "100%", padding: "7px 10px",
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      border: "none", background: "white", cursor: "pointer",
+                      borderBottom: "1px solid #f1f5f9", transition: "background 0.1s",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "white"; }}
+                  >
+                    <span style={{ fontSize: "11px", fontWeight: 600, color: "#334155" }}>{v.label}</span>
+                    <code style={{ fontSize: "9px", fontWeight: 700, color: "#1a7fba", background: "#edf7fd", padding: "2px 5px", borderRadius: "4px" }}>
+                      {v.token}
+                    </code>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={handleKeyDown}
+        rows={rows}
+        placeholder={placeholder}
+        spellCheck={false}
+        style={{
+          width: "100%", boxSizing: "border-box",
+          padding: "10px 12px", border: "none", outline: "none", resize: "vertical",
+          fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
+          fontSize: "12.5px", lineHeight: "1.6", color: "#1e293b", background: "white",
+        }}
+      />
+    </div>
+  );
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -247,10 +301,10 @@ export function WaTemplateEditor({
   // ── Active status tab ─────────────────────────────────────────────────────
   const [activeStatus, setActiveStatus] = useState<StatusValue>("pending");
 
-  // ── Settings state (for business info & payment templates) ────────────────
+  // ── Settings state — only business info + payment-line variables live here ─
   const [settings, setSettings] = useState<WaTemplateSettings>({ ...initialSettings });
 
-  // ── Status body templates ─────────────────────────────────────────────────
+  // ── Status body templates — ONE plain message per status, nothing else ────
   const [statusBodies, setStatusBodies] = useState<Record<StatusValue, string>>(() => {
     const map = {} as Record<StatusValue, string>;
     for (const t of initialStatusTemplates) {
@@ -259,115 +313,28 @@ export function WaTemplateEditor({
     return map;
   });
 
-  // ── Full message text per status ──────────────────────────────────────────
-  const [messageTexts, setMessageTexts] = useState<Record<StatusValue, string>>(() => {
-    const map = {} as Record<StatusValue, string>;
-    for (const t of initialStatusTemplates) {
-      map[t.status] = assembleFullMessage(settings, t.bodyTemplate, true);
-    }
-    return map;
-  });
-
   // ── UI state ──────────────────────────────────────────────────────────────
   const [showPreview, setShowPreview]     = useState(true);
-  const [showVarMenu, setShowVarMenu]     = useState(false);
   const [showBizPanel, setShowBizPanel]   = useState(false);
   const [isPending, startTransition]      = useTransition();
   const [saved, setSaved]                 = useState(false);
   const [error, setError]                 = useState<string | null>(null);
-
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const varMenuRef  = useRef<HTMLDivElement>(null);
-
-  // Current message text
-  const currentText = messageTexts[activeStatus] ?? "";
-
-  // ── Close variable menu on outside click ──────────────────────────────────
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (varMenuRef.current && !varMenuRef.current.contains(e.target as Node)) {
-        setShowVarMenu(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  // ── Text manipulation helpers ─────────────────────────────────────────────
-  const wrapSelection = useCallback((before: string, after: string) => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    const start = ta.selectionStart;
-    const end   = ta.selectionEnd;
-    const text  = ta.value;
-    const selected = text.substring(start, end);
-
-    // If already wrapped, unwrap
-    const beforeMatch = text.substring(Math.max(0, start - before.length), start);
-    const afterMatch  = text.substring(end, end + after.length);
-    if (beforeMatch === before && afterMatch === after) {
-      const newText = text.substring(0, start - before.length) + selected + text.substring(end + after.length);
-      updateCurrentText(newText);
-      requestAnimationFrame(() => {
-        ta.selectionStart = start - before.length;
-        ta.selectionEnd   = end - before.length;
-        ta.focus();
-      });
-      return;
-    }
-
-    const newText = text.substring(0, start) + before + selected + after + text.substring(end);
-    updateCurrentText(newText);
-    requestAnimationFrame(() => {
-      ta.selectionStart = start + before.length;
-      ta.selectionEnd   = end + before.length;
-      ta.focus();
-    });
-  }, [activeStatus]);
-
-  const insertAtCursor = useCallback((insert: string) => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    const start   = ta.selectionStart;
-    const text    = ta.value;
-    const newText = text.substring(0, start) + insert + text.substring(start);
-    updateCurrentText(newText);
-    requestAnimationFrame(() => {
-      ta.selectionStart = ta.selectionEnd = start + insert.length;
-      ta.focus();
-    });
-  }, [activeStatus]);
-
-  const updateCurrentText = (newText: string) => {
-    setMessageTexts((prev) => ({ ...prev, [activeStatus]: newText }));
-    setSaved(false);
-  };
 
   const updateSetting = <K extends keyof WaTemplateSettings>(key: K, value: WaTemplateSettings[K]) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
     setSaved(false);
   };
 
-  // ── Reset current status template ─────────────────────────────────────────
-  const handleReset = () => {
-    const originalBody = initialStatusTemplates.find((t) => t.status === activeStatus)?.bodyTemplate ?? "";
-    const fullMsg = assembleFullMessage(initialSettings, originalBody, true);
-    setMessageTexts((prev) => ({ ...prev, [activeStatus]: fullMsg }));
+  const updateStatusBody = (value: string) => {
+    setStatusBodies((prev) => ({ ...prev, [activeStatus]: value }));
     setSaved(false);
   };
 
-  // ── Keyboard shortcuts ────────────────────────────────────────────────────
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "b") {
-      e.preventDefault();
-      wrapSelection("*", "*");
-    } else if ((e.ctrlKey || e.metaKey) && e.key === "i") {
-      e.preventDefault();
-      wrapSelection("_", "_");
-    } else if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-      e.preventDefault();
-      handleSave();
-    }
+  // ── Reset current status message back to what's saved in the DB ───────────
+  const handleResetStatusBody = () => {
+    const originalBody = initialStatusTemplates.find((t) => t.status === activeStatus)?.bodyTemplate ?? "";
+    setStatusBodies((prev) => ({ ...prev, [activeStatus]: originalBody }));
+    setSaved(false);
   };
 
   // ── Save ──────────────────────────────────────────────────────────────────
@@ -376,22 +343,10 @@ export function WaTemplateEditor({
     setSaved(false);
 
     startTransition(async () => {
-      // Disassemble each status message back into fields
-      // We use the first status' disassembly for shared fields (greeting, footer, etc.)
-      const firstStatus = STATUS_TABS[0].value;
-      const firstDisassembled = disassembleMessage(messageTexts[firstStatus], initialSettings);
-
-      // Update settings
       const settingsResult = await updateWaTemplateSettings(settings.id, {
-        businessName:        settings.businessName,
-        businessPhone:       settings.businessPhone,
-        businessUrl:         settings.businessUrl,
-        greetingTemplate:    firstDisassembled.greetingTemplate,
-        orderDetailHeader:   firstDisassembled.orderDetailHeader,
-        footerTemplate:      firstDisassembled.footerTemplate,
-        reviewCtaTemplate:   firstDisassembled.reviewCtaTemplate,
-        notesSectionHeader:  firstDisassembled.notesSectionHeader,
-        separator:           firstDisassembled.separator,
+        businessName:          settings.businessName,
+        businessPhone:         settings.businessPhone,
+        businessUrl:           settings.businessUrl,
         paymentPaidTemplate:   settings.paymentPaidTemplate,
         paymentUnpaidTemplate: settings.paymentUnpaidTemplate,
       });
@@ -401,10 +356,8 @@ export function WaTemplateEditor({
         return;
       }
 
-      // Update each status body
       for (const t of initialStatusTemplates) {
-        const disassembled = disassembleMessage(messageTexts[t.status], initialSettings);
-        const body = disassembled.statusBody;
+        const body = statusBodies[t.status] ?? "";
         if (body !== t.bodyTemplate) {
           const result = await updateWaStatusTemplate(t.id, body);
           if (!result.success) {
@@ -418,41 +371,32 @@ export function WaTemplateEditor({
     });
   };
 
-  // ── Preview HTML ──────────────────────────────────────────────────────────
-  const previewHtml = waToHtml(interpolatePreview(currentText, settings));
+  // ── Preview — exactly what gets sent, nothing else attached ───────────────
+  const previewText = interpolatePreview(statusBodies[activeStatus] ?? "", settings);
+  const previewHtml = waToHtml(previewText || "( empty message )");
 
   return (
     <div className="space-y-3">
-      {/* ── Business info collapsible ─────────────────────────────────────── */}
-      <div
-        style={{
-          background: "white",
-          borderRadius: "8px",
-          border: "1.5px solid #e2e8f0",
-          overflow: "hidden",
-        }}
-      >
+      {/* ── Business info / variables collapsible ──────────────────────────── */}
+      <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
         <button
           type="button"
           onClick={() => setShowBizPanel(!showBizPanel)}
           style={{
-            width: "100%",
-            padding: "10px 16px",
+            width: "100%", padding: "10px 16px",
             display: "flex", alignItems: "center", gap: 8,
             background: "linear-gradient(135deg,#f8fafc,#f1f5f9)",
-            border: "none",
-            cursor: "pointer",
+            border: "none", cursor: "pointer",
           }}
         >
           <Settings size={13} style={{ color: "#1a7fba" }} />
           <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#64748b" }}>
-            Business Info & Payment Templates
+            Optional Variables (business info & payment line)
           </span>
           <ChevronDown
             size={13}
             style={{
-              color: "#94a3b8",
-              marginLeft: "auto",
+              color: "#94a3b8", marginLeft: "auto",
               transform: showBizPanel ? "rotate(180deg)" : "rotate(0deg)",
               transition: "transform 0.2s",
             }}
@@ -460,8 +404,12 @@ export function WaTemplateEditor({
         </button>
 
         {showBizPanel && (
-          <div style={{ padding: 16, borderTop: "1.5px solid #e2e8f0" }}>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+          <div style={{ padding: 16, borderTop: "1.5px solid #e2e8f0", display: "flex", flexDirection: "column", gap: 12 }}>
+            <p style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.5 }}>
+              These aren&apos;t appended to any message automatically — they only appear if you insert
+              their variable token (e.g. <code>{"{{businessName}}"}</code>) into a status message yourself.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {([
                 ["businessName",  "Business Name"],
                 ["businessPhone", "Phone"],
@@ -484,238 +432,95 @@ export function WaTemplateEditor({
               ))}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {([
-                ["paymentPaidTemplate",   "Payment Paid Text"],
-                ["paymentUnpaidTemplate", "Payment Unpaid Text"],
-              ] as const).map(([key, label]) => (
-                <div key={key}>
-                  <label className="text-[10px] font-black uppercase tracking-widest block mb-1" style={{ color: "#94a3b8" }}>
-                    {label}
-                  </label>
-                  <input
-                    value={settings[key]}
-                    onChange={(e) => updateSetting(key, e.target.value)}
-                    style={{
-                      width: "100%", padding: "7px 10px", borderRadius: "6px",
-                      border: "1.5px solid #e2e8f0", fontSize: "12px", fontWeight: 600,
-                      fontFamily: "monospace",
-                      color: "#1e293b", background: "#f8fafc", outline: "none",
-                    }}
-                  />
-                </div>
-              ))}
+              <FormattableField
+                label="Payment Line — Paid"
+                value={settings.paymentPaidTemplate}
+                onChange={(v) => updateSetting("paymentPaidTemplate", v)}
+                rows={2}
+              />
+              <FormattableField
+                label="Payment Line — Unpaid"
+                value={settings.paymentUnpaidTemplate}
+                onChange={(v) => updateSetting("paymentUnpaidTemplate", v)}
+                rows={2}
+              />
             </div>
           </div>
         )}
       </div>
 
-      {/* ── Status tabs ───────────────────────────────────────────────────── */}
-      <div
-        style={{
-          display: "flex", gap: 4,
-          background: "#f1f5f9",
-          borderRadius: "8px",
-          padding: 4,
-        }}
-      >
-        {STATUS_TABS.map((tab) => {
-          const isActive = activeStatus === tab.value;
-          return (
-            <button
-              key={tab.value}
-              type="button"
-              onClick={() => setActiveStatus(tab.value)}
-              style={{
-                flex: 1,
-                padding: "8px 4px",
-                borderRadius: "6px",
-                border: "none",
-                background: isActive ? "white" : "transparent",
-                boxShadow: isActive ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                cursor: "pointer",
-                transition: "all 0.15s",
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
-              }}
-            >
-              <span style={{ fontSize: "13px" }}>{tab.emoji}</span>
-              <span
-                className="text-[10px] font-black uppercase tracking-wide"
-                style={{ color: isActive ? "#1e293b" : "#94a3b8" }}
-              >
-                {tab.label}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
       {/* ── Editor + Preview layout ───────────────────────────────────────── */}
       <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
         {/* ── Editor panel ─────────────────────────────────────────────────── */}
-        <div
-          style={{
-            flex: 1,
-            minWidth: 0,
-            background: "white",
-            borderRadius: "8px",
-            border: "1.5px solid #e2e8f0",
-            overflow: "hidden",
-          }}
-        >
-          {/* Toolbar */}
-          <div
-            style={{
-              display: "flex", alignItems: "center", gap: 2,
-              padding: "6px 10px",
-              borderBottom: "1.5px solid #e2e8f0",
-              background: "#fafbfc",
-              flexWrap: "wrap",
-            }}
-          >
-            <ToolBtn icon={Bold}          label="Bold (*text*) — Ctrl+B" onClick={() => wrapSelection("*", "*")} />
-            <ToolBtn icon={Italic}        label="Italic (_text_) — Ctrl+I" onClick={() => wrapSelection("_", "_")} />
-            <ToolBtn icon={Strikethrough} label="Strikethrough (~text~)" onClick={() => wrapSelection("~", "~")} />
-            <ToolBtn icon={Code}          label="Monospace (`text`)" onClick={() => wrapSelection("`", "`")} />
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
 
-            <ToolDivider />
+          {/* Preview toggle */}
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={() => setShowPreview(!showPreview)}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "5px 10px", borderRadius: "6px",
+                border: showPreview ? "1.5px solid #1a7fba" : "1.5px solid #e2e8f0",
+                background: showPreview ? "#edf7fd" : "white",
+                color: showPreview ? "#1a7fba" : "#64748b",
+                fontSize: "11px", fontWeight: 700, cursor: "pointer",
+              }}
+            >
+              {showPreview ? <EyeOff size={12} /> : <Eye size={12} />}
+              {showPreview ? "Hide preview" : "Show preview"}
+            </button>
+          </div>
 
-            {/* Variable dropdown */}
-            <div style={{ position: "relative" }} ref={varMenuRef}>
-              <button
-                type="button"
-                onClick={() => setShowVarMenu(!showVarMenu)}
-                style={{
-                  height: 32, padding: "0 10px",
-                  display: "flex", alignItems: "center", gap: 4,
-                  borderRadius: "6px",
-                  border: showVarMenu ? "1.5px solid #1a7fba" : "1.5px solid transparent",
-                  background: showVarMenu ? "#edf7fd" : "transparent",
-                  color: showVarMenu ? "#1a7fba" : "#64748b",
-                  fontSize: "11px", fontWeight: 700,
-                  cursor: "pointer",
-                  transition: "all 0.12s",
-                }}
-              >
-                <Variable size={13} />
-                Insert Variable
-                <ChevronDown size={11} style={{ transform: showVarMenu ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
-              </button>
-
-              {showVarMenu && (
-                <div
+          {/* ── Status tabs ───────────────────────────────────────────────── */}
+          <div style={{ display: "flex", gap: 4, background: "#f1f5f9", borderRadius: "8px", padding: 4 }}>
+            {STATUS_TABS.map((tab) => {
+              const isActive = activeStatus === tab.value;
+              return (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => setActiveStatus(tab.value)}
                   style={{
-                    position: "absolute", top: "100%", left: 0, zIndex: 50,
-                    marginTop: 4, minWidth: 260,
-                    background: "white",
-                    borderRadius: "8px",
-                    border: "1.5px solid #e2e8f0",
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-                    overflow: "hidden",
+                    flex: 1, padding: "8px 4px", borderRadius: "6px", border: "none",
+                    background: isActive ? "white" : "transparent",
+                    boxShadow: isActive ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                    cursor: "pointer", transition: "all 0.15s",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
                   }}
                 >
-                  {VARIABLES.map((v) => (
-                    <button
-                      key={v.token}
-                      type="button"
-                      onClick={() => {
-                        insertAtCursor(v.token);
-                        setShowVarMenu(false);
-                      }}
-                      style={{
-                        width: "100%",
-                        padding: "8px 12px",
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        border: "none",
-                        background: "white",
-                        cursor: "pointer",
-                        borderBottom: "1px solid #f1f5f9",
-                        transition: "background 0.1s",
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "white"; }}
-                    >
-                      <span style={{ fontSize: "12px", fontWeight: 600, color: "#334155" }}>{v.label}</span>
-                      <code style={{
-                        fontSize: "10px", fontWeight: 700, color: "#1a7fba",
-                        background: "#edf7fd", padding: "2px 6px", borderRadius: "4px",
-                      }}>
-                        {v.token}
-                      </code>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <ToolDivider />
-
-            <ToolBtn
-              icon={RotateCcw}
-              label="Reset to default"
-              onClick={handleReset}
-            />
-
-            {/* Preview toggle — push right */}
-            <div style={{ marginLeft: "auto" }}>
-              <ToolBtn
-                icon={showPreview ? EyeOff : Eye}
-                label={showPreview ? "Hide preview" : "Show preview"}
-                onClick={() => setShowPreview(!showPreview)}
-                active={showPreview}
-              />
-            </div>
+                  <span style={{ fontSize: "13px" }}>{tab.emoji}</span>
+                  <span className="text-[10px] font-black uppercase tracking-wide" style={{ color: isActive ? "#1e293b" : "#94a3b8" }}>
+                    {tab.label}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
-          {/* Textarea */}
-          <textarea
-            ref={textareaRef}
-            value={currentText}
-            onChange={(e) => updateCurrentText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            spellCheck={false}
-            style={{
-              width: "100%",
-              minHeight: 480,
-              padding: "16px",
-              border: "none",
-              outline: "none",
-              resize: "vertical",
-              fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
-              fontSize: "12.5px",
-              lineHeight: "1.7",
-              color: "#1e293b",
-              background: "white",
-            }}
+          {/* The ONE message for this status — exactly what gets sent, verbatim */}
+          <FormattableField
+            key={activeStatus}
+            label={`Message — ${STATUS_TABS.find((t) => t.value === activeStatus)?.label}`}
+            value={statusBodies[activeStatus] ?? ""}
+            onChange={updateStatusBody}
+            rows={10}
+            placeholder="Type the exact message customers will receive for this status. Leave empty to send nothing."
+            extra={
+              <ToolBtn icon={RotateCcw} label="Reset to saved value" onClick={handleResetStatusBody} />
+            }
           />
 
-          {/* Footer hint */}
-          <div
-            style={{
-              padding: "6px 12px",
-              borderTop: "1.5px solid #f1f5f9",
-              background: "#fafbfc",
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-            }}
-          >
-            <span style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 600 }}>
-              WhatsApp formatting: *bold* · _italic_ · ~strike~ · `mono` · Ctrl+B / Ctrl+I / Ctrl+S
-            </span>
-            <span style={{ fontSize: "10px", color: "#cbd5e1", fontWeight: 600 }}>
-              {currentText.length} chars
-            </span>
-          </div>
+          <p style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 600 }}>
+            This is the entire message — nothing is added before or after it. WhatsApp formatting:
+            *bold* · _italic_ · ~strike~ · `mono` · Ctrl+B / Ctrl+I.
+          </p>
         </div>
 
         {/* ── Phone preview ────────────────────────────────────────────────── */}
         {showPreview && (
-          <div
-            style={{
-              width: 320,
-              flexShrink: 0,
-              position: "sticky",
-              top: 16,
-            }}
-          >
+          <div style={{ width: 320, flexShrink: 0, position: "sticky", top: 16 }}>
             {/* Phone frame */}
             <div
               style={{
@@ -727,10 +532,7 @@ export function WaTemplateEditor({
             >
               {/* Notch */}
               <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-                <div style={{
-                  width: 80, height: 6, borderRadius: 3,
-                  background: "#334155",
-                }} />
+                <div style={{ width: 80, height: 6, borderRadius: 3, background: "#334155" }} />
               </div>
 
               {/* WhatsApp header */}
@@ -763,7 +565,7 @@ export function WaTemplateEditor({
                 style={{
                   background: "#ece5dd",
                   minHeight: 400,
-                  maxHeight: 520,
+                  maxHeight: 620,
                   overflowY: "auto",
                   padding: "12px 8px",
                   borderRadius: "0 0 12px 12px",
@@ -788,10 +590,7 @@ export function WaTemplateEditor({
                     }}
                     dangerouslySetInnerHTML={{ __html: previewHtml }}
                   />
-                  <p style={{
-                    fontSize: "9px", color: "#7a8e7a",
-                    textAlign: "right", marginTop: 4,
-                  }}>
+                  <p style={{ fontSize: "9px", color: "#7a8e7a", textAlign: "right", marginTop: 4 }}>
                     14:32 ✓✓
                   </p>
                 </div>
@@ -837,7 +636,7 @@ export function WaTemplateEditor({
         ) : saved ? (
           <><CheckCircle2 size={14} /> Saved!</>
         ) : (
-          <><Save size={14} /> Save All Templates</>
+          <><Save size={14} /> Save All Messages</>
         )}
       </button>
     </div>

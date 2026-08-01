@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // lib/actions/admin-orders.ts
 "use server";
 
@@ -9,9 +10,11 @@ import {
   servicePricing,
   soaps,
   pewangi,
+  cashRegisterTransactions,
 } from "@/lib/db/schema";
 import type { Order, OrderItem } from "@/lib/db/schema";
 import { eq, ilike, and, desc, or, count, gte, lte, inArray } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -229,4 +232,34 @@ export async function getRevenueStats(): Promise<RevenueStats> {
     totalPaidOrders: paid.length,
     totalUnpaid:     unpaid.length,
   };
+}
+
+// ─── Delete order ──────────────────────────────────────────────────────────────
+
+export interface OrderActionResult {
+  success: boolean;
+  error?:  string;
+}
+
+export async function deleteOrder(id: number): Promise<OrderActionResult> {
+  try {
+    const [target] = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
+    if (!target) return { success: false, error: "Order not found." };
+
+    // Cash register ledger entries reference orderId with no cascade rule — detach them
+    // first so the financial history is preserved instead of blocking the delete.
+    await db
+      .update(cashRegisterTransactions)
+      .set({ orderId: null })
+      .where(eq(cashRegisterTransactions.orderId, id));
+
+    // order_items cascade automatically (ON DELETE CASCADE on order_id).
+    await db.delete(orders).where(eq(orders.id, id));
+
+    revalidatePath("/admin/orders");
+    revalidatePath("/employee/orders");
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message ?? "Failed to delete order." };
+  }
 }

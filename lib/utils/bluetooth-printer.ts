@@ -21,6 +21,27 @@ export function isBluetoothSupported(): boolean {
   return typeof navigator !== "undefined" && "bluetooth" in navigator;
 }
 
+// ─── Per-device print-method preference ───────────────────────────────────────
+// Whether Web Bluetooth support is present in the browser says nothing about
+// whether THIS device actually has a paired thermal printer — it's true on
+// most Chrome installs (desktop or mobile) regardless of hardware. Auto-trying
+// Bluetooth on every print caused different devices to silently print via
+// different paths (raw ESC/POS vs the HTML template). This flag makes the
+// choice explicit and persisted per device instead, defaulting to off so the
+// HTML template (matching the admin's receipt editor) is what prints unless a
+// device deliberately opts in.
+const PREF_KEY = "akiro:useBluetoothPrinter";
+
+export function getBluetoothPrinterPreference(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(PREF_KEY) === "1";
+}
+
+export function setBluetoothPrinterPreference(enabled: boolean): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PREF_KEY, enabled ? "1" : "0");
+}
+
 type PrinterListener = () => void;
 
 export class BluetoothThermalPrinter {

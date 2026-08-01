@@ -1,7 +1,7 @@
 // lib/actions/cms/testimonials.actions.ts
 "use server";
 import { db } from "@/lib/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { cmsTestimonialsSection, cmsTestimonials } from "@/lib/db/schema/cms";
 
@@ -54,7 +54,15 @@ export async function saveTestimonials(input: {
     id = r.id;
   }
 
-  await db.delete(cmsTestimonials).where(eq(cmsTestimonials.sectionId, id));
+  // Scoped to isActive:true only — this is the "currently published" set that the
+  // CMS Testimonials editor actually loads and lets the admin curate. Pending
+  // customer review submissions (isActive:false, awaiting moderation on the
+  // Reviews page) are never loaded into this form, so they must never be touched
+  // by this delete — otherwise saving this form would silently destroy them.
+  await db.delete(cmsTestimonials).where(and(
+    eq(cmsTestimonials.sectionId, id),
+    eq(cmsTestimonials.isActive, true),
+  ));
 
   const validTestimonials = input.testimonials.filter((t) => t.authorName);
   if (validTestimonials.length > 0) {
@@ -71,10 +79,12 @@ export async function saveTestimonials(input: {
         body: t.body,
         sortOrder: i,
         isActive: true,
+        source: "admin",
       }))
     );
   }
 
   revalidatePath("/");
   revalidatePath("/admin/cms/testimonials");
+  revalidatePath("/admin/reviews");
 }

@@ -1,8 +1,16 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 // components/employee/PrintReceiptButton.tsx
 "use client";
 
-import { Printer } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Printer, Bluetooth, BluetoothConnected } from "lucide-react";
 import { printReceipt } from "@/components/employee/PrintReceipt";
+import {
+  printer,
+  isBluetoothSupported,
+  getBluetoothPrinterPreference,
+  setBluetoothPrinterPreference,
+} from "@/lib/utils/bluetooth-printer";
 import type { OrderWithDetails } from "@/lib/actions/orders";
 import type { ReceiptSettings } from "@/lib/db/schema/receipt";
 
@@ -12,6 +20,28 @@ interface Props {
 }
 
 export function PrintReceiptButton({ order, receiptSettings }: Props) {
+  // SSR-safe defaults; real values (localStorage / Bluetooth state) only exist client-side,
+  // so they're read post-mount below rather than in the initializer (avoids hydration mismatch).
+  // `bluetoothSupported` in particular must never be checked directly during render —
+  // navigator doesn't exist on the server, so the button would render on the client but
+  // not on the server, tripping a hydration mismatch.
+  const [bluetoothSupported, setBluetoothSupported] = useState(false);
+  const [useBluetooth, setUseBluetooth]              = useState(false);
+  const [connected, setConnected]                    = useState(false);
+
+  useEffect(() => {
+    setBluetoothSupported(isBluetoothSupported());
+    setUseBluetooth(getBluetoothPrinterPreference());
+    setConnected(printer.isConnected);
+    return printer.subscribe(() => setConnected(printer.isConnected));
+  }, []);
+
+  const toggleBluetooth = () => {
+    const next = !useBluetooth;
+    setUseBluetooth(next);
+    setBluetoothPrinterPreference(next);
+  };
+
   const handlePrint = () => {
     const formItems = order.items.map((item) => ({
       servicePricingId: item.servicePricingId,
@@ -93,27 +123,51 @@ export function PrintReceiptButton({ order, receiptSettings }: Props) {
   };
 
   return (
-    <button
-      type="button"
-      onClick={handlePrint}
-      className="flex items-center justify-center gap-2 w-full h-11 rounded-md font-black text-sm transition-all active:scale-[0.98]"
-      style={{
-        background: "linear-gradient(135deg,#f8fafc,#f1f5f9)",
-        border:     "1.5px solid #e2e8f0",
-        color:      "#475569",
-        boxShadow:  "0 2px 8px rgba(0,0,0,0.06)",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = "#1a7fba";
-        e.currentTarget.style.color       = "#1a7fba";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = "#e2e8f0";
-        e.currentTarget.style.color       = "#475569";
-      }}
-    >
-      <Printer size={15} />
-      Print Receipt
-    </button>
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+      <button
+        type="button"
+        onClick={handlePrint}
+        className="flex items-center justify-center gap-2 w-full h-11 rounded-md font-black text-sm transition-all active:scale-[0.98]"
+        style={{
+          background: "linear-gradient(135deg,#f8fafc,#f1f5f9)",
+          border:     "1.5px solid #e2e8f0",
+          color:      "#475569",
+          boxShadow:  "0 2px 8px rgba(0,0,0,0.06)",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = "#1a7fba";
+          e.currentTarget.style.color       = "#1a7fba";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = "#e2e8f0";
+          e.currentTarget.style.color       = "#475569";
+        }}
+      >
+        <Printer size={15} />
+        Print Receipt
+      </button>
+
+      {/* Per-device print method — defaults to the browser print dialog (matches the
+          receipt template exactly) on every device. Only enable this on a device that
+          has an actual Bluetooth thermal printer paired. */}
+      {bluetoothSupported && (
+        <button
+          type="button"
+          onClick={toggleBluetooth}
+          title="Only turn this on for a device with a paired Bluetooth thermal printer — otherwise receipts will look different from the template."
+          className="flex items-center justify-center gap-1.5 w-full h-7 rounded-md text-[11px] font-bold transition-all"
+          style={{
+            background: useBluetooth ? "#edf7fd" : "transparent",
+            border:     `1px solid ${useBluetooth ? "#b6def5" : "#e2e8f0"}`,
+            color:      useBluetooth ? "#1a7fba" : "#94a3b8",
+          }}
+        >
+          {connected ? <BluetoothConnected size={11} /> : <Bluetooth size={11} />}
+          {useBluetooth
+            ? connected ? `Bluetooth printer: ${printer.deviceName ?? "connected"}` : "Bluetooth printer (on)"
+            : "Use browser print (default)"}
+        </button>
+      )}
+    </div>
   );
 }
