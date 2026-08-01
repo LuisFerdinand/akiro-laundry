@@ -105,18 +105,9 @@ export class BluetoothThermalPrinter {
   async write(data: Uint8Array): Promise<void> {
     if (!this.characteristic) throw new Error("Printer not connected.");
 
-    // BLE receipt printers have small buffers. Large, unthrottled writes can
-    // silently drop raster rows even though the browser reports success.
-    const canWriteWithResponse = this.characteristic.properties.write;
-    const CHUNK = canWriteWithResponse ? 180 : 100;
+    const CHUNK = 512;
     for (let i = 0; i < data.length; i += CHUNK) {
-      const chunk = data.slice(i, i + CHUNK);
-      if (canWriteWithResponse) {
-        await this.characteristic.writeValueWithResponse(chunk);
-      } else {
-        await this.characteristic.writeValueWithoutResponse(chunk);
-        await new Promise((resolve) => setTimeout(resolve, 8));
-      }
+      await this.characteristic.writeValueWithoutResponse(data.slice(i, i + CHUNK));
     }
   }
 

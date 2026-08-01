@@ -64,16 +64,31 @@ function canvasToRasterCommand(canvas: HTMLCanvasElement): Uint8Array {
 
   const { width, height } = canvas;
   const imageData = ctx.getImageData(0, 0, width, height);
-  // A fixed luminance threshold keeps small receipt text and rules sharp.
-  // Error-diffusion dithering is useful for photos, but makes thermal text fuzzy.
-  const black = new Uint8Array(width * height);
+  const gray = new Float32Array(width * height);
+
   for (let i = 0; i < width * height; i++) {
     const r = imageData.data[i * 4];
     const g = imageData.data[i * 4 + 1];
     const b = imageData.data[i * 4 + 2];
-    const alpha = imageData.data[i * 4 + 3] / 255;
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) * alpha + 255 * (1 - alpha);
-    black[i] = luminance < 180 ? 1 : 0;
+    gray[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+  }
+
+  // Floyd–Steinberg dithering — gives light background tints / gradients a
+  // print-friendly halftone pattern instead of collapsing to solid blocks.
+  const black = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx    = y * width + x;
+      const oldVal = gray[idx];
+      const newVal = oldVal < 128 ? 0 : 255;
+      const err     = oldVal - newVal;
+      black[idx] = newVal === 0 ? 1 : 0;
+
+      if (x + 1 < width)                     gray[idx + 1]         += (err * 7) / 16;
+      if (x - 1 >= 0 && y + 1 < height)       gray[idx + width - 1] += (err * 3) / 16;
+      if (y + 1 < height)                    gray[idx + width]     += (err * 5) / 16;
+      if (x + 1 < width && y + 1 < height)    gray[idx + width + 1] += (err * 1) / 16;
+    }
   }
 
   const bytesPerRow = Math.ceil(width / 8);

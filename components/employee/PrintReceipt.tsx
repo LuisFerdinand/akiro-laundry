@@ -202,7 +202,6 @@ export function buildReceiptHtml(
 
   const fontImport = s.fontImportUrl ? `@import url('${s.fontImportUrl}');` : "";
   const bodyWidth  = opts?.widthPx ? `${opts.widthPx}px` : s.paperWidth;
-  const pageSize   = opts?.widthPx ? "auto" : `${s.paperWidth} auto`;
 
   /* ── Full HTML ── */
   return `<!DOCTYPE html>
@@ -213,56 +212,47 @@ export function buildReceiptHtml(
 <title>Receipt - ${orderNumber}</title>
 <style>
   ${fontImport}
-  @page { size: ${pageSize}; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html { width: ${bodyWidth}; margin: 0; padding: 0; background: #fff; }
   body {
     font-family: ${s.fontFamily}; font-size: ${base}px;
-    color: #000; background: #fff; width: ${bodyWidth};
+    color: #111; background: white; width: ${bodyWidth};
     padding: ${s.paperPadding};
-    line-height: 1.3; overflow-wrap: anywhere;
-    -webkit-print-color-adjust: economy; print-color-adjust: economy;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
-  img { max-width: 100%; filter: grayscale(1) contrast(1.25); }
-  tr, .notes-section, .receipt-footer { break-inside: avoid; page-break-inside: avoid; }
-  .dashed { border: none; border-top: 1px dashed #000; margin: 5px 0; }
-  .double { border: none; border-top: 3px double #000; margin: 5px 0; }
+  .dashed { border: none; border-top: 1px dashed #aaa; margin: 5px 0; }
+  .double { border: none; border-top: 3px double #333; margin: 5px 0; }
   .shop-name { text-align:center; font-size:${lg}px; font-weight:700; letter-spacing:0.08em; margin-bottom:1px; }
-  .shop-tagline { text-align:center; font-size:${xs}px; color:#000; letter-spacing:0.06em; margin-bottom:4px; }
+  .shop-tagline { text-align:center; font-size:${xs}px; color:${s.metaLabelColor}; letter-spacing:0.06em; margin-bottom:4px; }
   .meta { width:100%; border-collapse:collapse; margin-bottom:3px; }
   .meta td { padding:1px 0; font-size:${sm}px; vertical-align:top; }
-  .meta .label { color:#000; width:34%; }
+  .meta .label { color:${s.metaLabelColor}; width:34%; }
   .meta .colon { width:5%; }
   .meta .value { font-weight:600; word-break:break-word; }
-  .order-num-label { font-size:${xs}px; letter-spacing:0.18em; text-transform:uppercase; color:#000; text-align:center; margin-bottom:2px; }
-  .order-num { text-align:center; font-size:${lg}px; font-weight:700; letter-spacing:0.12em; padding:4px 0; background:#fff; border:1px solid #000; border-radius:0; color:#000; margin-bottom:4px; }
+  .order-num-label { font-size:${xs}px; letter-spacing:0.18em; text-transform:uppercase; color:${s.metaLabelColor}; text-align:center; margin-bottom:2px; }
+  .order-num { text-align:center; font-size:${lg}px; font-weight:700; letter-spacing:0.12em; padding:4px 0; background:${s.accentBgColor}; border:1px solid ${s.accentBorderColor}; border-radius:4px; color:${s.accentColor}; margin-bottom:4px; }
   table.items { width:100%; border-collapse:collapse; }
   .item-name { font-weight:700; font-size:${base}px; padding:2px 0 1px; }
-  .item-detail { font-size:${sm}px; color:#000; padding:0 0 1px 4px; }
-  .item-detail.addon { color:#000; }
-  .item-price { font-size:${sm}px; text-align:right; color:#000; vertical-align:top; padding:0 0 1px; white-space:nowrap; }
-  .subtotal-label { font-size:${sm}px; font-weight:600; padding:1px 0 3px 4px; color:#000; }
-  .subtotal-value { font-size:${sm}px; font-weight:700; text-align:right; color:#000; padding:1px 0 3px; white-space:nowrap; }
+  .item-detail { font-size:${sm}px; color:#334155; padding:0 0 1px 4px; }
+  .item-detail.addon { color:${s.metaLabelColor}; }
+  .item-price { font-size:${sm}px; text-align:right; color:#334155; vertical-align:top; padding:0 0 1px; white-space:nowrap; }
+  .subtotal-label { font-size:${sm}px; font-weight:600; padding:1px 0 3px 4px; color:${s.accentColor}; }
+  .subtotal-value { font-size:${sm}px; font-weight:700; text-align:right; color:${s.accentColor}; padding:1px 0 3px; white-space:nowrap; }
   .total-row { width:100%; border-collapse:collapse; }
   .total-row td { padding:2px 0; }
   .total-label { font-size:${lg}px; font-weight:700; }
-  .total-value { font-size:${xl}px; font-weight:700; text-align:right; color:#000; white-space:nowrap; }
+  .total-value { font-size:${xl}px; font-weight:700; text-align:right; color:${s.accentColor}; white-space:nowrap; }
   .payment-row td { font-size:${sm}px; padding:1px 0; }
   .payment-row .right { text-align:right; font-weight:600; white-space:nowrap; }
-  .change td { color:#000; font-weight:700; }
-  .unpaid td { color:#000; font-weight:700; font-size:${base}px; }
+  .change td { color:${s.changeColor}; font-weight:700; }
+  .unpaid td { color:${s.unpaidColor}; font-weight:700; font-size:${base}px; }
   .notes-section { margin:2px 0; }
   .notes-header { display:flex; align-items:center; gap:4px; margin-bottom:3px; }
   .notes-icon { font-size:${base + 1}px; line-height:1; }
-  .notes-label { font-size:${xs + 0.5}px; font-weight:700; text-transform:uppercase; letter-spacing:0.12em; color:#000; }
-  .notes-box { background:#fff; border:1px solid #000; border-left:3px solid #000; border-radius:0; padding:4px 6px; font-size:${sm}px; color:#000; line-height:1.5; word-break:break-word; white-space:pre-wrap; }
+  .notes-label { font-size:${xs + 0.5}px; font-weight:700; text-transform:uppercase; letter-spacing:0.12em; color:#475569; }
+  .notes-box { background:${s.notesBgColor}; border:1px solid ${s.notesBorderColor}; border-left:3px solid ${s.notesAccentColor}; border-radius:3px; padding:4px 6px; font-size:${sm}px; color:${s.notesTextColor}; line-height:1.5; word-break:break-word; white-space:pre-wrap; }
   .receipt-footer { text-align:center; margin-top:2px; }
   .footer-thankyou { font-size:${sm}px; font-weight:700; margin-bottom:2px; }
-  .footer-contact { font-size:${xs}px; color:#000; }
-  @media print {
-    html, body { margin: 0 !important; }
-    body { min-height: 0; }
-  }
+  .footer-contact { font-size:${xs}px; color:${s.metaLabelColor}; }
 </style>
 </head>
 <body>
