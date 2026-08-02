@@ -6,7 +6,7 @@
 // supported even by cheap/clone thermal printers.
 
 import { ESC_POS } from "./bluetooth-printer";
-import { buildReceiptContent, charsPerLineFor, type ReceiptData } from "./receipt-lines";
+import { buildReceiptContent, charsPerLineFor, mergeReceiptSettings, type ReceiptData } from "./receipt-lines";
 
 export type { ReceiptData };
 
@@ -23,11 +23,15 @@ function toBytes(commands: (number[] | string)[]): Uint8Array {
 }
 
 export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
-  const paperWidth   = data.settings?.paperWidth ?? "58mm";
-  const charsPerLine = charsPerLineFor(paperWidth);
+  const s            = mergeReceiptSettings(data.settings);
+  const charsPerLine = charsPerLineFor(s.paperWidth);
   const lines        = buildReceiptContent(data, charsPerLine);
 
-  const commands: (number[] | string)[] = [ESC_POS.INIT, ESC_POS.ALIGN_LEFT];
+  const commands: (number[] | string)[] = [
+    ESC_POS.INIT,
+    ESC_POS.ALIGN_LEFT,
+    s.fontSize === "large" ? ESC_POS.LARGE_SIZE : ESC_POS.NORMAL_SIZE,
+  ];
 
   for (const segments of lines) {
     for (const seg of segments) {

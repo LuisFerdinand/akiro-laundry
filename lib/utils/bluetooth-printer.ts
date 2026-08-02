@@ -12,6 +12,7 @@ export const ESC_POS = {
   BOLD_OFF:      [ESC, 0x45, 0x00],
   DOUBLE_HEIGHT: [ESC, 0x21, 0x10],
   NORMAL_SIZE:   [ESC, 0x21, 0x00],
+  LARGE_SIZE:    [ESC, 0x21, 0x30], // double width + double height
   CUT_PAPER:     [GS,  0x56, 0x42, 0x00],
   LINE_FEED:     [0x0a],
   DASHED_LINE:   "--------------------------------\n",

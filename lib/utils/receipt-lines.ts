@@ -69,6 +69,8 @@ const DEFAULTS: Omit<ReceiptSettings, "id" | "updatedAt" | "isActive"> = {
   unpaidMessageTemplate: "*** AMOUNT DUE: {{totalPrice}} ***",
   paymentPaidTemplate:   "Payment: {{paymentMethod}}\nAmount Paid: {{amountPaid}}\nChange: {{change}}",
   receiptTemplate:       DEFAULT_RECEIPT_TEMPLATE,
+  fontSize:              "normal",
+  dividerChar:           "-",
   printDelayMs:          600,
 };
 
@@ -179,7 +181,7 @@ export function buildReceiptContent(data: ReceiptData, charsPerLine: number): Re
     change:          data.changeGiven && data.changeGiven > 0 ? formatUSD(data.changeGiven) : "",
     notes:           data.formData.notes?.trim() ?? "",
     footerContact:   s.footerContact,
-    divider:         "-".repeat(charsPerLine),
+    divider:         (s.dividerChar || "-").repeat(charsPerLine),
   };
 
   vars.paymentLine = data.amountPaid != null

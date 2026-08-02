@@ -15,6 +15,13 @@
       "when": 1785641048705,
       "tag": "0001_colorful_wendell_rand",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785642427516,
+      "tag": "0002_nappy_the_phantom",
+      "breakpoints": true
     }
   ]
 }

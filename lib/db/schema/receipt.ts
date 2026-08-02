@@ -36,6 +36,12 @@ export const receiptSettings = pgTable("receipt_settings", {
   // Vertical + horizontal padding inside the paper (CSS shorthand, e.g. "3mm 4mm 8mm")
   paperPadding:    text("paper_padding").notNull().default("3mm 4mm 8mm"),
 
+  // ── Thermal print formatting (real — actually affects the ESC/POS output) ──
+  // "normal" | "large" (double width + double height on the thermal printer)
+  fontSize:        text("font_size").notNull().default("normal"),
+  // Single character repeated to build the {{divider}} variable, e.g. "-", "=", "*"
+  dividerChar:     text("divider_char").notNull().default("-"),
+
   // ── Typography ─────────────────────────────────────────────────────────────
   // Primary font stack (must be available via @import or system font)
   fontFamily:      text("font_family")

@@ -82,6 +82,8 @@ function buildFallbackHtml(data: ReceiptData): string {
     })
     .join("");
 
+  const fontSizePx = s.fontSize === "large" ? 22 : 12;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -93,7 +95,7 @@ function buildFallbackHtml(data: ReceiptData): string {
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { width: ${s.paperWidth}; background: white; }
   body {
-    font-family: 'Courier New', monospace; font-size: 12px;
+    font-family: 'Courier New', monospace; font-size: ${fontSizePx}px;
     color: #000; background: white; width: ${s.paperWidth};
     padding: ${s.paperPadding};
   }

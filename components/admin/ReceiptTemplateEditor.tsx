@@ -19,6 +19,19 @@ const PAPER_WIDTHS = [
   { value: "80mm", label: "80 mm  (wide)" },
 ];
 
+const FONT_SIZES = [
+  { value: "normal", label: "Normal" },
+  { value: "large",  label: "Large (double width & height)" },
+];
+
+const DIVIDER_CHARS = [
+  { value: "-", label: "- (dashes)" },
+  { value: "=", label: "= (double line)" },
+  { value: "*", label: "* (stars)" },
+  { value: "~", label: "~ (wavy)" },
+  { value: "_", label: "_ (underline)" },
+];
+
 const MAIN_VARIABLES: { token: string; label: string }[] = [
   { token: "{{shopName}}",        label: "Shop Name" },
   { token: "{{shopTagline}}",     label: "Shop Tagline" },
@@ -88,12 +101,13 @@ function buildPreviewLines(s: ReceiptSettings): ReceiptLine[] {
   return buildReceiptContent({ ...SAMPLE_RECEIPT_DATA, settings: s }, charsPerLine);
 }
 
-function ReceiptLinesPreview({ lines }: { lines: ReceiptLine[] }) {
+function ReceiptLinesPreview({ lines, fontSize }: { lines: ReceiptLine[]; fontSize: string }) {
   return (
     <div
       style={{
         fontFamily: "'Courier New', monospace",
-        fontSize: 12,
+        fontSize: fontSize === "large" ? 20 : 12,
+        fontWeight: fontSize === "large" ? 700 : 400,
         lineHeight: 1.55,
         color: "#000",
         background: "white",
@@ -397,6 +411,8 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
     startTransition(async () => {
       const result = await updateReceiptSettings(s.id, {
         paperWidth:            s.paperWidth,
+        fontSize:              s.fontSize,
+        dividerChar:           s.dividerChar,
         shopName:              s.shopName,
         shopTagline:           s.shopTagline,
         footerContact:         s.footerContact,
@@ -426,12 +442,25 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
           </p>
         </div>
 
-        {/* Paper width — the one setting besides text that changes the real print (chars per line) */}
-        <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-          <FieldLabel>Paper Width</FieldLabel>
-          <SelectInput value={s.paperWidth} onChange={(v) => update("paperWidth", v)} options={PAPER_WIDTHS} />
+        {/* Print formatting — all three genuinely affect the real thermal output */}
+        <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <FieldLabel>Paper Width</FieldLabel>
+              <SelectInput value={s.paperWidth} onChange={(v) => update("paperWidth", v)} options={PAPER_WIDTHS} />
+            </div>
+            <div>
+              <FieldLabel>Font Size</FieldLabel>
+              <SelectInput value={s.fontSize} onChange={(v) => update("fontSize", v)} options={FONT_SIZES} />
+            </div>
+            <div>
+              <FieldLabel>Divider Character</FieldLabel>
+              <SelectInput value={s.dividerChar} onChange={(v) => update("dividerChar", v)} options={DIVIDER_CHARS} />
+            </div>
+          </div>
           <p style={{ fontSize: "10px", color: "#94a3b8" }}>
-            Must match your printer&apos;s actual paper — controls how many characters fit per line.
+            Paper width controls how many characters fit per line. Divider character fills the {"{{divider}}"} variable.
+            Large font prints the whole receipt bigger — best paired with 80mm paper, since text may wrap awkwardly on 58mm.
           </p>
         </div>
 
@@ -585,7 +614,7 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
                 }}
               />
               <div style={{ width: s.paperWidth, minHeight: 200, background: "white", position: "relative", zIndex: 0 }}>
-                <ReceiptLinesPreview lines={previewLines} />
+                <ReceiptLinesPreview lines={previewLines} fontSize={s.fontSize} />
               </div>
               <div style={{ height: 12, background: "white", position: "relative", overflow: "hidden" }}>
                 <svg viewBox="0 0 200 12" preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
