@@ -8,6 +8,13 @@
       "when": 1785576502770,
       "tag": "0000_ordinary_talon",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785641048705,
+      "tag": "0001_colorful_wendell_rand",
+      "breakpoints": true
     }
   ]
 }

@@ -4,62 +4,54 @@
 import { useState, useTransition, useCallback, useEffect, useRef } from "react";
 import {
   Save, CheckCircle2, Loader2, Receipt,
-  Settings, ChevronDown, ToggleLeft, ToggleRight,
-  Type, Palette, Layout, Eye, Printer, Variable,
+  Settings, ChevronDown, Bold, Variable, Eye, EyeOff,
 } from "lucide-react";
 import { updateReceiptSettings } from "@/lib/actions/receipt-settings";
-import { buildReceiptLines, charsPerLineFor, type ReceiptData, type ReceiptLine } from "@/lib/utils/receipt-lines";
+import { buildReceiptContent, charsPerLineFor, type ReceiptData, type ReceiptLine } from "@/lib/utils/receipt-lines";
 import type { ReceiptSettings } from "@/lib/db/schema/receipt";
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   TYPES & CONSTANTS
+   CONSTANTS
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 const PAPER_WIDTHS = [
-  { value: "58mm",  label: "58 mm  (standard)" },
-  { value: "80mm",  label: "80 mm  (wide)" },
-  { value: "72mm",  label: "72 mm  (custom)" },
-  { value: "48mm",  label: "48 mm  (narrow)" },
+  { value: "58mm", label: "58 mm  (standard)" },
+  { value: "80mm", label: "80 mm  (wide)" },
 ];
 
-const FONT_OPTIONS = [
-  { value: "'IBM Plex Mono', 'Courier New', monospace", label: "IBM Plex Mono", importUrl: "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap" },
-  { value: "'Courier Prime', 'Courier New', monospace", label: "Courier Prime",  importUrl: "https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap" },
-  { value: "'Space Mono', monospace",                   label: "Space Mono",     importUrl: "https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" },
-  { value: "'Roboto Mono', monospace",                  label: "Roboto Mono",    importUrl: "https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;600;700&display=swap" },
-  { value: "'Courier New', monospace",                  label: "Courier New (system)", importUrl: "" },
+const MAIN_VARIABLES: { token: string; label: string }[] = [
+  { token: "{{shopName}}",        label: "Shop Name" },
+  { token: "{{shopTagline}}",     label: "Shop Tagline" },
+  { token: "{{orderNumber}}",     label: "Order Number" },
+  { token: "{{date}}",            label: "Date" },
+  { token: "{{customerName}}",    label: "Customer Name" },
+  { token: "{{customerPhone}}",   label: "Customer Phone" },
+  { token: "{{customerAddress}}", label: "Customer Address" },
+  { token: "{{items}}",           label: "Items (auto-built list)" },
+  { token: "{{totalPrice}}",      label: "Total Price" },
+  { token: "{{paymentLine}}",     label: "Payment Line (paid/unpaid)" },
+  { token: "{{paymentMethod}}",   label: "Payment Method" },
+  { token: "{{amountPaid}}",      label: "Amount Paid" },
+  { token: "{{change}}",          label: "Change" },
+  { token: "{{notes}}",           label: "Order Notes" },
+  { token: "{{footerContact}}",   label: "Footer Contact" },
+  { token: "{{divider}}",         label: "Divider Line" },
 ];
 
-const SECTION_TOGGLES: { key: keyof ReceiptSettings; label: string; description: string }[] = [
-  { key: "showShopName",        label: "Business name",    description: "Name at the top of the receipt" },
-  { key: "showTagline",         label: "Short description", description: "Small line below the business name" },
-  { key: "showOrderNumber",     label: "Order number",     description: "Reference number for the order" },
-  { key: "showCustomerAddress", label: "Customer address", description: "Customer's address" },
-  { key: "showPaymentMethod",   label: "Payment type",     description: "Cash, Transfer, or QRIS" },
-  { key: "showAmountPaid",      label: "Amount paid",      description: "Money received from the customer" },
-  { key: "showChangeGiven",     label: "Change",           description: "Money returned to the customer" },
-  { key: "showNotes",           label: "Order notes",      description: "Special washing instructions" },
-  { key: "showFooter",          label: "Closing message",  description: "Thank-you and contact information" },
+const PAID_LINE_VARIABLES = [
+  { token: "{{paymentMethod}}", label: "Payment Method" },
+  { token: "{{amountPaid}}",    label: "Amount Paid" },
+  { token: "{{change}}",        label: "Change" },
 ];
 
-const COLOR_FIELDS: { key: keyof ReceiptSettings; label: string }[] = [
-  { key: "accentColor",       label: "Accent (order #, totals)" },
-  { key: "accentBgColor",     label: "Order # badge background" },
-  { key: "accentBorderColor", label: "Order # badge border" },
-  { key: "metaLabelColor",    label: "Meta labels (Date, Phone…)" },
-  { key: "notesBgColor",      label: "Notes background" },
-  { key: "notesBorderColor",  label: "Notes border" },
-  { key: "notesAccentColor",  label: "Notes left accent bar" },
-  { key: "notesTextColor",    label: "Notes text" },
-  { key: "changeColor",       label: "Change amount" },
-  { key: "unpaidColor",       label: "Unpaid warning" },
+const UNPAID_LINE_VARIABLES = [
+  { token: "{{totalPrice}}", label: "Total Price" },
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   LIVE RECEIPT PREVIEW
-   Renders through the EXACT same buildReceiptLines() used by the real ESC/POS
-   print path (lib/utils/receipt-lines.ts) with sample order data — so this
-   preview can never again show something different from what actually prints.
+   SAMPLE DATA — live preview runs through the EXACT same buildReceiptContent()
+   used by the real ESC/POS print path, so this preview can never again show
+   something different from what actually prints.
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 const SAMPLE_RECEIPT_DATA: Omit<ReceiptData, "settings"> = {
@@ -93,7 +85,7 @@ const SAMPLE_RECEIPT_DATA: Omit<ReceiptData, "settings"> = {
 
 function buildPreviewLines(s: ReceiptSettings): ReceiptLine[] {
   const charsPerLine = charsPerLineFor(s.paperWidth);
-  return buildReceiptLines({ ...SAMPLE_RECEIPT_DATA, settings: s }, charsPerLine);
+  return buildReceiptContent({ ...SAMPLE_RECEIPT_DATA, settings: s }, charsPerLine);
 }
 
 function ReceiptLinesPreview({ lines }: { lines: ReceiptLine[] }) {
@@ -108,18 +100,13 @@ function ReceiptLinesPreview({ lines }: { lines: ReceiptLine[] }) {
         padding: "14px 10px",
       }}
     >
-      {lines.map((line, i) => (
-        <div
-          key={i}
-          style={{
-            textAlign:  line.align === "center" ? "center" : "left",
-            fontWeight: line.bold ? 700 : 400,
-            fontSize:   line.big ? 16 : 12,
-            whiteSpace: "pre-wrap",
-            wordBreak:  "break-word",
-          }}
-        >
-          {line.text || " "}
+      {lines.map((segments, i) => (
+        <div key={i} style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+          {segments.every((seg) => !seg.text)
+            ? " "
+            : segments.map((seg, j) => (
+                <span key={j} style={{ fontWeight: seg.bold ? 700 : 400 }}>{seg.text}</span>
+              ))}
         </div>
       ))}
     </div>
@@ -131,44 +118,30 @@ function ReceiptLinesPreview({ lines }: { lines: ReceiptLine[] }) {
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 function SectionHeader({
-  icon: Icon,
-  label,
-  open,
-  onToggle,
+  icon: Icon, label, open, onToggle,
 }: {
-  icon: React.ElementType;
-  label: string;
-  open: boolean;
-  onToggle: () => void;
+  icon: React.ElementType; label: string; open: boolean; onToggle: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onToggle}
       style={{
-        width: "100%",
-        padding: "10px 14px",
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
+        width: "100%", padding: "10px 14px",
+        display: "flex", alignItems: "center", gap: 8,
         background: "linear-gradient(135deg,#f8fafc,#f1f5f9)",
-        border: "none",
-        cursor: "pointer",
+        border: "none", cursor: "pointer",
         borderBottom: open ? "1.5px solid #e2e8f0" : "none",
       }}
     >
       <Icon size={13} style={{ color: "#1a7fba" }} />
-      <span
-        className="text-[10px] font-black uppercase tracking-widest"
-        style={{ color: "#64748b" }}
-      >
+      <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#64748b" }}>
         {label}
       </span>
       <ChevronDown
         size={13}
         style={{
-          color: "#94a3b8",
-          marginLeft: "auto",
+          color: "#94a3b8", marginLeft: "auto",
           transform: open ? "rotate(180deg)" : "rotate(0deg)",
           transition: "transform 0.2s",
         }}
@@ -179,25 +152,16 @@ function SectionHeader({
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <label
-      className="text-[10px] font-black uppercase tracking-widest block mb-1"
-      style={{ color: "#94a3b8" }}
-    >
+    <label className="text-[10px] font-black uppercase tracking-widest block mb-1" style={{ color: "#94a3b8" }}>
       {children}
     </label>
   );
 }
 
 function TextInput({
-  value,
-  onChange,
-  mono = false,
-  placeholder,
+  value, onChange, placeholder,
 }: {
-  value: string;
-  onChange: (v: string) => void;
-  mono?: boolean;
-  placeholder?: string;
+  value: string; onChange: (v: string) => void; placeholder?: string;
 }) {
   return (
     <input
@@ -205,16 +169,9 @@ function TextInput({
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       style={{
-        width: "100%",
-        padding: "7px 10px",
-        borderRadius: "6px",
-        border: "1.5px solid #e2e8f0",
-        fontSize: "12px",
-        fontWeight: 600,
-        fontFamily: mono ? "'SF Mono','Fira Code',monospace" : "inherit",
-        color: "#1e293b",
-        background: "#f8fafc",
-        outline: "none",
+        width: "100%", padding: "7px 10px", borderRadius: "6px",
+        border: "1.5px solid #e2e8f0", fontSize: "12px", fontWeight: 600,
+        color: "#1e293b", background: "#f8fafc", outline: "none",
       }}
       onFocus={(e) => { e.currentTarget.style.borderColor = "#1a7fba"; }}
       onBlur={(e)  => { e.currentTarget.style.borderColor = "#e2e8f0"; }}
@@ -222,279 +179,191 @@ function TextInput({
   );
 }
 
-/** A text field with an "Insert Variable" dropdown helper — mirrors the WA template editor's pattern. */
-function FieldWithVariables({
-  label,
-  value,
-  onChange,
-  placeholder,
-  variables,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  variables: { token: string; label: string }[];
-}) {
-  const [showMenu, setShowMenu] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowMenu(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  const insertToken = (token: string) => {
-    onChange(value ? `${value} ${token}` : token);
-    setShowMenu(false);
-  };
-
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-        <FieldLabel>{label}</FieldLabel>
-        <div style={{ position: "relative" }} ref={menuRef}>
-          <button
-            type="button"
-            onClick={() => setShowMenu((v) => !v)}
-            title="Insert variable"
-            style={{
-              display: "flex", alignItems: "center", gap: 4,
-              fontSize: 10, fontWeight: 700,
-              color: showMenu ? "#1a7fba" : "#94a3b8",
-              background: showMenu ? "#edf7fd" : "transparent",
-              border: `1px solid ${showMenu ? "#b6def5" : "#e2e8f0"}`,
-              borderRadius: 5, padding: "2px 7px", cursor: "pointer",
-            }}
-          >
-            <Variable size={10} /> Insert Variable
-          </button>
-          {showMenu && (
-            <div
-              style={{
-                position: "absolute", top: "100%", right: 0, zIndex: 50, marginTop: 4,
-                minWidth: 200, background: "white", borderRadius: 8,
-                border: "1.5px solid #e2e8f0", boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-                overflow: "hidden",
-              }}
-            >
-              {variables.map((v) => (
-                <button
-                  key={v.token}
-                  type="button"
-                  onClick={() => insertToken(v.token)}
-                  style={{
-                    width: "100%", padding: "7px 10px",
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    border: "none", background: "white", cursor: "pointer",
-                    borderBottom: "1px solid #f1f5f9",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "white"; }}
-                >
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "#334155" }}>{v.label}</span>
-                  <code style={{ fontSize: 9, fontWeight: 700, color: "#1a7fba", background: "#edf7fd", padding: "2px 5px", borderRadius: 4 }}>
-                    {v.token}
-                  </code>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-      <TextInput value={value} onChange={onChange} placeholder={placeholder} />
-    </div>
-  );
-}
-
-function NumberInput({
-  value,
-  onChange,
-  min,
-  max,
-  suffix,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-  min?: number;
-  max?: number;
-  suffix?: string;
-}) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      <input
-        type="number"
-        value={value}
-        min={min}
-        max={max}
-        onChange={(e) => onChange(Number(e.target.value))}
-        style={{
-          width: 72,
-          padding: "7px 10px",
-          borderRadius: "6px",
-          border: "1.5px solid #e2e8f0",
-          fontSize: "12px",
-          fontWeight: 700,
-          color: "#1e293b",
-          background: "#f8fafc",
-          outline: "none",
-          textAlign: "center",
-        }}
-        onFocus={(e) => { e.currentTarget.style.borderColor = "#1a7fba"; }}
-        onBlur={(e)  => { e.currentTarget.style.borderColor = "#e2e8f0"; }}
-      />
-      {suffix && (
-        <span style={{ fontSize: "11px", fontWeight: 700, color: "#94a3b8" }}>
-          {suffix}
-        </span>
-      )}
-    </div>
-  );
-}
-
 function SelectInput({
-  value,
-  onChange,
-  options,
+  value, onChange, options,
 }: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
+  value: string; onChange: (v: string) => void; options: { value: string; label: string }[];
 }) {
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
       style={{
-        width: "100%",
-        padding: "7px 10px",
-        borderRadius: "6px",
-        border: "1.5px solid #e2e8f0",
-        fontSize: "12px",
-        fontWeight: 600,
-        color: "#1e293b",
-        background: "#f8fafc",
-        outline: "none",
-        cursor: "pointer",
+        width: "100%", padding: "7px 10px", borderRadius: "6px",
+        border: "1.5px solid #e2e8f0", fontSize: "12px", fontWeight: 600,
+        color: "#1e293b", background: "#f8fafc", outline: "none", cursor: "pointer",
       }}
     >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
+      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   );
 }
 
-function Toggle({
-  checked,
-  onChange,
-  label,
-  description,
+/** Small icon button — mirrors the WA template editor's toolbar button. */
+function ToolBtn({
+  icon: Icon, label, onClick, active = false,
 }: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  label: string;
-  description: string;
+  icon: React.ElementType; label: string; onClick: () => void; active?: boolean;
 }) {
   return (
     <button
       type="button"
-      onClick={() => onChange(!checked)}
+      title={label}
+      onClick={onClick}
       style={{
-        width: "100%",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "8px 10px",
-        borderRadius: "7px",
-        border: `1.5px solid ${checked ? "#b6def5" : "#e2e8f0"}`,
-        background: checked ? "#f0f7fd" : "#fafafa",
-        cursor: "pointer",
-        transition: "all 0.15s",
-        textAlign: "left",
+        width: 26, height: 26,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        borderRadius: "6px",
+        border: active ? "1.5px solid #1a7fba" : "1.5px solid transparent",
+        background: active ? "#edf7fd" : "transparent",
+        color: active ? "#1a7fba" : "#64748b",
+        cursor: "pointer", transition: "all 0.12s", flexShrink: 0,
       }}
+      onMouseEnter={(e) => { if (!active) { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#334155"; } }}
+      onMouseLeave={(e) => { if (!active) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#64748b"; } }}
     >
-      <div>
-        <p style={{ fontSize: "12px", fontWeight: 700, color: checked ? "#0f5a85" : "#475569" }}>
-          {label}
-        </p>
-        <p style={{ fontSize: "10px", color: "#94a3b8", marginTop: 1 }}>
-          {description}
-        </p>
-      </div>
-      {checked
-        ? <ToggleRight size={20} style={{ color: "#1a7fba", flexShrink: 0 }} />
-        : <ToggleLeft  size={20} style={{ color: "#cbd5e1", flexShrink: 0 }} />
-      }
+      <Icon size={12} />
     </button>
   );
 }
 
-function ColorSwatch({
-  value,
-  onChange,
-  label,
+/**
+ * A multi-line template field with a Bold toolbar (the only formatting a
+ * thermal printer can render) and an "Insert Variable" dropdown — mirrors
+ * the WA template editor's FormattableField exactly.
+ */
+function FormattableField({
+  label, value, onChange, rows = 4, placeholder, variables,
 }: {
+  label: string;
   value: string;
   onChange: (v: string) => void;
-  label: string;
+  rows?: number;
+  placeholder?: string;
+  variables: { token: string; label: string }[];
 }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const [showVarMenu, setShowVarMenu] = useState(false);
+  const varMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (varMenuRef.current && !varMenuRef.current.contains(e.target as Node)) setShowVarMenu(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const wrapSelection = (before: string, after: string) => {
+    const ta = ref.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end   = ta.selectionEnd;
+    const text  = ta.value;
+    const selected = text.substring(start, end);
+
+    const beforeMatch = text.substring(Math.max(0, start - before.length), start);
+    const afterMatch  = text.substring(end, end + after.length);
+    if (beforeMatch === before && afterMatch === after) {
+      const newText = text.substring(0, start - before.length) + selected + text.substring(end + after.length);
+      onChange(newText);
+      requestAnimationFrame(() => {
+        ta.selectionStart = start - before.length;
+        ta.selectionEnd   = end - before.length;
+        ta.focus();
+      });
+      return;
+    }
+
+    const newText = text.substring(0, start) + before + selected + after + text.substring(end);
+    onChange(newText);
+    requestAnimationFrame(() => {
+      ta.selectionStart = start + before.length;
+      ta.selectionEnd   = end + before.length;
+      ta.focus();
+    });
+  };
+
+  const insertAtCursor = (insert: string) => {
+    const ta = ref.current;
+    if (!ta) return;
+    const start   = ta.selectionStart;
+    const text    = ta.value;
+    const newText = text.substring(0, start) + insert + text.substring(start);
+    onChange(newText);
+    requestAnimationFrame(() => {
+      ta.selectionStart = ta.selectionEnd = start + insert.length;
+      ta.focus();
+    });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "b") { e.preventDefault(); wrapSelection("*", "*"); }
+  };
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <label
+    <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
+      <div
         style={{
-          position: "relative",
-          width: 28,
-          height: 28,
-          borderRadius: "6px",
-          border: "1.5px solid #e2e8f0",
-          overflow: "hidden",
-          cursor: "pointer",
-          flexShrink: 0,
-          background: value,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "6px 10px", borderBottom: "1.5px solid #f1f5f9", background: "#fafbfc",
+          flexWrap: "wrap", gap: 4,
         }}
       >
-        <input
-          type="color"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          style={{
-            position: "absolute",
-            top: 0, left: 0,
-            width: "200%",
-            height: "200%",
-            opacity: 0,
-            cursor: "pointer",
-          }}
-        />
-      </label>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontSize: "11px", fontWeight: 600, color: "#334155", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <span style={{ fontSize: "10px", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em" }}>
           {label}
-        </p>
-        <code style={{ fontSize: "9px", color: "#94a3b8" }}>{value}</code>
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <ToolBtn icon={Bold} label="Bold (*text*) — Ctrl+B" onClick={() => wrapSelection("*", "*")} />
+          <div style={{ position: "relative" }} ref={varMenuRef}>
+            <ToolBtn icon={Variable} label="Insert variable" active={showVarMenu} onClick={() => setShowVarMenu((v) => !v)} />
+            {showVarMenu && (
+              <div
+                style={{
+                  position: "absolute", top: "100%", right: 0, zIndex: 50, marginTop: 4,
+                  minWidth: 230, background: "white", borderRadius: 8,
+                  border: "1.5px solid #e2e8f0", boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+                  overflow: "hidden", maxHeight: 300, overflowY: "auto",
+                }}
+              >
+                {variables.map((v) => (
+                  <button
+                    key={v.token}
+                    type="button"
+                    onClick={() => { insertAtCursor(v.token); setShowVarMenu(false); }}
+                    style={{
+                      width: "100%", padding: "7px 10px",
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      border: "none", background: "white", cursor: "pointer",
+                      borderBottom: "1px solid #f1f5f9",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "white"; }}
+                  >
+                    <span style={{ fontSize: "11px", fontWeight: 600, color: "#334155" }}>{v.label}</span>
+                    <code style={{ fontSize: "9px", fontWeight: 700, color: "#1a7fba", background: "#edf7fd", padding: "2px 5px", borderRadius: 4 }}>
+                      {v.token}
+                    </code>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-      <input
-        type="text"
+      <textarea
+        ref={ref}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        maxLength={7}
+        onKeyDown={handleKeyDown}
+        rows={rows}
+        placeholder={placeholder}
+        spellCheck={false}
         style={{
-          width: 72,
-          padding: "4px 6px",
-          borderRadius: "5px",
-          border: "1.5px solid #e2e8f0",
-          fontSize: "10px",
-          fontFamily: "monospace",
-          fontWeight: 700,
-          color: "#1e293b",
-          background: "#f8fafc",
-          outline: "none",
+          width: "100%", boxSizing: "border-box",
+          padding: "10px 12px", border: "none", outline: "none", resize: "vertical",
+          fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
+          fontSize: "12.5px", lineHeight: "1.6", color: "#1e293b", background: "white",
         }}
       />
     </div>
@@ -514,390 +383,150 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
   const [isPending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(true);
+  const [showBizPanel, setShowBizPanel] = useState(false);
 
-  // Section collapse state
-  const [openSections, setOpenSections] = useState({
-    paper: false,
-    typography: false,
-    header: true,
-    colors: false,
-    toggles: true,
-    unpaid: true,
-    footer: true,
-  });
-
-  const toggleSection = (key: keyof typeof openSections) =>
-    setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
-
-  // Generic field updater
   const update = useCallback(<K extends keyof ReceiptSettings>(key: K, value: ReceiptSettings[K]) => {
     setS((prev) => ({ ...prev, [key]: value }));
     setSaved(false);
   }, []);
 
-  // Font picker — also syncs the importUrl
-  const handleFontChange = (fontValue: string) => {
-    const opt = FONT_OPTIONS.find((f) => f.value === fontValue);
-    setS((prev) => ({
-      ...prev,
-      fontFamily:    fontValue,
-      fontImportUrl: opt?.importUrl ?? "",
-    }));
-    setSaved(false);
-  };
-
   const handleSave = () => {
     setError(null);
     setSaved(false);
     startTransition(async () => {
-      const { id, updatedAt, isActive, ...rest } = s;
-      const result = await updateReceiptSettings(id, rest);
-      if (!result.success) {
-        setError(result.error ?? "Failed to save.");
-      } else {
-        setSaved(true);
-      }
+      const result = await updateReceiptSettings(s.id, {
+        paperWidth:            s.paperWidth,
+        shopName:              s.shopName,
+        shopTagline:           s.shopTagline,
+        footerContact:         s.footerContact,
+        paymentPaidTemplate:   s.paymentPaidTemplate,
+        unpaidMessageTemplate: s.unpaidMessageTemplate,
+        receiptTemplate:       s.receiptTemplate,
+        printDelayMs:          s.printDelayMs,
+      });
+      if (!result.success) setError(result.error ?? "Failed to save.");
+      else setSaved(true);
     });
   };
 
   const previewLines = buildPreviewLines(s);
 
-  // ── Paper width numeric stepper (mm) ──────────────────────────────────────
-  // Local text buffer so the field can be cleared while typing without ever
-  // committing an invalid width like "mm" (no leading number) to saved state.
-  const [paperMmInput, setPaperMmInput] = useState(String(parseInt(s.paperWidth) || 58));
-  // Re-sync the buffer when paperWidth changes from elsewhere (e.g. the dropdown
-  // preset) — adjusting state during render instead of an effect, per React docs.
-  const [lastSyncedWidth, setLastSyncedWidth] = useState(s.paperWidth);
-  if (s.paperWidth !== lastSyncedWidth) {
-    setLastSyncedWidth(s.paperWidth);
-    setPaperMmInput(String(parseInt(s.paperWidth) || 58));
-  }
-
-  const commitPaperMm = () => {
-    const n = parseInt(paperMmInput);
-    const clamped = Number.isFinite(n) ? Math.min(120, Math.max(40, n)) : 58;
-    setPaperMmInput(String(clamped));
-    update("paperWidth", `${clamped}mm`);
-  };
-
   return (
     <div className="flex flex-col xl:flex-row" style={{ gap: 20, alignItems: "flex-start" }}>
 
-      {/* ════════════════════════════════════════════════════════════════════
-          LEFT — Controls
-          ════════════════════════════════════════════════════════════════════ */}
+      {/* ════════════════════ LEFT — Controls ════════════════════ */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
 
         <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: 8, padding: "12px 14px" }}>
-          <p style={{ fontSize: 13, fontWeight: 800, color: "#1e3a8a" }}>Edit the Bluetooth receipt</p>
+          <p style={{ fontSize: 13, fontWeight: 800, color: "#1e3a8a" }}>Edit the receipt template</p>
           <p style={{ fontSize: 11, lineHeight: 1.6, color: "#475569", marginTop: 3 }}>
-            Change the business details, choose what information appears, then press <strong>Save changes</strong>.
-            The preview shows the black-and-white receipt printed by the EPOS printer.
+            One freeform template — same as WhatsApp messages. Delete a line and it&apos;s gone from the
+            printed receipt; insert a variable and it fills in with the real order&apos;s data.
           </p>
         </div>
 
-        {/* ── Paper width — a REAL setting, controls characters-per-line on the
-             actual thermal printer (32 for 58mm, 48 for 80mm). Kept separate
-             from the fallback-only settings below. ── */}
+        {/* Paper width — the one setting besides text that changes the real print (chars per line) */}
         <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-          <FieldLabel>Paper Width (thermal printer)</FieldLabel>
-          <div className="grid grid-cols-2 gap-3">
-            <SelectInput
-              value={s.paperWidth}
-              onChange={(v) => update("paperWidth", v)}
-              options={PAPER_WIDTHS}
-            />
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="number"
-                value={paperMmInput}
-                min={40}
-                max={120}
-                onChange={(e) => setPaperMmInput(e.target.value)}
-                onBlur={commitPaperMm}
-                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                style={{
-                  width: "100%",
-                  padding: "7px 10px",
-                  borderRadius: "6px",
-                  border: "1.5px solid #e2e8f0",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  color: "#1e293b",
-                  background: "#f8fafc",
-                  outline: "none",
-                }}
-              />
-              <span style={{ fontSize: "11px", fontWeight: 700, color: "#94a3b8" }}>mm (custom)</span>
-            </div>
-          </div>
+          <FieldLabel>Paper Width</FieldLabel>
+          <SelectInput value={s.paperWidth} onChange={(v) => update("paperWidth", v)} options={PAPER_WIDTHS} />
           <p style={{ fontSize: "10px", color: "#94a3b8" }}>
-            Must match your printer&apos;s actual paper — this is the one setting below that changes how much fits on each line.
+            Must match your printer&apos;s actual paper — controls how many characters fit per line.
           </p>
         </div>
 
-        {/* ── Fallback-only settings ────────────────────────────────────────
-             Everything in this section (padding, print delay, fonts, colors,
-             logo) only ever applies to the rare browser/PDF print dialog used
-             when a device has no Web Bluetooth support at all (Safari/Firefox).
-             They have NO effect on the thermal receipt shown in the preview
-             on the right — that's expected, not a bug. ── */}
-        <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
-          <SectionHeader icon={Printer} label="Fallback-only: padding & print delay" open={openSections.paper} onToggle={() => toggleSection("paper")} />
-          {openSections.paper && (
-            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-              <p style={{ fontSize: "10px", color: "#94a3b8" }}>
-                Only used by the browser print dialog on devices with no Bluetooth support — doesn&apos;t affect the preview.
-              </p>
-              <div>
-                <FieldLabel>Padding (CSS shorthand)</FieldLabel>
-                <TextInput
-                  value={s.paperPadding}
-                  onChange={(v) => update("paperPadding", v)}
-                  mono
-                  placeholder="3mm 4mm 8mm"
-                />
-                <p style={{ fontSize: "10px", color: "#94a3b8", marginTop: 3 }}>
-                  top · left/right · bottom  —  or all four sides separately
-                </p>
-              </div>
-              <div>
-                <FieldLabel>Print Delay (ms)</FieldLabel>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input
-                    type="range"
-                    min={200}
-                    max={3000}
-                    step={100}
-                    value={s.printDelayMs}
-                    onChange={(e) => update("printDelayMs", Number(e.target.value))}
-                    style={{ flex: 1 }}
-                  />
-                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#1e293b", width: 50, textAlign: "right" }}>
-                    {s.printDelayMs} ms
-                  </span>
-                </div>
-                <p style={{ fontSize: "10px", color: "#94a3b8", marginTop: 3 }}>
-                  Increase if fonts load slowly on the receipt printer device
-                </p>
-              </div>
-            </div>
-          )}
+        {/* Preview toggle */}
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            onClick={() => setShowPreview(!showPreview)}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "5px 10px", borderRadius: "6px",
+              border: showPreview ? "1.5px solid #1a7fba" : "1.5px solid #e2e8f0",
+              background: showPreview ? "#edf7fd" : "white",
+              color: showPreview ? "#1a7fba" : "#64748b",
+              fontSize: "11px", fontWeight: 700, cursor: "pointer",
+            }}
+          >
+            {showPreview ? <EyeOff size={12} /> : <Eye size={12} />}
+            {showPreview ? "Hide preview" : "Show preview"}
+          </button>
         </div>
 
-        {/* ── Typography — fallback-only, no effect on the thermal preview ── */}
-        <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
-          <SectionHeader icon={Type} label="Fallback-only: fonts" open={openSections.typography} onToggle={() => toggleSection("typography")} />
-          {openSections.typography && (
-            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-              <p style={{ fontSize: "10px", color: "#94a3b8" }}>
-                Only used by the browser print dialog on devices with no Bluetooth support — doesn&apos;t affect the preview.
-              </p>
-              <div>
-                <FieldLabel>Font Family</FieldLabel>
-                <SelectInput
-                  value={s.fontFamily}
-                  onChange={handleFontChange}
-                  options={FONT_OPTIONS}
-                />
-              </div>
-              <div>
-                <FieldLabel>Base Font Size</FieldLabel>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <input
-                    type="range"
-                    min={7}
-                    max={14}
-                    step={1}
-                    value={s.baseFontSizePx}
-                    onChange={(e) => update("baseFontSizePx", Number(e.target.value))}
-                    style={{ flex: 1 }}
-                  />
-                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#1e293b", width: 40, textAlign: "right" }}>
-                    {s.baseFontSizePx}px
-                  </span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
-                  {[7,8,9,10,11,12,13,14].map((n) => (
-                    <span
-                      key={n}
-                      style={{
-                        fontSize: "9px",
-                        fontWeight: s.baseFontSizePx === n ? 900 : 400,
-                        color: s.baseFontSizePx === n ? "#1a7fba" : "#cbd5e1",
-                        cursor: "pointer",
-                      }}
-                      onClick={() => update("baseFontSizePx", n)}
-                    >
-                      {n}
-                    </span>
-                  ))}
-                </div>
-                <p style={{ fontSize: "10px", color: "#94a3b8", marginTop: 4 }}>
-                  All other text sizes scale proportionally from this value
-                </p>
-              </div>
-              <div>
-                <FieldLabel>Font Import URL (Google Fonts)</FieldLabel>
-                <TextInput
-                  value={s.fontImportUrl}
-                  onChange={(v) => update("fontImportUrl", v)}
-                  mono
-                  placeholder="https://fonts.googleapis.com/css2?family=…"
-                />
-                <p style={{ fontSize: "10px", color: "#94a3b8", marginTop: 3 }}>
-                  Auto-filled when using the font picker above. Leave empty for system fonts.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
+        {/* The ONE receipt template — exactly what prints, verbatim */}
+        <FormattableField
+          label="Receipt Template"
+          value={s.receiptTemplate}
+          onChange={(v) => update("receiptTemplate", v)}
+          rows={16}
+          placeholder="Type the exact receipt content. Leave empty to print nothing."
+          variables={MAIN_VARIABLES}
+        />
 
-        {/* ── Header ─────────────────────────────────────────────────────── */}
+        {/* Business info / payment line templates — optional, only appear if referenced */}
         <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
-          <SectionHeader icon={Receipt} label="Business details" open={openSections.header} onToggle={() => toggleSection("header")} />
-          {openSections.header && (
-            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          <SectionHeader icon={Settings} label="Business info & payment lines" open={showBizPanel} onToggle={() => setShowBizPanel(!showBizPanel)} />
+          {showBizPanel && (
+            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+              <p style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.5 }}>
+                These feed the {"{{shopName}}"}, {"{{shopTagline}}"}, {"{{footerContact}}"} and {"{{paymentLine}}"} variables
+                above — they don&apos;t print anywhere unless you insert their token into the template.
+              </p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <FieldLabel>Business name</FieldLabel>
+                  <FieldLabel>Shop Name</FieldLabel>
                   <TextInput value={s.shopName} onChange={(v) => update("shopName", v)} />
                 </div>
                 <div>
-                  <FieldLabel>Short description</FieldLabel>
+                  <FieldLabel>Shop Tagline</FieldLabel>
                   <TextInput value={s.shopTagline} onChange={(v) => update("shopTagline", v)} />
                 </div>
               </div>
               <div>
-                <p style={{ fontSize: 10, fontWeight: 800, color: "#64748b", marginBottom: 8 }}>
-                  Logo settings apply only to browser/PDF printing. The Bluetooth printer uses text only.
-                </p>
-                <FieldLabel>Logo image link (Browser/PDF only)</FieldLabel>
-                <TextInput
-                  value={s.logoUrl}
-                  onChange={(v) => update("logoUrl", v)}
-                  mono
-                  placeholder="https://res.cloudinary.com/…"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <FieldLabel>Logo description</FieldLabel>
-                  <TextInput value={s.logoAlt} onChange={(v) => update("logoAlt", v)} />
-                </div>
-                <div>
-                  <FieldLabel>Logo height</FieldLabel>
-                  <TextInput value={s.logoMaxHeight} onChange={(v) => update("logoMaxHeight", v)} mono placeholder="32px" />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ── Colors — fallback-only, thermal printers are monochrome ──────── */}
-        <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
-          <SectionHeader icon={Palette} label="Fallback-only: colors" open={openSections.colors} onToggle={() => toggleSection("colors")} />
-          {openSections.colors && (
-            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-              <p style={{ fontSize: "10px", color: "#94a3b8" }}>
-                Only used by the browser print dialog on devices with no Bluetooth support — the thermal printer is monochrome.
-              </p>
-              {COLOR_FIELDS.map(({ key, label }) => (
-                <ColorSwatch
-                  key={key}
-                  value={s[key] as string}
-                  onChange={(v) => update(key, v)}
-                  label={label}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── Section Toggles ────────────────────────────────────────────── */}
-        <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
-          <SectionHeader icon={Layout} label="Information to print" open={openSections.toggles} onToggle={() => toggleSection("toggles")} />
-          {openSections.toggles && (
-            <div style={{ padding: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              {SECTION_TOGGLES.map(({ key, label, description }) => (
-                <Toggle
-                  key={key}
-                  checked={s[key] as boolean}
-                  onChange={(v) => update(key, v)}
-                  label={label}
-                  description={description}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── When unpaid ───────────────────────────────────────────────── */}
-        <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
-          <SectionHeader icon={Receipt} label="When the order is unpaid" open={openSections.unpaid} onToggle={() => toggleSection("unpaid")} />
-          {openSections.unpaid && (
-            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-              <p style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.5 }}>
-                Printed in place of the payment/amount-paid/change rows whenever an order hasn&apos;t been paid yet.
-              </p>
-              <FieldWithVariables
-                label="Amount due message"
-                value={s.unpaidMessageTemplate}
-                onChange={(v) => update("unpaidMessageTemplate", v)}
-                placeholder="*** AMOUNT DUE: {{totalPrice}} ***"
-                variables={[{ token: "{{totalPrice}}", label: "Total Price" }]}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* ── Footer ─────────────────────────────────────────────────────── */}
-        <div style={{ background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0", overflow: "hidden" }}>
-          <SectionHeader icon={Settings} label="Closing message" open={openSections.footer} onToggle={() => toggleSection("footer")} />
-          {openSections.footer && (
-            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-              <FieldWithVariables
-                label="Thank-you message"
-                value={s.footerThankYou}
-                onChange={(v) => update("footerThankYou", v)}
-                placeholder="Thank you for choosing {{shopName}}!"
-                variables={[{ token: "{{shopName}}", label: "Business Name" }]}
-              />
-              <div>
-                <FieldLabel>Phone number or website</FieldLabel>
+                <FieldLabel>Footer Contact</FieldLabel>
                 <TextInput
                   value={s.footerContact}
                   onChange={(v) => update("footerContact", v)}
                   placeholder="📞 +670 7675 8 7380  ·  akirolaundry.com"
                 />
               </div>
+              <FormattableField
+                label="Payment Line — Paid"
+                value={s.paymentPaidTemplate}
+                onChange={(v) => update("paymentPaidTemplate", v)}
+                rows={3}
+                variables={PAID_LINE_VARIABLES}
+              />
+              <FormattableField
+                label="Payment Line — Unpaid"
+                value={s.unpaidMessageTemplate}
+                onChange={(v) => update("unpaidMessageTemplate", v)}
+                rows={2}
+                variables={UNPAID_LINE_VARIABLES}
+              />
             </div>
           )}
         </div>
 
-        {/* ── Error ──────────────────────────────────────────────────────── */}
+        {/* Error */}
         {error && (
           <div style={{ background: "#fff1f2", border: "1.5px solid #fda4af", borderRadius: "6px", padding: "8px 12px" }}>
             <p className="text-xs font-semibold" style={{ color: "#be123c" }}>{error}</p>
           </div>
         )}
 
-        {/* ── Save button ────────────────────────────────────────────────── */}
+        {/* Save */}
         <button
           type="button"
           onClick={handleSave}
           disabled={isPending}
           className="flex w-full items-center justify-center gap-2 font-black text-sm text-white transition-all duration-150 active:scale-[0.97]"
           style={{
-            height: 48,
-            borderRadius: "7px",
-            background: isPending
-              ? "#94a3b8"
-              : "linear-gradient(135deg, #1a7fba 0%, #2496d6 55%, #0f5a85 100%)",
+            height: 48, borderRadius: "7px",
+            background: isPending ? "#94a3b8" : "linear-gradient(135deg, #1a7fba 0%, #2496d6 55%, #0f5a85 100%)",
             boxShadow: isPending ? "none" : "0 4px 14px rgba(26,127,186,0.35)",
-            border: "none",
-            cursor: isPending ? "not-allowed" : "pointer",
+            border: "none", cursor: isPending ? "not-allowed" : "pointer",
             opacity: isPending ? 0.6 : 1,
           }}
         >
@@ -911,137 +540,69 @@ export function ReceiptTemplateEditor({ settings: initial }: ReceiptTemplateEdit
         </button>
       </div>
 
-      {/* ════════════════════════════════════════════════════════════════════
-          RIGHT — Live thermal receipt preview
-          ════════════════════════════════════════════════════════════════════ */}
-      <div
-        style={{
-          width: "min(340px, 100%)",
-          flexShrink: 0,
-          position: "sticky",
-          top: 16,
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            background: "white",
-            borderRadius: "8px 8px 0 0",
-            border: "1.5px solid #e2e8f0",
-            borderBottom: "none",
-            padding: "10px 14px",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <Eye size={13} style={{ color: "#1a7fba" }} />
-          <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#64748b" }}>
-            Bluetooth print preview
-          </span>
-          <span
+      {/* ════════════════════ RIGHT — Live preview ════════════════════ */}
+      {showPreview && (
+        <div style={{ width: "min(340px, 100%)", flexShrink: 0, position: "sticky", top: 16 }}>
+          <div
             style={{
-              marginLeft: "auto",
-              fontSize: "10px",
-              fontWeight: 700,
-              color: "#94a3b8",
-              background: "#f1f5f9",
-              padding: "2px 8px",
-              borderRadius: 20,
+              background: "white", borderRadius: "8px 8px 0 0",
+              border: "1.5px solid #e2e8f0", borderBottom: "none",
+              padding: "10px 14px", display: "flex", alignItems: "center", gap: 8,
             }}
           >
-            {s.paperWidth} · {s.baseFontSizePx}px
-          </span>
-        </div>
-
-        {/* Receipt paper environment */}
-        <div
-          style={{
-            background: "#e8e8e8",
-            border: "1.5px solid #e2e8f0",
-            borderTop: "none",
-            borderRadius: "0 0 8px 8px",
-            padding: "20px 0",
-            display: "flex",
-            justifyContent: "center",
-            minHeight: 500,
-            overflowY: "auto",
-          }}
-        >
-          {/* Tape effect at top */}
-          <div style={{ position: "relative", width: "fit-content" }}>
-            <div
+            <Receipt size={13} style={{ color: "#1a7fba" }} />
+            <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: "#64748b" }}>
+              Print preview
+            </span>
+            <span
               style={{
-                position: "absolute",
-                top: -8,
-                left: "50%",
-                transform: "translateX(-50%)",
-                width: 60,
-                height: 16,
-                background: "rgba(200,200,180,0.7)",
-                borderRadius: 2,
-                zIndex: 1,
-              }}
-            />
-
-            {/* Shadow under paper */}
-            <div
-              style={{
-                position: "absolute",
-                bottom: -6,
-                left: 4,
-                right: -4,
-                height: "100%",
-                background: "rgba(0,0,0,0.12)",
-                borderRadius: 2,
-                filter: "blur(4px)",
-              }}
-            />
-
-            {/* The receipt paper itself — plain monospace text, exactly what prints */}
-            <div
-              style={{
-                width: s.paperWidth,
-                minHeight: 200,
-                background: "white",
-                position: "relative",
-                zIndex: 0,
+                marginLeft: "auto", fontSize: "10px", fontWeight: 700, color: "#94a3b8",
+                background: "#f1f5f9", padding: "2px 8px", borderRadius: 20,
               }}
             >
-              <ReceiptLinesPreview lines={previewLines} />
-            </div>
+              {s.paperWidth}
+            </span>
+          </div>
 
-            {/* Tear edge at bottom */}
-            <div
-              style={{
-                height: 12,
-                background: "white",
-                position: "relative",
-                overflow: "hidden",
-              }}
-            >
-              <svg
-                viewBox="0 0 200 12"
-                preserveAspectRatio="none"
-                style={{ width: "100%", height: "100%", display: "block" }}
-              >
-                <path
-                  d="M0,0 L10,10 L20,2 L30,9 L40,3 L50,11 L60,4 L70,10 L80,2 L90,8 L100,1 L110,9 L120,3 L130,11 L140,5 L150,10 L160,2 L170,8 L180,4 L190,11 L200,0 Z"
-                  fill="#e8e8e8"
-                />
-              </svg>
+          <div
+            style={{
+              background: "#e8e8e8", border: "1.5px solid #e2e8f0", borderTop: "none",
+              borderRadius: "0 0 8px 8px", padding: "20px 0",
+              display: "flex", justifyContent: "center", minHeight: 500, overflowY: "auto",
+            }}
+          >
+            <div style={{ position: "relative", width: "fit-content" }}>
+              <div
+                style={{
+                  position: "absolute", top: -8, left: "50%", transform: "translateX(-50%)",
+                  width: 60, height: 16, background: "rgba(200,200,180,0.7)", borderRadius: 2, zIndex: 1,
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute", bottom: -6, left: 4, right: -4, height: "100%",
+                  background: "rgba(0,0,0,0.12)", borderRadius: 2, filter: "blur(4px)",
+                }}
+              />
+              <div style={{ width: s.paperWidth, minHeight: 200, background: "white", position: "relative", zIndex: 0 }}>
+                <ReceiptLinesPreview lines={previewLines} />
+              </div>
+              <div style={{ height: 12, background: "white", position: "relative", overflow: "hidden" }}>
+                <svg viewBox="0 0 200 12" preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
+                  <path
+                    d="M0,0 L10,10 L20,2 L30,9 L40,3 L50,11 L60,4 L70,10 L80,2 L90,8 L100,1 L110,9 L120,3 L130,11 L140,5 L150,10 L160,2 L170,8 L180,4 L190,11 L200,0 Z"
+                    fill="#e8e8e8"
+                  />
+                </svg>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Info pill */}
-        <p
-          className="text-center mt-2"
-          style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 600 }}
-        >
-          Example details are replaced automatically with the real order when printing.
-        </p>
-      </div>
+          <p className="text-center mt-2" style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 600 }}>
+            Example details are replaced automatically with the real order when printing.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

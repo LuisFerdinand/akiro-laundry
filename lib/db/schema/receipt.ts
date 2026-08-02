@@ -1,16 +1,20 @@
 // lib/db/schema/receipt.ts
 //
 // Receipt print-template settings.
-// Allows admin to customise every visual / layout aspect of the thermal receipt
-// without touching code — mirrors the same pattern used by whatsapp.ts.
 //
-// Customisable areas:
-//   • Paper   — width, padding
-//   • Fonts   — family, base size
-//   • Header  — shop name, tagline, logo toggle
-//   • Colors  — primary accent, subtle background tints
-//   • Sections — show/hide individual blocks (notes, change, payment method, footer)
-//   • Footer  — thank-you line, contact line
+// `receiptTemplate` is the single freeform template for the entire receipt —
+// same model as the WhatsApp templates (lib/db/schema/whatsapp.ts): one editable
+// text block with {{variable}} placeholders, no separate show/hide toggles.
+// Deleting a line from the template removes it from the printed receipt.
+//
+// Available placeholders: {{shopName}} {{shopTagline}} {{orderNumber}} {{date}}
+// {{customerName}} {{customerPhone}} {{customerAddress}} {{items}} {{totalPrice}}
+// {{paymentMethod}} {{amountPaid}} {{change}} {{paymentLine}} {{notes}}
+// {{footerContact}} {{divider}}
+//
+// The columns below fontFamily/logoUrl/accentColor/etc. predate this template
+// model and are no longer read by any code path — kept only so existing rows
+// don't need a destructive migration.
 
 import {
   pgTable,
@@ -97,11 +101,25 @@ export const receiptSettings = pgTable("receipt_settings", {
     .default("📞 +670 7675 8 7380  ·  akirolaundry.com"),
 
   // ── Unpaid message ─────────────────────────────────────────────────────────
-  // Shown instead of the payment/amount-paid/change rows when an order hasn't
-  // been paid yet. Supports {{totalPrice}} placeholder.
+  // Used to build {{paymentLine}} when the order hasn't been paid yet.
+  // Supports {{totalPrice}} placeholder.
   unpaidMessageTemplate: text("unpaid_message_template")
     .notNull()
     .default("*** AMOUNT DUE: {{totalPrice}} ***"),
+
+  // Used to build {{paymentLine}} when the order has been paid.
+  // Supports {{paymentMethod}}, {{amountPaid}}, {{change}} placeholders.
+  paymentPaidTemplate: text("payment_paid_template")
+    .notNull()
+    .default("Payment: {{paymentMethod}}\nAmount Paid: {{amountPaid}}\nChange: {{change}}"),
+
+  // ── The receipt ────────────────────────────────────────────────────────────
+  // One freeform template — see the file header for the full placeholder list.
+  receiptTemplate: text("receipt_template")
+    .notNull()
+    .default(
+      "*{{shopName}}*\n{{shopTagline}}\n{{divider}}\nOrder: {{orderNumber}}\nDate    : {{date}}\nCustomer: {{customerName}}\nPhone   : {{customerPhone}}\nAddress : {{customerAddress}}\n{{divider}}\n{{items}}\n{{divider}}\n*TOTAL: {{totalPrice}}*\n{{divider}}\n{{paymentLine}}\n{{divider}}\nNote:\n{{notes}}\n{{divider}}\nThank you for choosing {{shopName}}!\n{{footerContact}}",
+    ),
 
   // ── Print delay ────────────────────────────────────────────────────────────
   // Milliseconds to wait before triggering window.print() — increase if fonts
