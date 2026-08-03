@@ -7,7 +7,7 @@ import {
   ArrowUpRight, TrendingUp, ShoppingBag, Users,
   Wallet, Clock, Waves, PackageCheck,
   CreditCard, AlertCircle, Star, Crown, Flame,
-  Instagram, Music2, UserPlus, Activity, ExternalLink,
+  Instagram, Music2, Facebook, UserPlus, Activity, ExternalLink,
 } from "lucide-react";
 import { formatUSD, ORDER_STATUS_LABELS } from "@/lib/utils/order-form";
 import type {
@@ -20,7 +20,7 @@ import type {
 
 interface Props {
   stats:  FullDashboardStats;
-  social: { tiktokHandle: string; instagramHandle: string };
+  social: { tiktokHandle: string; instagramHandle: string; facebookHandle: string };
 }
 
 // ─── Bar Chart ────────────────────────────────────────────────────────────────
@@ -611,7 +611,7 @@ export function DashboardClient({ stats, social }: Props) {
           <p style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: "14px", color: "#0f172a" }}>Social Media</p>
           <p style={{ fontSize: "10px", color: "#94a3b8", marginTop: "1px" }}>Our brand presence — click to open profiles</p>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
           <SocialProfileCard
             platform="TikTok"
             handle={social.tiktokHandle}
@@ -631,6 +631,16 @@ export function DashboardClient({ stats, social }: Props) {
             gradientTo="#e1306c"
             Icon={Instagram}
             description="Follow us on Instagram for promos, customer stories, and daily updates from our laundry."
+          />
+          <SocialProfileCard
+            platform="Facebook"
+            handle={social.facebookHandle}
+            profileUrl={`https://www.facebook.com/${social.facebookHandle.replace("@", "")}`}
+            color="#1877f2"
+            gradientFrom="#1877f2"
+            gradientTo="#0d5bcf"
+            Icon={Facebook}
+            description="Like our page on Facebook for announcements, reviews, and community updates."
           />
         </div>
       </div>
