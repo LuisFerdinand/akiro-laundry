@@ -14,6 +14,7 @@ import { eq, desc, gte, inArray } from "drizzle-orm";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface DailyRevenuePoint  { date: string;  revenue: number; orders: number }
+export interface WeeklyRevenuePoint { week: string;  revenue: number; orders: number }
 export interface MonthlyRevenuePoint { month: string; revenue: number; orders: number }
 
 export interface FullDashboardStats {
@@ -42,6 +43,7 @@ export interface FullDashboardStats {
     unpaidValue:  number;
   };
   dailyRevenue:   DailyRevenuePoint[];
+  weeklyRevenue:  WeeklyRevenuePoint[];
   monthlyRevenue: MonthlyRevenuePoint[];
   topCustomers: {
     id:          number;
@@ -87,6 +89,9 @@ function fmt(d: Date) {
 }
 function fmtMonth(d: Date) {
   return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+}
+function fmtWeek(d: Date) {
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 // ─── Main function ────────────────────────────────────────────────────────────
@@ -167,6 +172,22 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
       revenue: revenueIn(day, dayEnd),
       orders:  allOrders.filter((o) =>
         inRange(new Date(o.createdAt), day, dayEnd),
+      ).length,
+    };
+  });
+
+  // ── 4b. Weekly revenue — last 8 weeks ───────────────────────────────────────
+
+  const weeklyRevenue: WeeklyRevenuePoint[] = Array.from({ length: 8 }, (_, i) => {
+    const weeksAgo = 7 - i;
+    const wStart = subDays(todayStart, weeksAgo * 7 + 6);
+    const wEnd   = subDays(todayStart, weeksAgo * 7);
+    wEnd.setHours(23, 59, 59, 999);
+    return {
+      week:    fmtWeek(wStart),
+      revenue: revenueIn(wStart, wEnd),
+      orders:  allOrders.filter((o) =>
+        inRange(new Date(o.createdAt), wStart, wEnd),
       ).length,
     };
   });
@@ -335,6 +356,7 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
     statusBreakdown,
     paymentBreakdown,
     dailyRevenue,
+    weeklyRevenue,
     monthlyRevenue,
     topCustomers,
     topServices,

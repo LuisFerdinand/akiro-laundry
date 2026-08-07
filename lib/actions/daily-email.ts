@@ -99,54 +99,76 @@ function buildEmailHtml(params: {
 
   return `<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>Daily Order Summary</title></head>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="format-detection" content="telephone=no">
+<title>Daily Order Summary</title>
+<style>
+  @media only screen and (max-width: 600px) {
+    .container { width: 100% !important; border-radius: 0 !important; }
+    .header-pad { padding: 20px !important; }
+    .content-pad { padding: 16px !important; }
+    .stat-cell { display: block !important; width: 50% !important; box-sizing: border-box !important; }
+    .stat-cell.br-off { border-right: none !important; }
+    .stat-value { font-size: 20px !important; }
+    .order-table th, .order-table td { padding: 8px 6px !important; font-size: 12px !important; }
+    .table-scroll { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+  }
+</style>
+</head>
 <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-  <div style="max-width:720px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+  <div class="container" style="max-width:720px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
 
     <!-- Header -->
-    <div style="background:linear-gradient(135deg,#1a7fba,#2496d6);padding:28px 32px;">
+    <div class="header-pad" style="background:linear-gradient(135deg,#1a7fba,#2496d6);padding:28px 32px;">
       <h1 style="margin:0;color:#fff;font-size:20px;font-weight:800;">📋 Daily Order Summary</h1>
       <p style="margin:6px 0 0;color:rgba(255,255,255,0.80);font-size:14px;">${date}</p>
     </div>
 
     <!-- Stats -->
-    <div style="display:flex;gap:0;border-bottom:1px solid #f1f5f9;">
-      <div style="flex:1;padding:20px 24px;border-right:1px solid #f1f5f9;text-align:center;">
-        <p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Total Orders</p>
-        <p style="margin:6px 0 0;font-size:28px;font-weight:900;color:#1e293b;">${orderList.length}</p>
-      </div>
-      <div style="flex:1;padding:20px 24px;border-right:1px solid #f1f5f9;text-align:center;">
-        <p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Total Revenue</p>
-        <p style="margin:6px 0 0;font-size:22px;font-weight:900;color:#1a7fba;">${formatUSD(totalRevenue)}</p>
-      </div>
-      <div style="flex:1;padding:20px 24px;border-right:1px solid #f1f5f9;text-align:center;">
-        <p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Paid</p>
-        <p style="margin:6px 0 0;font-size:22px;font-weight:900;color:#16a34a;">${formatUSD(paidRevenue)}</p>
-      </div>
-      <div style="flex:1;padding:20px 24px;text-align:center;">
-        <p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Unpaid</p>
-        <p style="margin:6px 0 0;font-size:22px;font-weight:900;color:#dc2626;">${formatUSD(unpaidRevenue)}</p>
-      </div>
-    </div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-bottom:1px solid #f1f5f9;">
+      <tr>
+        <td class="stat-cell" width="25%" style="padding:20px 16px;border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;text-align:center;">
+          <p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Total Orders</p>
+          <p class="stat-value" style="margin:6px 0 0;font-size:28px;font-weight:900;color:#1e293b;">${orderList.length}</p>
+        </td>
+        <td class="stat-cell br-off" width="25%" style="padding:20px 16px;border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;text-align:center;">
+          <p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Total Revenue</p>
+          <p class="stat-value" style="margin:6px 0 0;font-size:22px;font-weight:900;color:#1a7fba;">${formatUSD(totalRevenue)}</p>
+        </td>
+        <td class="stat-cell" width="25%" style="padding:20px 16px;border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;text-align:center;">
+          <p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Paid</p>
+          <p class="stat-value" style="margin:6px 0 0;font-size:22px;font-weight:900;color:#16a34a;">${formatUSD(paidRevenue)}</p>
+        </td>
+        <td class="stat-cell br-off" width="25%" style="padding:20px 16px;border-bottom:1px solid #f1f5f9;text-align:center;">
+          <p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Unpaid</p>
+          <p class="stat-value" style="margin:6px 0 0;font-size:22px;font-weight:900;color:#dc2626;">${formatUSD(unpaidRevenue)}</p>
+        </td>
+      </tr>
+    </table>
 
     <!-- Table -->
-    <div style="padding:24px 32px;">
+    <div class="content-pad" style="padding:24px 32px;">
       <h2 style="margin:0 0 14px;font-size:14px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.05em;">Order Details</h2>
       ${orderList.length === 0
         ? `<p style="color:#94a3b8;font-size:14px;text-align:center;padding:32px 0;">No orders today.</p>`
-        : `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+        : `<div class="table-scroll">
+          <table class="order-table" style="width:100%;min-width:480px;border-collapse:collapse;font-size:13px;">
             <thead>
               <tr style="background:#f8fafc;">
-                <th style="padding:8px;text-align:left;font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Order #</th>
+                <th style="padding:8px;text-align:left;font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;white-space:nowrap;">Order #</th>
                 <th style="padding:8px;text-align:left;font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Customer</th>
                 <th style="padding:8px;text-align:left;font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Services</th>
                 <th style="padding:8px;text-align:left;font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Status</th>
                 <th style="padding:8px;text-align:left;font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Payment</th>
-                <th style="padding:8px;text-align:right;font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Total</th>
+                <th style="padding:8px;text-align:right;font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;white-space:nowrap;">Total</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
-          </table>`
+          </table>
+        </div>`
       }
     </div>
 

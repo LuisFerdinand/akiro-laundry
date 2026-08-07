@@ -2,9 +2,10 @@
 // components/admin/DashboardClient.tsx
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
-  ArrowUpRight, TrendingUp, ShoppingBag, Users,
+  ArrowUpRight, TrendingUp, TrendingDown, ShoppingBag, Users,
   Wallet, Clock, Waves, PackageCheck,
   CreditCard, AlertCircle, Star, Crown, Flame,
   Instagram, Music2, Facebook, UserPlus, Activity, ExternalLink,
@@ -105,6 +106,183 @@ function MonthlyBarChart({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ─── Segmented control (switcher) ──────────────────────────────────────────────
+
+function SegmentedControl<T extends string>({
+  options, value, onChange,
+}: {
+  options: { value: T; label: string }[];
+  value:   T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div style={{ display: "flex", background: "#f1f5f9", borderRadius: "10px", padding: "3px", gap: "2px" }}>
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            style={{
+              border: "none", cursor: "pointer",
+              padding: "6px 13px", borderRadius: "7px",
+              fontSize: "11.5px", fontWeight: 700,
+              fontFamily: "inherit",
+              background: active ? "white" : "transparent",
+              color: active ? "#0f172a" : "#64748b",
+              boxShadow: active ? "0 1px 4px rgba(15,23,42,0.1)" : "none",
+              transition: "background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Trend chart (revenue / orders · daily / weekly / monthly) ────────────────
+
+interface TrendPoint { label: string; revenue: number; orders: number }
+
+function TrendChart({ data, metric, color }: { data: TrendPoint[]; metric: "revenue" | "orders"; color: string }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
+  const values = data.map((d) => d[metric]);
+  const max    = Math.max(...values, 1);
+  const avg    = values.reduce((s, v) => s + v, 0) / (values.length || 1);
+  const fmtVal = (v: number) => (metric === "revenue" ? formatUSD(v) : `${Math.round(v)}`);
+
+  const W = 1000, H = 220;
+  const padTop = 26, padBottom = 32, padLeft = 8, padRight = 16;
+  const innerW = W - padLeft - padRight;
+  const innerH = H - padTop - padBottom;
+  const step   = data.length > 1 ? innerW / (data.length - 1) : innerW;
+
+  const points = data.map((d, i) => ({
+    x: padLeft + i * step,
+    y: padTop + innerH - (d[metric] / max) * innerH,
+    label: d.label, revenue: d.revenue, orders: d.orders,
+  }));
+
+  // smooth cubic-bezier curve through the points
+  const linePath = points.reduce((acc, p, i, arr) => {
+    if (i === 0) return `M ${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+    const prev = arr[i - 1];
+    const midX = ((prev.x + p.x) / 2).toFixed(1);
+    return `${acc} C ${midX} ${prev.y.toFixed(1)}, ${midX} ${p.y.toFixed(1)}, ${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+  }, "");
+  const areaPath = `${linePath} L ${points[points.length - 1].x.toFixed(1)} ${(padTop + innerH).toFixed(1)} L ${points[0].x.toFixed(1)} ${(padTop + innerH).toFixed(1)} Z`;
+
+  const avgY     = padTop + innerH - (avg / max) * innerH;
+  const hovered  = hoverIdx !== null ? points[hoverIdx] : null;
+  const last     = points[points.length - 1];
+  const gridYs   = [0.25, 0.5, 0.75, 1].map((f) => padTop + innerH * (1 - f));
+  const gradId   = `trendFill-${metric}`;
+
+  const handleMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const relX = ((e.clientX - rect.left) / rect.width) * W;
+    let nearest = 0, nearestDist = Infinity;
+    points.forEach((p, i) => {
+      const dist = Math.abs(p.x - relX);
+      if (dist < nearestDist) { nearestDist = dist; nearest = i; }
+    });
+    setHoverIdx(nearest);
+  };
+
+  return (
+    <div style={{ position: "relative" }}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%" height={H}
+        preserveAspectRatio="none"
+        onMouseMove={handleMove}
+        onMouseLeave={() => setHoverIdx(null)}
+        style={{ display: "block", overflow: "visible", cursor: "crosshair" }}
+      >
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.32" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {/* grid */}
+        {gridYs.map((y, i) => (
+          <line key={i} x1={padLeft} y1={y} x2={W - padRight} y2={y} stroke="#f1f5f9" strokeWidth="1" />
+        ))}
+
+        {/* average reference line */}
+        <line x1={padLeft} y1={avgY} x2={W - padRight} y2={avgY} stroke="#cbd5e1" strokeWidth="1.4" strokeDasharray="5 5" />
+        <text x={W - padRight} y={avgY - 8} textAnchor="end" fontSize="11.5" fontWeight="700" fill="#94a3b8">
+          avg {fmtVal(avg)}
+        </text>
+
+        {/* area + line */}
+        <path d={areaPath} fill={`url(#${gradId})`} stroke="none" />
+        <path d={linePath} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+
+        {/* hover guide */}
+        {hovered && (
+          <line x1={hovered.x} y1={padTop} x2={hovered.x} y2={padTop + innerH} stroke={color} strokeWidth="1" strokeDasharray="3 3" opacity="0.35" />
+        )}
+
+        {/* live pulse on latest point */}
+        <circle cx={last.x} cy={last.y} r="9" fill={color} opacity="0.28">
+          <animate attributeName="r" values="6;13;6" dur="2.2s" repeatCount="indefinite" />
+          <animate attributeName="opacity" values="0.32;0;0.32" dur="2.2s" repeatCount="indefinite" />
+        </circle>
+
+        {/* points */}
+        {points.map((p, i) => (
+          <circle
+            key={i} cx={p.x} cy={p.y}
+            r={hoverIdx === i ? 6 : 3.5}
+            fill={hoverIdx === i || i === points.length - 1 ? color : "white"}
+            stroke={color} strokeWidth="2.5"
+            style={{ transition: "r 0.12s ease" }}
+          />
+        ))}
+
+        {/* x-axis labels */}
+        {points.map((p, i) => (
+          <text key={i} x={p.x} y={H - 8} textAnchor="middle" fontSize="11" fontWeight="600" fill={hoverIdx === i ? "#334155" : "#94a3b8"}>
+            {p.label}
+          </text>
+        ))}
+      </svg>
+
+      {hovered && (
+        <div
+          style={{
+            position: "absolute",
+            left: `${(hovered.x / W) * 100}%`,
+            top: `${hovered.y}px`,
+            transform: "translate(-50%, -130%)",
+            background: "#0f172a",
+            color: "white",
+            borderRadius: "10px",
+            padding: "9px 13px",
+            fontSize: "11.5px",
+            lineHeight: 1.6,
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+            boxShadow: "0 10px 24px rgba(15,23,42,0.28)",
+            zIndex: 5,
+          }}
+        >
+          <div style={{ fontWeight: 800, marginBottom: "3px" }}>{hovered.label}</div>
+          <div style={{ color: "#cbd5e1" }}>Revenue <span style={{ color: "white", fontWeight: 700 }}>{formatUSD(hovered.revenue)}</span></div>
+          <div style={{ color: "#cbd5e1" }}>Orders <span style={{ color: "white", fontWeight: 700 }}>{hovered.orders}</span></div>
+        </div>
+      )}
     </div>
   );
 }
@@ -318,11 +496,28 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; border: string;
 
 export function DashboardClient({ stats, social }: Props) {
   const {
-    revenue, orderCounts, dailyRevenue, monthlyRevenue,
+    revenue, orderCounts, dailyRevenue, weeklyRevenue, monthlyRevenue,
     statusBreakdown, paymentBreakdown,
     topCustomers, topServices,
     cashBalance, newCustomersThisMonth, avgOrderValue, recentOrders,
   } = stats;
+
+  const [trendMetric, setTrendMetric] = useState<"revenue" | "orders">("revenue");
+  const [trendPeriod, setTrendPeriod] = useState<"daily" | "weekly" | "monthly">("daily");
+
+  const trendData: TrendPoint[] =
+    trendPeriod === "daily"
+      ? dailyRevenue.map((d) => ({ label: d.date, revenue: d.revenue, orders: d.orders }))
+      : trendPeriod === "weekly"
+        ? weeklyRevenue.map((d) => ({ label: d.week, revenue: d.revenue, orders: d.orders }))
+        : monthlyRevenue.map((d) => ({ label: d.month, revenue: d.revenue, orders: d.orders }));
+
+  const trendValues  = trendData.map((d) => d[trendMetric]);
+  const trendAvg     = trendValues.reduce((s, v) => s + v, 0) / (trendValues.length || 1);
+  const trendLatest  = trendValues[trendValues.length - 1] ?? 0;
+  const trendVsAvg   = trendAvg > 0 ? ((trendLatest - trendAvg) / trendAvg) * 100 : 0;
+  const trendColor   = trendMetric === "revenue" ? "#16a34a" : "#1a7fba";
+  const periodLabel  = trendPeriod === "daily" ? "day" : trendPeriod === "weekly" ? "week" : "month";
 
   const revenueTrend = revenue.lastMonth > 0
     ? ((revenue.thisMonth - revenue.lastMonth) / revenue.lastMonth) * 100
@@ -374,6 +569,60 @@ export function DashboardClient({ stats, social }: Props) {
         <StatCard label="New Customers"      value={newCustomersThisMonth.toString()} sub="joined this month" icon={UserPlus} color="#7c3aed" bg="linear-gradient(135deg,#f5f3ff,#ede9fe)" border="#c4b5fd" />
         <StatCard label="Avg Order Value"    value={formatUSD(avgOrderValue)} sub={`from ${paymentBreakdown.paid} paid orders`} icon={Activity} color="#d97706" bg="linear-gradient(135deg,#fffbeb,#fef3c7)" border="#fcd34d" />
       </div>
+
+      {/* ── Performance trend ── */}
+      <Card style={{ padding: "22px 24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px", marginBottom: "18px" }}>
+          <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+            <div style={{ width: 38, height: 38, borderRadius: "10px", background: `${trendColor}18`, border: `1.5px solid ${trendColor}40`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Activity size={17} style={{ color: trendColor }} />
+            </div>
+            <div>
+              <p style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: "15px", color: "#0f172a" }}>
+                {trendMetric === "revenue" ? "Revenue" : "Orders"} Trend
+              </p>
+              <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "1px" }}>
+                {trendPeriod === "daily" ? "Last 7 days" : trendPeriod === "weekly" ? "Last 8 weeks" : "Last 6 months"} · hover to inspect
+              </p>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <SegmentedControl
+              options={[{ value: "revenue" as const, label: "Revenue" }, { value: "orders" as const, label: "Orders" }]}
+              value={trendMetric}
+              onChange={setTrendMetric}
+            />
+            <SegmentedControl
+              options={[{ value: "daily" as const, label: "Daily" }, { value: "weekly" as const, label: "Weekly" }, { value: "monthly" as const, label: "Monthly" }]}
+              value={trendPeriod}
+              onChange={setTrendPeriod}
+            />
+          </div>
+        </div>
+
+        <TrendChart data={trendData} metric={trendMetric} color={trendColor} />
+
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: "14px", paddingTop: "14px", borderTop: "1px solid #f1f5f9" }}>
+          <div>
+            <p style={{ fontSize: "10px", color: "#94a3b8" }}>Average per {periodLabel}</p>
+            <p style={{ fontSize: "17px", fontWeight: 800, color: "#0f172a", fontFamily: "Sora, sans-serif" }}>
+              {trendMetric === "revenue" ? formatUSD(trendAvg) : `${trendAvg.toFixed(1)} orders`}
+            </p>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <p style={{ fontSize: "10px", color: "#94a3b8" }}>Latest {periodLabel}</p>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", justifyContent: "flex-end" }}>
+              <p style={{ fontSize: "17px", fontWeight: 800, color: trendColor, fontFamily: "Sora, sans-serif" }}>
+                {trendMetric === "revenue" ? formatUSD(trendLatest) : `${trendLatest} orders`}
+              </p>
+              <span style={{ display: "flex", alignItems: "center", gap: "2px", fontSize: "10px", fontWeight: 700, color: trendVsAvg >= 0 ? "#16a34a" : "#dc2626" }}>
+                {trendVsAvg >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
+                {Math.abs(trendVsAvg).toFixed(0)}%
+              </span>
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {/* ── Revenue charts ── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
