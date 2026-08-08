@@ -1,7 +1,10 @@
 // components/public/OSMap.tsx
 //
-// Shared OpenStreetMap embed — free, no API key needed. Used by both the footer's
-// mini-map and the homepage Location section so the pin/address never drifts apart.
+// Shared Google Maps embed — the free consumer "Embed a map" iframe
+// (google.com/maps?...&output=embed), NOT the paid Maps Embed/JavaScript API.
+// It needs no API key and no billing-enabled project, same as clicking
+// Share > Embed a map on maps.google.com. Used by both the footer's mini-map
+// and the homepage Location section so the pin/address never drifts apart.
 
 // ── Akiro's location in Dili, Timor-Leste ────────────────────────────────────
 // Change these values to update the pin everywhere it's shown.
@@ -9,6 +12,11 @@ export const MAP_LAT     = -8.5596;
 export const MAP_LNG     = 125.5789;
 export const MAP_ZOOM    = 16;
 export const MAP_ADDRESS = "Rua Formosa, Dili, Timor-Leste";
+
+/** Public "open in Google Maps" link for the given pin — free, no API key. */
+export function googleMapsLink(lat: number, lng: number): string {
+  return `https://www.google.com/maps?q=${lat},${lng}`;
+}
 
 export function OSMap({
   lat = MAP_LAT,
@@ -21,10 +29,7 @@ export function OSMap({
   zoom?: number;
   height?: number | string;
 }) {
-  // bbox = rough bounding box around the pin so the static tile is centered
-  const delta = 0.004;
-  const bbox  = `${lng - delta},${lat - delta},${lng + delta},${lat + delta}`;
-  const src   = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lng}`;
+  const src = `https://www.google.com/maps?q=${lat},${lng}&z=${zoom}&output=embed`;
 
   return (
     <div
@@ -40,14 +45,14 @@ export function OSMap({
         src={src}
         width="100%"
         height="100%"
-        style={{ border: 0, display: "block", filter: "saturate(0.7) brightness(0.88) contrast(1.1)" }}
+        style={{ border: 0, display: "block" }}
         loading="lazy"
         title="Akiro Laundry location"
         aria-label="Map showing Akiro Laundry location in Dili, Timor-Leste"
       />
       {/* Branded overlay pin label */}
       <a
-        href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=${zoom}/${lat}/${lng}`}
+        href={googleMapsLink(lat, lng)}
         target="_blank"
         rel="noopener noreferrer"
         className="absolute bottom-3 left-3 flex items-center gap-2 rounded-2xl px-3 py-2 backdrop-blur-sm transition-opacity hover:opacity-90"

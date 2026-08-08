@@ -6,7 +6,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { OSMap, MAP_LAT, MAP_LNG, MAP_ZOOM, MAP_ADDRESS } from "./OSMap";
+import { OSMap, MAP_LAT, MAP_LNG, MAP_ZOOM, MAP_ADDRESS, googleMapsLink } from "./OSMap";
 
 function InfoRow({
   icon, label, value,
@@ -54,7 +54,7 @@ export default function LocationSection() {
     return () => observer.disconnect();
   }, []);
 
-  const directionsHref = `https://www.openstreetmap.org/?mlat=${MAP_LAT}&mlon=${MAP_LNG}#map=${MAP_ZOOM}/${MAP_LAT}/${MAP_LNG}`;
+  const directionsHref = googleMapsLink(MAP_LAT, MAP_LNG);
 
   return (
     <section id="location" className="py-24 relative overflow-hidden">
