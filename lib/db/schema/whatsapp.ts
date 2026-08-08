@@ -16,6 +16,8 @@
 //   {{businessName}}    — from settings
 //   {{businessPhone}}   — from settings
 //   {{businessUrl}}     — from settings
+//   {{greeting}}        — auto-picked by time of day (morning/afternoon/evening),
+//                         text customisable per time-of-day in settings below
 
 import {
   pgTable,
@@ -55,6 +57,14 @@ export const waTemplateSettings = pgTable("wa_template_settings", {
     .default(
       "Ola Sr/a *{{customerName}}*,\nAmi husi *{{businessName}}* hakarak informa kona-ba ita-nia pedidu foun.",
     ),
+
+  // Time-of-day greeting text — auto-selected at send time based on the
+  // sender's local clock and exposed as {{greeting}}. Not inserted into any
+  // message automatically; the admin opts in by typing the token themselves
+  // (same convention as {{paymentLine}}).
+  greetingMorning:   text("greeting_morning").notNull().default("Bondia"),
+  greetingAfternoon: text("greeting_afternoon").notNull().default("Botarde"),
+  greetingEvening:   text("greeting_evening").notNull().default("Bonoite"),
 
   // Order detail header
   orderDetailHeader: text("order_detail_header")

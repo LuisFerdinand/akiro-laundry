@@ -17,6 +17,13 @@ export interface DailyRevenuePoint  { date: string;  revenue: number; orders: nu
 export interface WeeklyRevenuePoint { week: string;  revenue: number; orders: number }
 export interface MonthlyRevenuePoint { month: string; revenue: number; orders: number }
 
+export interface PaymentBreakdown {
+  paid:        number;
+  unpaid:      number;
+  paidRevenue: number;
+  unpaidValue: number;
+}
+
 export interface FullDashboardStats {
   revenue: {
     today:     number;
@@ -36,11 +43,11 @@ export interface FullDashboardStats {
     done:       number;
     picked_up:  number;
   };
-  paymentBreakdown: {
-    paid:         number;
-    unpaid:       number;
-    paidRevenue:  number;
-    unpaidValue:  number;
+  paymentBreakdown: PaymentBreakdown;
+  paymentBreakdownByPeriod: {
+    daily:   PaymentBreakdown;
+    weekly:  PaymentBreakdown;
+    monthly: PaymentBreakdown;
   };
   dailyRevenue:   DailyRevenuePoint[];
   weeklyRevenue:  WeeklyRevenuePoint[];
@@ -160,6 +167,25 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
     unpaid:      unpaidOrders.length,
     paidRevenue: paidOrders.reduce((s, o) => s + price(o), 0),
     unpaidValue: unpaidOrders.reduce((s, o) => s + price(o), 0),
+  };
+
+  // Paid orders are bucketed by paid date, unpaid by createdAt (they have no
+  // paidAt yet) — same convention as revenueIn()/ordersIn() above.
+  const paymentBreakdownFor = (from: Date, to?: Date): PaymentBreakdown => {
+    const paidIn   = paidOrders.filter((o) => inRange(paidDate(o), from, to));
+    const unpaidIn = unpaidOrders.filter((o) => inRange(new Date(o.createdAt), from, to));
+    return {
+      paid:        paidIn.length,
+      unpaid:      unpaidIn.length,
+      paidRevenue: paidIn.reduce((s, o) => s + price(o), 0),
+      unpaidValue: unpaidIn.reduce((s, o) => s + price(o), 0),
+    };
+  };
+
+  const paymentBreakdownByPeriod = {
+    daily:   paymentBreakdownFor(todayStart),
+    weekly:  paymentBreakdownFor(weekStart),
+    monthly: paymentBreakdownFor(monthStart),
   };
 
   // ── 4. Daily revenue — last 7 days ──────────────────────────────────────────
@@ -355,6 +381,7 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
     },
     statusBreakdown,
     paymentBreakdown,
+    paymentBreakdownByPeriod,
     dailyRevenue,
     weeklyRevenue,
     monthlyRevenue,

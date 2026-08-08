@@ -120,6 +120,8 @@ export async function setCashRegisterBalance(
 
     revalidatePath("/employee/orders");
     revalidatePath("/admin/cash-register");
+    revalidatePath("/employee/cash-register");
+    revalidatePath("/admin");
     return { success: true };
   } catch (err) {
     console.error("[setCashRegisterBalance]", err);
@@ -164,6 +166,8 @@ export async function recordManualTransaction(
     });
 
     revalidatePath("/admin/cash-register");
+    revalidatePath("/employee/cash-register");
+    revalidatePath("/admin");
     return { success: true, newBalance };
   } catch (err) {
     console.error("[recordManualTransaction]", err);
@@ -249,6 +253,11 @@ export async function processPayment(
 
     revalidatePath("/employee/orders");
     revalidatePath(`/employee/orders/${orderId}`);
+    if (paymentMethod === "cash") {
+      revalidatePath("/employee/cash-register");
+      revalidatePath("/admin/cash-register");
+      revalidatePath("/admin");
+    }
     return { success: true, change };
   } catch (err) {
     console.error("[processPayment]", err);

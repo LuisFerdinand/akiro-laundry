@@ -7,6 +7,7 @@ import { parseE164 } from "@/lib/utils/phone";
 import { interpolate } from "@/lib/utils/wa-message";
 import type { Order } from "@/lib/db/schema";
 import type { WaTemplateData } from "@/lib/actions/wa-templates";
+import type { WaTemplateSettings } from "@/lib/db/schema/whatsapp";
 
 export interface WhatsAppNotifyProps {
   /** Customer's WhatsApp number (local or E.164) */
@@ -44,6 +45,18 @@ const FALLBACK_STATUS_BODY: Record<Order["status"], string> = {
     "🎉 Ita-nia pedidu *foti ona*. Obrigadu tan uza ami-nia servisu!",
 };
 
+// ── Time-of-day greeting ────────────────────────────────────────────────────
+// 05:00–11:59 morning · 12:00–17:59 afternoon · 18:00–04:59 evening
+function pickGreeting(settings: WaTemplateSettings | undefined, hour: number): string {
+  const morning   = settings?.greetingMorning?.trim()   || "Bondia";
+  const afternoon = settings?.greetingAfternoon?.trim() || "Botarde";
+  const evening    = settings?.greetingEvening?.trim()   || "Bonoite";
+
+  if (hour >= 5 && hour < 12)  return morning;
+  if (hour >= 12 && hour < 18) return afternoon;
+  return evening;
+}
+
 // ── Build the full WA message ─────────────────────────────────────────────────
 function buildMessage({
   customerName,
@@ -55,6 +68,7 @@ function buildMessage({
   notes,
   reviewUrl,
   templateData,
+  sendHour,
 }: {
   customerName:    string;
   orderNumber:     string;
@@ -65,6 +79,7 @@ function buildMessage({
   notes?:          string | null;
   reviewUrl:       string;
   templateData?:   WaTemplateData | null;
+  sendHour:        number;
 }): string {
   const statusLabel    = ORDER_STATUS_LABELS[status] ?? status;
   const formattedPrice = formatUSD(isNaN(totalPrice) ? 0 : totalPrice);
@@ -91,6 +106,7 @@ function buildMessage({
     businessName:  orDefault(settings?.businessName,  "Akiro Laundry"),
     businessPhone: orDefault(settings?.businessPhone, "+670 7675 8 7380"),
     businessUrl:   orDefault(settings?.businessUrl,   "akirolaundry.com"),
+    greeting:      pickGreeting(settings, sendHour),
   };
 
   // {{paymentLine}} is available as a variable inside the status message, but is
@@ -166,6 +182,7 @@ export function WhatsAppNotify({
       notes,
       reviewUrl,
       templateData,
+      sendHour: new Date().getHours(),
     });
 
     const parsed     = parseE164(customerPhone);

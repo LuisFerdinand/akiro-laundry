@@ -10,7 +10,7 @@ import {
 export default async function EmployeeDashboard() {
   const [stats, recentOrders] = await Promise.all([
     getDashboardStats(),
-    getOrders(5),
+    getOrders({ limit: 5 }),
   ]);
 
   const statCards = [

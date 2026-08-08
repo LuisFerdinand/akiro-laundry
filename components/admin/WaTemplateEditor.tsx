@@ -32,6 +32,7 @@ const STATUS_TABS: { value: StatusValue; label: string; emoji: string }[] = [
 ];
 
 const VARIABLES: { token: string; label: string; sample: string }[] = [
+  { token: "{{greeting}}",        label: "Time-of-day Greeting", sample: "Bondia"        },
   { token: "{{customerName}}",    label: "Customer Name",   sample: "Maria Silva"        },
   { token: "{{orderNumber}}",     label: "Order Number",    sample: "AK-20260329-001"    },
   { token: "{{servicesSummary}}", label: "Services",        sample: "Wash & Dry, Shoes"  },
@@ -349,6 +350,9 @@ export function WaTemplateEditor({
         businessUrl:           settings.businessUrl,
         paymentPaidTemplate:   settings.paymentPaidTemplate,
         paymentUnpaidTemplate: settings.paymentUnpaidTemplate,
+        greetingMorning:       settings.greetingMorning,
+        greetingAfternoon:     settings.greetingAfternoon,
+        greetingEvening:       settings.greetingEvening,
       });
 
       if (!settingsResult.success) {
@@ -444,6 +448,36 @@ export function WaTemplateEditor({
                 onChange={(v) => updateSetting("paymentUnpaidTemplate", v)}
                 rows={2}
               />
+            </div>
+
+            <div>
+              <p style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.5, marginBottom: "10px" }}>
+                <code style={{ fontSize: "10px" }}>{"{{greeting}}"}</code> is auto-picked at send time based
+                on the employee&apos;s local clock — morning 05:00–11:59, afternoon 12:00–17:59, evening 18:00–04:59.
+                Customise the text for each below.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {([
+                  ["greetingMorning",   "Morning (05:00–11:59)"],
+                  ["greetingAfternoon", "Afternoon (12:00–17:59)"],
+                  ["greetingEvening",   "Evening (18:00–04:59)"],
+                ] as const).map(([key, label]) => (
+                  <div key={key}>
+                    <label className="text-[10px] font-black uppercase tracking-widest block mb-1" style={{ color: "#94a3b8" }}>
+                      {label}
+                    </label>
+                    <input
+                      value={settings[key]}
+                      onChange={(e) => updateSetting(key, e.target.value)}
+                      style={{
+                        width: "100%", padding: "7px 10px", borderRadius: "6px",
+                        border: "1.5px solid #e2e8f0", fontSize: "13px", fontWeight: 600,
+                        color: "#1e293b", background: "#f8fafc", outline: "none",
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

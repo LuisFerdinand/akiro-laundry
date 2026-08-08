@@ -19,8 +19,10 @@ import {
   OrderFormStep,
   OrderFormData,
   OrderPriceBreakdown,
+  ORDER_FORM_STEPS,
   getNextStep,
   getPrevStep,
+  getStepIndex,
   validateCustomerStep,
   validateServiceItems,
   calculateOrderPrice,
@@ -71,7 +73,7 @@ export default function NewOrderPage() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const [step,        setStep]        = useState<OrderFormStep>("customer");
+  const [step,        setStep]        = useState<OrderFormStep>(ORDER_FORM_STEPS[0].key);
   const [formData,    setFormData]    = useState<OrderFormData>(EMPTY_FORM);
   const [errors,      setErrors]      = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -174,7 +176,7 @@ export default function NewOrderPage() {
 
   const handleNewOrder = () => {
     setFormData(EMPTY_FORM);
-    setStep("customer");
+    setStep(ORDER_FORM_STEPS[0].key);
     setSuccess(null);
     setPaymentDone(false);
     setChangeGiven(null);
@@ -401,7 +403,7 @@ export default function NewOrderPage() {
         )}
 
         <div className="flex gap-2.5">
-          {step !== "customer" && (
+          {getStepIndex(step) > 0 && (
             <Button variant="outline" size="icon" className="shrink-0 rounded-md border-2" style={{ width: 46, height: 46 }} onClick={handleBack}>
               <ChevronLeft size={18} />
             </Button>

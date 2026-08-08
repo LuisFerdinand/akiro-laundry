@@ -18,7 +18,7 @@ import type {
   Order,
   OrderItem,
 } from "@/lib/db/schema";
-import { eq, ilike, desc } from "drizzle-orm";
+import { eq, ilike, desc, and, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import {
   generateOrderNumber,
@@ -107,7 +107,30 @@ function buildItemJoins<T extends typeof db.select>(q: ReturnType<T>) {
   // Helper type — not called directly; joins are inlined below for type safety
 }
 
-export async function getOrders(limit = 50): Promise<OrderWithDetails[]> {
+export interface EmployeeOrderFilters {
+  search?: string;
+  status?: string;
+  limit?:  number;
+}
+
+export async function getOrders(filters: EmployeeOrderFilters = {}): Promise<OrderWithDetails[]> {
+  const { search, status, limit = 100 } = filters;
+
+  const conditions = [];
+  if (search?.trim()) {
+    conditions.push(
+      or(
+        ilike(orders.orderNumber, `%${search.trim()}%`),
+        ilike(customers.name,    `%${search.trim()}%`),
+        ilike(customers.phone,   `%${search.trim()}%`),
+      ),
+    );
+  }
+  if (status && status !== "all") {
+    conditions.push(eq(orders.status, status as Order["status"]));
+  }
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
   const orderRows = await db
     .select({
       order:           orders,
@@ -117,6 +140,7 @@ export async function getOrders(limit = 50): Promise<OrderWithDetails[]> {
     })
     .from(orders)
     .leftJoin(customers, eq(orders.customerId, customers.id))
+    .where(where)
     .orderBy(desc(orders.createdAt))
     .limit(limit);
 

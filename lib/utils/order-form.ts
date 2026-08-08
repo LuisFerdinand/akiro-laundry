@@ -54,8 +54,8 @@ export interface OrderPriceBreakdown {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 export const ORDER_FORM_STEPS: { key: OrderFormStep; label: string }[] = [
-  { key: "customer", label: "Customer" },
   { key: "service",  label: "Services" },
+  { key: "customer", label: "Customer" },
   { key: "review",   label: "Review"   },
 ];
 

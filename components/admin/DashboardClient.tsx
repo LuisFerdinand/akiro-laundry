@@ -497,13 +497,22 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; border: string;
 export function DashboardClient({ stats, social }: Props) {
   const {
     revenue, orderCounts, dailyRevenue, weeklyRevenue, monthlyRevenue,
-    statusBreakdown, paymentBreakdown,
+    statusBreakdown, paymentBreakdown, paymentBreakdownByPeriod,
     topCustomers, topServices,
     cashBalance, newCustomersThisMonth, avgOrderValue, recentOrders,
   } = stats;
 
   const [trendMetric, setTrendMetric] = useState<"revenue" | "orders">("revenue");
   const [trendPeriod, setTrendPeriod] = useState<"daily" | "weekly" | "monthly">("daily");
+  const [paymentPeriod, setPaymentPeriod] = useState<"daily" | "weekly" | "monthly" | "all">("all");
+
+  const activePaymentBreakdown =
+    paymentPeriod === "all" ? paymentBreakdown : paymentBreakdownByPeriod[paymentPeriod];
+  const paymentPeriodSub =
+    paymentPeriod === "daily"   ? "Today"
+    : paymentPeriod === "weekly"  ? "Last 7 days"
+    : paymentPeriod === "monthly" ? "This month"
+    : "Last 6 months";
 
   const trendData: TrendPoint[] =
     trendPeriod === "daily"
@@ -679,7 +688,19 @@ export function DashboardClient({ stats, social }: Props) {
         </Card>
 
         <Card>
-          <SectionHeader title="Payment Status" sub="Revenue collection" />
+          <SectionHeader title="Payment Status" sub={paymentPeriodSub} />
+          <div style={{ marginBottom: "12px" }}>
+            <SegmentedControl
+              options={[
+                { value: "daily"   as const, label: "Day" },
+                { value: "weekly"  as const, label: "Week" },
+                { value: "monthly" as const, label: "Month" },
+                { value: "all"     as const, label: "All" },
+              ]}
+              value={paymentPeriod}
+              onChange={setPaymentPeriod}
+            />
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <div style={{ padding: "12px 14px", background: "#f0fdf4", borderRadius: "10px", border: "1.5px solid #86efac" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
@@ -687,9 +708,9 @@ export function DashboardClient({ stats, social }: Props) {
                   <CreditCard size={13} style={{ color: "#16a34a" }} />
                   <span style={{ fontSize: "11px", fontWeight: 700, color: "#16a34a" }}>Paid</span>
                 </div>
-                <span style={{ fontSize: "11px", fontWeight: 800, color: "#16a34a" }}>{paymentBreakdown.paid} orders</span>
+                <span style={{ fontSize: "11px", fontWeight: 800, color: "#16a34a" }}>{activePaymentBreakdown.paid} orders</span>
               </div>
-              <p style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: "18px", color: "#14532d" }}>{formatUSD(paymentBreakdown.paidRevenue)}</p>
+              <p style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: "18px", color: "#14532d" }}>{formatUSD(activePaymentBreakdown.paidRevenue)}</p>
             </div>
             <div style={{ padding: "12px 14px", background: "#fffbeb", borderRadius: "10px", border: "1.5px solid #fcd34d" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
@@ -697,9 +718,9 @@ export function DashboardClient({ stats, social }: Props) {
                   <AlertCircle size={13} style={{ color: "#d97706" }} />
                   <span style={{ fontSize: "11px", fontWeight: 700, color: "#d97706" }}>Unpaid</span>
                 </div>
-                <span style={{ fontSize: "11px", fontWeight: 800, color: "#d97706" }}>{paymentBreakdown.unpaid} orders</span>
+                <span style={{ fontSize: "11px", fontWeight: 800, color: "#d97706" }}>{activePaymentBreakdown.unpaid} orders</span>
               </div>
-              <p style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: "18px", color: "#92400e" }}>{formatUSD(paymentBreakdown.unpaidValue)}</p>
+              <p style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: "18px", color: "#92400e" }}>{formatUSD(activePaymentBreakdown.unpaidValue)}</p>
             </div>
           </div>
         </Card>
