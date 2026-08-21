@@ -7,7 +7,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import {
   Plus, X, Save, Loader2, Trash2, Edit2, CheckCircle2,
   Sparkles, ToggleLeft, ToggleRight, AlertTriangle,
-  Search, TrendingUp, ShoppingBag, Flame, Crown,
+  Search, TrendingUp, ShoppingBag, Flame, Crown, PenLine,
 } from "lucide-react";
 import {
   createService, updateService, deleteService,
@@ -407,7 +407,22 @@ export function ServicesClient({ services, initialSearch }: Props) {
                     >
                       <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}>
                         <div>
-                          <p style={{ fontSize: "13px", fontWeight: 700, color: "#1e293b" }}>{s.name}</p>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <p style={{ fontSize: "13px", fontWeight: 700, color: "#1e293b" }}>{s.name}</p>
+                            {s.updatedAt && (
+                              <span
+                                title={`Last edited ${new Date(s.updatedAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}`}
+                                style={{
+                                  display: "inline-flex", alignItems: "center", gap: "3px",
+                                  fontSize: "9px", fontWeight: 800, color: "#d97706",
+                                  background: "#fffbeb", border: "1px solid #fcd34d",
+                                  padding: "2px 6px", borderRadius: "999px", cursor: "default",
+                                }}
+                              >
+                                <PenLine size={8} /> Edited
+                              </span>
+                            )}
+                          </div>
                           {s.notes && <p style={{ fontSize: "10px", color: "#94a3b8", marginTop: "2px" }}>{s.notes}</p>}
                         </div>
                       </td>

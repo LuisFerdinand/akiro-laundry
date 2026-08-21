@@ -37,6 +37,39 @@ export async function getAdminUsers(): Promise<UserItem[]> {
   }));
 }
 
+// ─── Create ───────────────────────────────────────────────────────────────────
+
+export async function createUser(data: {
+  name:     string;
+  email:    string;
+  password: string;
+  role:     "admin" | "employee" | "user";
+}): Promise<UserActionResult> {
+  try {
+    if (!data.name.trim())  return { success: false, error: "Name is required." };
+    if (!data.email.trim()) return { success: false, error: "Email is required." };
+    if (!data.password || data.password.length < 6)
+      return { success: false, error: "Password must be at least 6 characters." };
+
+    const email = data.email.trim().toLowerCase();
+    const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+    if (existing) return { success: false, error: "That email is already in use." };
+
+    const hashed = await bcrypt.hash(data.password, 10);
+    await db.insert(users).values({
+      name:     data.name.trim(),
+      email,
+      password: hashed,
+      role:     data.role,
+    });
+    revalidatePath("/admin/users");
+    return { success: true };
+  } catch (e: any) {
+    if (e.message?.includes("unique")) return { success: false, error: "That email is already in use." };
+    return { success: false, error: e.message ?? "Failed to create user." };
+  }
+}
+
 // ─── Update name / email (non-admin users only) ───────────────────────────────
 
 export async function updateUser(

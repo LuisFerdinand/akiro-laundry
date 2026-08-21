@@ -9,6 +9,7 @@ import {
   soaps,
   pewangi,
   servicePricing,
+  orderSpecialRequests,
 } from "@/lib/db/schema";
 import type {
   Customer,
@@ -17,6 +18,7 @@ import type {
   ServicePricing,
   Order,
   OrderItem,
+  OrderSpecialRequest,
 } from "@/lib/db/schema";
 import { eq, ilike, desc, and, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -92,6 +94,7 @@ export interface OrderWithDetails extends Order {
   customerPhone:   string;
   customerAddress: string | null;
   items:           OrderItemWithDetails[];
+  specialRequests: OrderSpecialRequest[];
 }
 
 // ── Shared item select shape ───────────────────────────────────────────────────
@@ -176,12 +179,24 @@ export async function getOrders(filters: EmployeeOrderFilters = {}): Promise<Ord
     itemsByOrder.set(row.item.orderId, list);
   }
 
+  const allSpecialRequests = await db
+    .select()
+    .from(orderSpecialRequests)
+    .where(inArray(orderSpecialRequests.orderId, orderIds));
+  const requestsByOrder = new Map<number, OrderSpecialRequest[]>();
+  for (const r of allSpecialRequests) {
+    const list = requestsByOrder.get(r.orderId) ?? [];
+    list.push(r);
+    requestsByOrder.set(r.orderId, list);
+  }
+
   return orderRows.map((r) => ({
     ...r.order,
     customerName:    r.customerName    ?? "Unknown",
     customerPhone:   r.customerPhone   ?? "—",
     customerAddress: r.customerAddress ?? null,
     items:           itemsByOrder.get(r.order.id) ?? [],
+    specialRequests: requestsByOrder.get(r.order.id) ?? [],
   }));
 }
 
@@ -214,6 +229,12 @@ export async function getOrderById(id: number): Promise<OrderWithDetails | null>
     .leftJoin(pewangi, eq(orderItems.pewangiId, pewangi.id))
     .where(eq(orderItems.orderId, id));
 
+  const specialRequests = await db
+    .select()
+    .from(orderSpecialRequests)
+    .where(eq(orderSpecialRequests.orderId, id))
+    .orderBy(desc(orderSpecialRequests.createdAt));
+
   return {
     ...rows[0].order,
     customerName:    rows[0].customerName    ?? "Unknown",
@@ -226,6 +247,7 @@ export async function getOrderById(id: number): Promise<OrderWithDetails | null>
       soapName:    r.soapName    ?? null,
       pewangiName: r.pewangiName ?? null,
     })),
+    specialRequests,
   };
 }
 

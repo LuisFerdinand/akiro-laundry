@@ -11,8 +11,9 @@ import {
   soaps,
   pewangi,
   cashRegisterTransactions,
+  orderSpecialRequests,
 } from "@/lib/db/schema";
-import type { Order, OrderItem } from "@/lib/db/schema";
+import type { Order, OrderItem, OrderSpecialRequest } from "@/lib/db/schema";
 import { eq, ilike, and, desc, or, count, gte, lte, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -30,6 +31,7 @@ export interface AdminOrderWithDetails extends Order {
   customerName:  string;
   customerPhone: string;
   items: AdminOrderItem[];
+  specialRequests: OrderSpecialRequest[];
 }
 
 /** Shape returned by paginated list query */
@@ -85,6 +87,26 @@ async function fetchItemsByOrderIds(
       pewangiName: r.pewangiName ?? null,
     });
     map.set(r.item.orderId, list);
+  }
+  return map;
+}
+
+/** Fetch order_special_requests for a set of order IDs, grouped by orderId. */
+async function fetchSpecialRequestsByOrderIds(
+  orderIds: number[],
+): Promise<Map<number, OrderSpecialRequest[]>> {
+  if (orderIds.length === 0) return new Map();
+
+  const rows = await db
+    .select()
+    .from(orderSpecialRequests)
+    .where(inArray(orderSpecialRequests.orderId, orderIds));
+
+  const map = new Map<number, OrderSpecialRequest[]>();
+  for (const r of rows) {
+    const list = map.get(r.orderId) ?? [];
+    list.push(r);
+    map.set(r.orderId, list);
   }
   return map;
 }
@@ -145,14 +167,16 @@ export async function getAdminOrders(
     .limit(limit)
     .offset(offset);
 
-  const orderIds  = orderRows.map((r) => r.order.id);
-  const itemsMap  = await fetchItemsByOrderIds(orderIds);
+  const orderIds     = orderRows.map((r) => r.order.id);
+  const itemsMap     = await fetchItemsByOrderIds(orderIds);
+  const requestsMap  = await fetchSpecialRequestsByOrderIds(orderIds);
 
   const rows: AdminOrderWithDetails[] = orderRows.map((r) => ({
     ...r.order,
-    customerName:  r.customerName  ?? "Unknown",
-    customerPhone: r.customerPhone ?? "—",
-    items:         itemsMap.get(r.order.id) ?? [],
+    customerName:    r.customerName  ?? "Unknown",
+    customerPhone:   r.customerPhone ?? "—",
+    items:           itemsMap.get(r.order.id) ?? [],
+    specialRequests: requestsMap.get(r.order.id) ?? [],
   }));
 
   return {
@@ -181,13 +205,15 @@ export async function getAdminOrderById(
 
   if (!rows[0]) return null;
 
-  const itemsMap = await fetchItemsByOrderIds([id]);
+  const itemsMap    = await fetchItemsByOrderIds([id]);
+  const requestsMap = await fetchSpecialRequestsByOrderIds([id]);
 
   return {
     ...rows[0].order,
-    customerName:  rows[0].customerName  ?? "Unknown",
-    customerPhone: rows[0].customerPhone ?? "—",
-    items:         itemsMap.get(id) ?? [],
+    customerName:    rows[0].customerName  ?? "Unknown",
+    customerPhone:   rows[0].customerPhone ?? "—",
+    items:           itemsMap.get(id) ?? [],
+    specialRequests: requestsMap.get(id) ?? [],
   };
 }
 // ─── Revenue stats for cash register page ────────────────────────────────────

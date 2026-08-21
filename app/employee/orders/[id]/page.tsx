@@ -7,6 +7,7 @@ import { formatUSD, ORDER_STATUS_LABELS } from "@/lib/utils/order-form";
 import { OrderStatusUpdater }  from "@/components/employee/OrderStatusUpdater";
 import { PrintReceiptButton }  from "@/components/employee/PrintReceiptButton";
 import { DeleteOrderButton }   from "@/components/shared/DeleteOrderButton";
+import { SpecialRequestsPanel } from "@/components/shared/SpecialRequestsPanel";
 import {
   ArrowLeft, User, Phone, Layers, Weight, Calendar,
   Clock, FileText, Droplets, Wind, Hash,
@@ -197,6 +198,17 @@ export default async function OrderDetailPage({ params }: PageProps) {
           </SectionCard>
         );
       })}
+
+      {/* Special requests */}
+      <SectionCard title="Special Requests">
+        <div style={{ padding: "0 16px" }}>
+          <SpecialRequestsPanel
+            orderId={order.id}
+            specialRequests={order.specialRequests}
+            isPaid={order.paymentStatus === "paid"}
+          />
+        </div>
+      </SectionCard>
 
       {/* Grand total */}
       <div style={{ borderRadius: "7px", background: "linear-gradient(135deg,#1a7fba,#2496d6 55%,#0f5a85)", boxShadow: "0 4px 16px rgba(26,127,186,0.30)", padding: "13px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>

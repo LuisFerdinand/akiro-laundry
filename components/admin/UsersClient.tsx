@@ -9,7 +9,7 @@ import {
   AlertTriangle, ChevronDown, UserCog,
 } from "lucide-react";
 import {
-  updateUser, updateUserRole, changeUserPassword, deleteUser,
+  createUser, updateUser, updateUserRole, changeUserPassword, deleteUser,
 } from "@/lib/actions/admin-users";
 import type { UserItem } from "@/lib/actions/admin-users";
 
@@ -91,6 +91,128 @@ function ConfirmDeleteModal({
           }}>
             {isPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
             Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Create User Modal ────────────────────────────────────────────────────────
+
+function CreateUserModal({
+  onClose, onSuccess,
+}: {
+  onClose: () => void; onSuccess: (msg: string) => void;
+}) {
+  const [name,     setName]     = useState("");
+  const [email,    setEmail]    = useState("");
+  const [password, setPassword] = useState("");
+  const [role,     setRole]     = useState<"admin" | "employee" | "user">("employee");
+  const [error,    setError]    = useState<string | null>(null);
+  const [isPending, start]      = useTransition();
+
+  const handleSave = () => {
+    setError(null);
+    start(async () => {
+      const result = await createUser({ name, email, password, role });
+      if (result.success) onSuccess("User created successfully.");
+      else setError(result.error ?? "Failed.");
+    });
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 50,
+      background: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: "16px",
+    }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{
+        background: "white", borderRadius: "14px", border: "1.5px solid #e2e8f0",
+        boxShadow: "0 24px 60px rgba(0,0,0,0.15)",
+        width: "100%", maxWidth: "420px", overflow: "hidden",
+        maxHeight: "90vh", display: "flex", flexDirection: "column",
+      }}>
+        <div style={{
+          background: "linear-gradient(135deg,#16a34a,#22c55e 55%,#15803d)",
+          padding: "18px 22px", flexShrink: 0,
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+        }}>
+          <div>
+            <p style={{ fontSize: "10px", fontWeight: 800, color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: "0.1em" }}>New Account</p>
+            <p style={{ fontSize: "16px", fontWeight: 800, color: "white", marginTop: "2px" }}>Add User</p>
+          </div>
+          <button onClick={onClose} style={{
+            background: "rgba(255,255,255,0.15)", border: "1.5px solid rgba(255,255,255,0.25)",
+            borderRadius: "7px", width: 32, height: 32,
+            display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+          }}>
+            <X size={14} style={{ color: "white" }} />
+          </button>
+        </div>
+        <div style={{ padding: "22px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div>
+            <label style={labelStyle}>Full Name</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Maria Santos" style={inputStyle} onFocus={onFocus} onBlur={onBlur} />
+          </div>
+          <div>
+            <label style={labelStyle}>Email Address</label>
+            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="name@example.com" style={inputStyle} onFocus={onFocus} onBlur={onBlur} />
+          </div>
+          <div>
+            <label style={labelStyle}>Password</label>
+            <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Min. 6 characters" style={inputStyle} onFocus={onFocus} onBlur={onBlur} />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Role</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {(["admin", "employee", "user"] as const).map((r) => {
+                const cfg = ROLE_CONFIG[r];
+                const Icon = cfg.Icon;
+                const selected = role === r;
+                return (
+                  <button key={r} type="button" onClick={() => setRole(r)} style={{
+                    display: "flex", alignItems: "center", gap: "12px",
+                    padding: "10px 12px", borderRadius: "9px", cursor: "pointer",
+                    border: `1.5px solid ${selected ? cfg.color : "#e2e8f0"}`,
+                    background: selected ? cfg.bg : "white",
+                    textAlign: "left", width: "100%",
+                  }}>
+                    <div style={{
+                      width: 30, height: 30, borderRadius: "7px", flexShrink: 0,
+                      background: selected ? `${cfg.color}22` : "#f8fafc",
+                      border: `1.5px solid ${selected ? cfg.border : "#e2e8f0"}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      <Icon size={14} style={{ color: selected ? cfg.color : "#94a3b8" }} />
+                    </div>
+                    <p style={{ fontSize: "13px", fontWeight: 700, color: selected ? cfg.color : "#1e293b" }}>{cfg.label}</p>
+                    {selected && (
+                      <div style={{ marginLeft: "auto", width: 16, height: 16, borderRadius: "50%", background: cfg.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <CheckCircle2 size={10} style={{ color: "white" }} />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {error && (
+            <div style={{ background: "#fff1f2", border: "1.5px solid #fda4af", borderRadius: "7px", padding: "10px 14px" }}>
+              <p style={{ fontSize: "12px", fontWeight: 600, color: "#be123c" }}>{error}</p>
+            </div>
+          )}
+          <button onClick={handleSave} disabled={isPending} style={{
+            height: 46, borderRadius: "9px", border: "none",
+            background: isPending ? "#94a3b8" : "linear-gradient(135deg,#16a34a,#22c55e 55%,#15803d)",
+            boxShadow: isPending ? "none" : "0 4px 14px rgba(22,163,74,0.3)",
+            color: "white", fontSize: "14px", fontWeight: 800,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+            cursor: isPending ? "not-allowed" : "pointer", opacity: isPending ? 0.6 : 1,
+          }}>
+            {isPending ? <><Loader2 size={14} className="animate-spin" /> Creating…</> : <><Plus size={14} /> Create User</>}
           </button>
         </div>
       </div>
@@ -388,6 +510,7 @@ export function UsersClient({ users, currentAdminId }: Props) {
   const router = useRouter();
 
   const [activeModal, setActiveModal] = useState<{ kind: ModalKind; user: UserItem } | null>(null);
+  const [createOpen,  setCreateOpen]  = useState(false);
   const [toast,       setToast]       = useState<string | null>(null);
   const [isPending,   start]          = useTransition();
 
@@ -398,6 +521,7 @@ export function UsersClient({ users, currentAdminId }: Props) {
 
   const handleSuccess = (msg: string) => {
     setActiveModal(null);
+    setCreateOpen(false);
     showToast(msg);
     router.refresh();
   };
@@ -423,6 +547,9 @@ export function UsersClient({ users, currentAdminId }: Props) {
   return (
     <>
       {/* Modals */}
+      {createOpen && (
+        <CreateUserModal onClose={() => setCreateOpen(false)} onSuccess={handleSuccess} />
+      )}
       {activeModal?.kind === "edit" && (
         <EditUserModal user={activeModal.user} currentAdminId={currentAdminId} onClose={() => setActiveModal(null)} onSuccess={handleSuccess} />
       )}
@@ -452,14 +579,25 @@ export function UsersClient({ users, currentAdminId }: Props) {
       <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
 
         {/* Header */}
-        <div>
-          <h1 style={{
-            fontFamily: "Sora,sans-serif", fontWeight: 800, fontSize: "26px",
-            color: "#0f172a", letterSpacing: "-0.02em", marginBottom: "4px",
-          }}>Users & Roles</h1>
-          <p style={{ fontSize: "13px", color: "#94a3b8" }}>
-            {users.length} account{users.length !== 1 ? "s" : ""} · {admins.length} admin{admins.length !== 1 ? "s" : ""}, {employees.length} employee{employees.length !== 1 ? "s" : ""}, {regular.length} user{regular.length !== 1 ? "s" : ""}
-          </p>
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
+          <div>
+            <h1 style={{
+              fontFamily: "Sora,sans-serif", fontWeight: 800, fontSize: "26px",
+              color: "#0f172a", letterSpacing: "-0.02em", marginBottom: "4px",
+            }}>Users & Roles</h1>
+            <p style={{ fontSize: "13px", color: "#94a3b8" }}>
+              {users.length} account{users.length !== 1 ? "s" : ""} · {admins.length} admin{admins.length !== 1 ? "s" : ""}, {employees.length} employee{employees.length !== 1 ? "s" : ""}, {regular.length} user{regular.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+          <button onClick={() => setCreateOpen(true)} style={{
+            display: "flex", alignItems: "center", gap: "7px",
+            padding: "10px 18px", borderRadius: "9px", border: "none",
+            background: "linear-gradient(135deg,#16a34a,#22c55e 55%,#15803d)",
+            boxShadow: "0 4px 14px rgba(22,163,74,0.3)",
+            color: "white", fontSize: "13px", fontWeight: 800, cursor: "pointer",
+          }}>
+            <Plus size={15} /> Add User
+          </button>
         </div>
 
         {/* Stats row */}

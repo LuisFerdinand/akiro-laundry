@@ -13,6 +13,7 @@ import {
 import type { AdminOrderItem } from "@/lib/actions/admin-orders";
 import { WhatsAppNotify } from "@/components/employee/WhatsAppNotify";
 import { DeleteOrderButton } from "@/components/shared/DeleteOrderButton";
+import { SpecialRequestsPanel } from "@/components/shared/SpecialRequestsPanel";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -370,6 +371,15 @@ export default async function AdminOrderDetailPage({
                 ))
               )}
             </div>
+          </SectionCard>
+
+          {/* Special requests */}
+          <SectionCard title="Special Requests">
+            <SpecialRequestsPanel
+              orderId={order.id}
+              specialRequests={order.specialRequests}
+              isPaid={order.paymentStatus === "paid"}
+            />
           </SectionCard>
 
           {/* Order meta */}

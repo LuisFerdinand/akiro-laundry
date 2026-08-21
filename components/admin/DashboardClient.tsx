@@ -16,6 +16,7 @@ import type {
   DailyRevenuePoint,
   MonthlyRevenuePoint,
 } from "@/lib/actions/dashboard-stats";
+import { BusyHourChart } from "@/components/admin/BusyHourChart";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -496,7 +497,7 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; border: string;
 
 export function DashboardClient({ stats, social }: Props) {
   const {
-    revenue, orderCounts, dailyRevenue, weeklyRevenue, monthlyRevenue,
+    revenue, orderCounts, dailyRevenue, weeklyRevenue, monthlyRevenue, busyHours,
     statusBreakdown, paymentBreakdown, paymentBreakdownByPeriod,
     topCustomers, topServices,
     cashBalance, newCustomersThisMonth, avgOrderValue, recentOrders,
@@ -665,6 +666,12 @@ export function DashboardClient({ stats, social }: Props) {
           </div>
         </Card>
       </div>
+
+      {/* ── Busy hours ── */}
+      <Card>
+        <SectionHeader title="Busiest Hours" sub="Average orders per hour, store hours 8 AM–8 PM" />
+        <BusyHourChart data={busyHours} color="#7c3aed" height={130} />
+      </Card>
 
       {/* ── Status + payment + volume ── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>

@@ -98,6 +98,8 @@ export const servicePricing = pgTable("service_pricing", {
   notes:          text("notes"),
   isActive:       boolean("is_active").default(true).notNull(),
   createdAt:      timestamp("created_at").defaultNow().notNull(),
+  // Null until the first edit — presence of a value marks the service as "edited".
+  updatedAt:      timestamp("updated_at"),
 });
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
@@ -154,6 +156,17 @@ export const orderItems = pgTable("order_items", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// ─── Order Special Requests ───────────────────────────────────────────────────
+// Free-text requests attached to an order after it's been created. Each one
+// can nudge the order total up or down (priceAdjustment may be negative).
+export const orderSpecialRequests = pgTable("order_special_requests", {
+  id:              serial("id").primaryKey(),
+  orderId:         integer("order_id").references(() => orders.id, { onDelete: "cascade" }).notNull(),
+  description:     text("description").notNull(),
+  priceAdjustment: numeric("price_adjustment", { precision: 10, scale: 2 }).notNull(),
+  createdAt:       timestamp("created_at").defaultNow().notNull(),
+});
+
 // ─── Cash Register ────────────────────────────────────────────────────────────
 export const cashRegister = pgTable("cash_register", {
   id:            serial("id").primaryKey(),
@@ -205,7 +218,15 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
     fields:     [orders.customerId],
     references: [customers.id],
   }),
-  items: many(orderItems),
+  items:           many(orderItems),
+  specialRequests: many(orderSpecialRequests),
+}));
+
+export const orderSpecialRequestsRelations = relations(orderSpecialRequests, ({ one }) => ({
+  order: one(orders, {
+    fields:     [orderSpecialRequests.orderId],
+    references: [orders.id],
+  }),
 }));
 
 export const orderItemsRelations = relations(orderItems, ({ one }) => ({
@@ -265,6 +286,8 @@ export type Order              = typeof orders.$inferSelect;
 export type NewOrder           = typeof orders.$inferInsert;
 export type OrderItem          = typeof orderItems.$inferSelect;
 export type NewOrderItem       = typeof orderItems.$inferInsert;
+export type OrderSpecialRequest    = typeof orderSpecialRequests.$inferSelect;
+export type NewOrderSpecialRequest = typeof orderSpecialRequests.$inferInsert;
 export type CashRegister            = typeof cashRegister.$inferSelect;
 export type ExpenseCategory    = typeof expenseCategories.$inferSelect;
 export type NewExpenseCategory = typeof expenseCategories.$inferInsert;

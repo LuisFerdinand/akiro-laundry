@@ -18,6 +18,7 @@ export interface ServicePricing {
   notes:          string | null;
   isActive:       boolean;
   createdAt:      Date;
+  updatedAt:      Date | null;
 }
 
 export interface ServiceWithStats extends ServicePricing {
@@ -61,6 +62,7 @@ export async function getAdminServices(search?: string): Promise<ServiceWithStat
       notes:          r.notes      ?? null,
       isActive:       r.isActive,
       createdAt:      r.createdAt,
+      updatedAt:      r.updatedAt ?? null,
       totalOrders:    serviceItems.length,
       totalRevenue:   paidItems.reduce((s, i) => s + parseFloat(i.subtotal ?? "0"), 0),
     };
@@ -110,6 +112,7 @@ export async function updateService(
       duration:       data.duration?.trim()  || null,
       notes:          data.notes?.trim()     || null,
       isActive:       data.isActive,
+      updatedAt:      new Date(),
     }).where(eq(servicePricing.id, id));
     revalidatePath("/admin/services");
     return { success: true };

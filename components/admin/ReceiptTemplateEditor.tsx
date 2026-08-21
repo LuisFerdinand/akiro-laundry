@@ -79,8 +79,8 @@ const SAMPLE_RECEIPT_DATA: Omit<ReceiptData, "settings"> = {
     notes: "Handle the silk shirt with extra care please.",
   },
   services: [
-    { id: 1, name: "Wash & Dry — Regular", basePricePerKg: "3.00", category: "package", pricingUnit: "per_kg",  minimumKg: null, duration: null, notes: null, isActive: true, createdAt: new Date() },
-    { id: 2, name: "Shoes — Sneakers",     basePricePerKg: "4.00", category: "package", pricingUnit: "per_pcs", minimumKg: null, duration: null, notes: null, isActive: true, createdAt: new Date() },
+    { id: 1, name: "Wash & Dry — Regular", basePricePerKg: "3.00", category: "package", pricingUnit: "per_kg",  minimumKg: null, duration: null, notes: null, isActive: true, createdAt: new Date(), updatedAt: null },
+    { id: 2, name: "Shoes — Sneakers",     basePricePerKg: "4.00", category: "package", pricingUnit: "per_pcs", minimumKg: null, duration: null, notes: null, isActive: true, createdAt: new Date(), updatedAt: null },
   ],
   soaps:    [{ id: 1, name: "Rinso Colour", brand: null, pricePerKg: "0.30", isActive: true, createdAt: new Date() }],
   pewangis: [{ id: 1, name: "Molto Pink",   brand: null, pricePerKg: "0.20", isActive: true, createdAt: new Date() }],

@@ -44,6 +44,7 @@ export function PrintReceiptButton({ order, receiptSettings }: Props) {
       category:       "",
       isActive:       true,
       createdAt:      new Date(),
+      updatedAt:      null,
       minimumKg:      null,
       duration:       null,
       notes:          null,
