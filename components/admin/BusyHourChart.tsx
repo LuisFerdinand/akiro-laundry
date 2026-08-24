@@ -3,7 +3,8 @@
 
 import { useMemo, useState } from "react";
 import { Clock } from "lucide-react";
-import type { BusyHourPoint } from "@/lib/actions/dashboard-stats";
+import type { BusyHourPoint, BusyHoursByPeriod } from "@/lib/actions/dashboard-stats";
+import { SegmentedControl } from "@/components/admin/SegmentedControl";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -19,28 +20,54 @@ function formatHour(h: number): string {
 
 const HOUR_OPTIONS = Array.from({ length: MAX_HOUR - MIN_HOUR + 1 }, (_, i) => MIN_HOUR + i);
 
+type Period = "month" | "sixMonths" | "allTime";
+
+const PERIOD_LABELS: Record<Period, string> = {
+  month:     "Past month",
+  sixMonths: "Past 6 months",
+  allTime:   "All time",
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface Props {
-  data:    BusyHourPoint[]; // one entry per hour, MIN_HOUR..MAX_HOUR
+  dataByPeriod: BusyHoursByPeriod;
   color?:  string;
   height?: number;
 }
 
-export function BusyHourChart({ data, color = "#7c3aed", height = 140 }: Props) {
+export function BusyHourChart({ dataByPeriod, color = "#7c3aed", height = 140 }: Props) {
+  const [period,   setPeriod]   = useState<Period>("sixMonths");
   const [fromHour, setFromHour] = useState(MIN_HOUR);
   const [toHour,   setToHour]   = useState(MAX_HOUR);
+  const [hoverHour, setHoverHour] = useState<number | null>(null);
+
+  const data: BusyHourPoint[] = dataByPeriod[period];
 
   const visible = useMemo(
     () => data.filter((d) => d.hour >= fromHour && d.hour <= toHour),
     [data, fromHour, toHour],
   );
 
-  const max = Math.max(...visible.map((d) => d.avgOrders), 1);
-  const busiest = data.reduce((a, b) => (b.avgOrders > a.avgOrders ? b : a), data[0]);
+  const max = Math.max(...visible.map((d) => d.totalOrders), 1);
+  const busiest = data.reduce((a, b) => (b.totalOrders > a.totalOrders ? b : a), data[0]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      {/* Period toggle */}
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+        <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b" }}>Period</span>
+        <SegmentedControl
+          options={[
+            { value: "month"     as const, label: "Past Month" },
+            { value: "sixMonths" as const, label: "Past 6 Months" },
+            { value: "allTime"   as const, label: "All Time" },
+          ]}
+          value={period}
+          onChange={setPeriod}
+        />
+      </div>
+
       {/* Range controls */}
       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
         <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b" }}>From</span>
@@ -76,7 +103,11 @@ export function BusyHourChart({ data, color = "#7c3aed", height = 140 }: Props) 
           {HOUR_OPTIONS.map((h) => <option key={h} value={h}>{formatHour(h)}</option>)}
         </select>
 
-        {busiest && busiest.avgOrders > 0 && (
+        <span style={{ fontSize: "10px", color: "#94a3b8", marginLeft: "4px" }}>
+          {PERIOD_LABELS[period]}
+        </span>
+
+        {busiest && busiest.totalOrders > 0 && (
           <span style={{
             marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "5px",
             fontSize: "11px", fontWeight: 700, color: "#7c3aed",
@@ -96,22 +127,52 @@ export function BusyHourChart({ data, color = "#7c3aed", height = 140 }: Props) 
       ) : (
         <div style={{ display: "flex", alignItems: "flex-end", gap: "5px", height }}>
           {visible.map((d) => {
-            const pct = (d.avgOrders / max) * 100;
+            const pct = (d.totalOrders / max) * 100;
             const isBusiest = d.hour === busiest?.hour;
+            const isHovered = d.hour === hoverHour;
             return (
-              <div key={d.hour} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", height: "100%" }}>
-                <div style={{ flex: 1, width: "100%", display: "flex", alignItems: "flex-end" }}>
+              <div
+                key={d.hour}
+                style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", height: "100%" }}
+                onMouseEnter={() => setHoverHour(d.hour)}
+                onMouseLeave={() => setHoverHour(null)}
+              >
+                <div style={{ flex: 1, width: "100%", display: "flex", alignItems: "flex-end", position: "relative" }}>
                   <div
-                    title={`${formatHour(d.hour)}: ${d.avgOrders} avg orders/day (${d.totalOrders} total)`}
                     style={{
                       width: "100%", minHeight: "3px",
                       height: `${Math.max(pct, 3)}%`,
                       borderRadius: "4px 4px 0 0",
-                      background: isBusiest ? color : `${color}55`,
-                      boxShadow: isBusiest ? `0 2px 8px ${color}44` : "none",
+                      background: isBusiest || isHovered ? color : `${color}55`,
+                      boxShadow: isBusiest || isHovered ? `0 2px 8px ${color}44` : "none",
                       cursor: "default",
+                      transition: "background 0.1s ease",
                     }}
                   />
+                  {isHovered && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: `calc(${Math.max(pct, 3)}% + 10px)`,
+                        left: "50%",
+                        transform: "translateX(-50%)",
+                        background: "#0f172a",
+                        color: "white",
+                        borderRadius: "10px",
+                        padding: "8px 12px",
+                        fontSize: "11px",
+                        lineHeight: 1.6,
+                        whiteSpace: "nowrap",
+                        pointerEvents: "none",
+                        boxShadow: "0 10px 24px rgba(15,23,42,0.28)",
+                        zIndex: 5,
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, marginBottom: "2px" }}>{formatHour(d.hour)}</div>
+                      <div style={{ color: "#cbd5e1" }}>Total <span style={{ color: "white", fontWeight: 700 }}>{d.totalOrders} orders</span></div>
+                      <div style={{ color: "#cbd5e1" }}>Avg <span style={{ color: "white", fontWeight: 700 }}>{d.avgOrders}/day</span></div>
+                    </div>
+                  )}
                 </div>
                 <span style={{ fontSize: "9px", fontWeight: 600, color: isBusiest ? "#475569" : "#94a3b8", whiteSpace: "nowrap" }}>
                   {formatHour(d.hour).replace(" ", "")}

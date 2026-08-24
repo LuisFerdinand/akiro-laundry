@@ -17,6 +17,7 @@ import type {
   MonthlyRevenuePoint,
 } from "@/lib/actions/dashboard-stats";
 import { BusyHourChart } from "@/components/admin/BusyHourChart";
+import { SegmentedControl } from "@/components/admin/SegmentedControl";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,43 +106,6 @@ function MonthlyBarChart({
               {d.month}
             </span>
           </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Segmented control (switcher) ──────────────────────────────────────────────
-
-function SegmentedControl<T extends string>({
-  options, value, onChange,
-}: {
-  options: { value: T; label: string }[];
-  value:   T;
-  onChange: (v: T) => void;
-}) {
-  return (
-    <div style={{ display: "flex", background: "#f1f5f9", borderRadius: "10px", padding: "3px", gap: "2px" }}>
-      {options.map((opt) => {
-        const active = opt.value === value;
-        return (
-          <button
-            key={opt.value}
-            onClick={() => onChange(opt.value)}
-            style={{
-              border: "none", cursor: "pointer",
-              padding: "6px 13px", borderRadius: "7px",
-              fontSize: "11.5px", fontWeight: 700,
-              fontFamily: "inherit",
-              background: active ? "white" : "transparent",
-              color: active ? "#0f172a" : "#64748b",
-              boxShadow: active ? "0 1px 4px rgba(15,23,42,0.1)" : "none",
-              transition: "background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {opt.label}
-          </button>
         );
       })}
     </div>
@@ -497,7 +461,7 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; border: string;
 
 export function DashboardClient({ stats, social }: Props) {
   const {
-    revenue, orderCounts, dailyRevenue, weeklyRevenue, monthlyRevenue, busyHours,
+    revenue, orderCounts, dailyRevenue, weeklyRevenue, monthlyRevenue, busyHoursByPeriod,
     statusBreakdown, paymentBreakdown, paymentBreakdownByPeriod,
     topCustomers, topServices,
     cashBalance, newCustomersThisMonth, avgOrderValue, recentOrders,
@@ -669,8 +633,8 @@ export function DashboardClient({ stats, social }: Props) {
 
       {/* ── Busy hours ── */}
       <Card>
-        <SectionHeader title="Busiest Hours" sub="Average orders per hour, store hours 8 AM–8 PM" />
-        <BusyHourChart data={busyHours} color="#7c3aed" height={130} />
+        <SectionHeader title="Busiest Hours" sub="Total orders per hour, store hours 8 AM–8 PM" />
+        <BusyHourChart dataByPeriod={busyHoursByPeriod} color="#7c3aed" height={130} />
       </Card>
 
       {/* ── Status + payment + volume ── */}

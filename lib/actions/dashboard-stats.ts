@@ -19,6 +19,12 @@ export interface MonthlyRevenuePoint { month: string; revenue: number; orders: n
 
 export interface BusyHourPoint { hour: number; avgOrders: number; totalOrders: number }
 
+export interface BusyHoursByPeriod {
+  month:     BusyHourPoint[];
+  sixMonths: BusyHourPoint[];
+  allTime:   BusyHourPoint[];
+}
+
 export interface PaymentBreakdown {
   paid:        number;
   unpaid:      number;
@@ -54,7 +60,7 @@ export interface FullDashboardStats {
   dailyRevenue:   DailyRevenuePoint[];
   weeklyRevenue:  WeeklyRevenuePoint[];
   monthlyRevenue: MonthlyRevenuePoint[];
-  busyHours:      BusyHourPoint[];
+  busyHoursByPeriod: BusyHoursByPeriod;
   topCustomers: {
     id:          number;
     name:        string;
@@ -237,34 +243,57 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
     };
   });
 
-  // ── 5c. Busy hours — average orders per hour-of-day, clamped to store hours ──
-  // Orders logged outside 8AM–8PM (e.g. backdated entries) count against the
-  // nearest edge hour rather than being dropped, per "round up around 8–20".
+  // ── 5c. Busy hours — total (and average) orders per hour-of-day, clamped to
+  // store hours. Orders logged outside 8AM–8PM (e.g. backdated entries) count
+  // against the nearest edge hour rather than being dropped.
 
   const storeOpenHour  = 8;  // 8 AM — kept in sync with BusyHourChart's default range
   const storeCloseHour = 20; // 8 PM
+  const dayMs = 24 * 60 * 60 * 1000;
 
-  const hourCounts = new Map<number, number>();
-  for (let h = storeOpenHour; h <= storeCloseHour; h++) hourCounts.set(h, 0);
-  for (const o of allOrders) {
-    const rawHour = new Date(o.createdAt).getHours();
-    const hour = Math.min(storeCloseHour, Math.max(storeOpenHour, rawHour));
-    hourCounts.set(hour, (hourCounts.get(hour) ?? 0) + 1);
-  }
-  // Denominator: calendar days spanned by the query window, so the average
-  // reflects "per day the shop was open" rather than just raw totals.
-  const daySpan = Math.max(
-    1,
-    Math.round((now.getTime() - sixMonthsAgo.getTime()) / (24 * 60 * 60 * 1000)),
-  );
-  const busyHours: BusyHourPoint[] = Array.from(
-    { length: storeCloseHour - storeOpenHour + 1 },
-    (_, i) => {
-      const hour = storeOpenHour + i;
+  const computeBusyHours = (rows: { createdAt: Date }[], daySpan: number): BusyHourPoint[] => {
+    const hourCounts = new Map<number, number>();
+    for (let h = storeOpenHour; h <= storeCloseHour; h++) hourCounts.set(h, 0);
+    for (const o of rows) {
+      const rawHour = new Date(o.createdAt).getHours();
+      const hour = Math.min(storeCloseHour, Math.max(storeOpenHour, rawHour));
+      hourCounts.set(hour, (hourCounts.get(hour) ?? 0) + 1);
+    }
+    return Array.from({ length: storeCloseHour - storeOpenHour + 1 }, (_, i) => {
+      const hour  = storeOpenHour + i;
       const total = hourCounts.get(hour) ?? 0;
       return { hour, totalOrders: total, avgOrders: Math.round((total / daySpan) * 100) / 100 };
-    },
+    });
+  };
+
+  // Denominator: calendar days spanned by each window, so the average
+  // reflects "per day the shop was open" rather than just raw totals.
+  const sixMonthDaySpan = Math.max(1, Math.round((now.getTime() - sixMonthsAgo.getTime()) / dayMs));
+  const busyHoursSixMonths = computeBusyHours(allOrders, sixMonthDaySpan);
+
+  const pastMonthStart = subDays(todayStart, 29); // rolling 30-day window
+  const pastMonthDaySpan = Math.max(1, Math.round((now.getTime() - pastMonthStart.getTime()) / dayMs));
+  const busyHoursMonth = computeBusyHours(
+    allOrders.filter((o) => inRange(new Date(o.createdAt), pastMonthStart)),
+    pastMonthDaySpan,
   );
+
+  // All-time needs its own query since `allOrders` is capped to the last 6 months.
+  const allTimeOrderDates = await db
+    .select({ createdAt: orders.createdAt })
+    .from(orders);
+  const earliestOrderDate = allTimeOrderDates.reduce(
+    (min, o) => (o.createdAt < min ? o.createdAt : min),
+    now,
+  );
+  const allTimeDaySpan = Math.max(1, Math.round((now.getTime() - earliestOrderDate.getTime()) / dayMs));
+  const busyHoursAllTime = computeBusyHours(allTimeOrderDates, allTimeDaySpan);
+
+  const busyHoursByPeriod: BusyHoursByPeriod = {
+    month:     busyHoursMonth,
+    sixMonths: busyHoursSixMonths,
+    allTime:   busyHoursAllTime,
+  };
 
   // ── 6. Top customers (by paid spend) ─────────────────────────────────────────
 
@@ -417,7 +446,7 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
     dailyRevenue,
     weeklyRevenue,
     monthlyRevenue,
-    busyHours,
+    busyHoursByPeriod,
     topCustomers,
     topServices,
     cashBalance,
