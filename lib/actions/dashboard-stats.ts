@@ -10,6 +10,15 @@ import {
   cashRegister,
 } from "@/lib/db/schema";
 import { eq, desc, gte, inArray } from "drizzle-orm";
+import {
+  startOfDayBiz,
+  endOfDayBiz,
+  startOfMonthBiz,
+  subDaysBiz,
+  subMonthsBiz,
+  hourBiz,
+  formatBiz,
+} from "@/lib/utils/business-time";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -90,24 +99,18 @@ export interface FullDashboardStats {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function startOfDay(d: Date)  { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
-function startOfMonth(d: Date){ return new Date(d.getFullYear(), d.getMonth(), 1); }
-function subDays(d: Date, n: number) { const x = new Date(d); x.setDate(x.getDate() - n); return x; }
-function subMonths(d: Date, n: number) {
-  const x = new Date(d);
-  x.setMonth(x.getMonth() - n);
-  x.setDate(1);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
+const startOfDay   = startOfDayBiz;
+const startOfMonth = startOfMonthBiz;
+const subDays      = subDaysBiz;
+const subMonths    = subMonthsBiz;
 function fmt(d: Date) {
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatBiz(d, { month: "short", day: "numeric" });
 }
 function fmtMonth(d: Date) {
-  return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+  return formatBiz(d, { month: "short", year: "2-digit" });
 }
 function fmtWeek(d: Date) {
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatBiz(d, { month: "short", day: "numeric" });
 }
 
 // ─── Main function ────────────────────────────────────────────────────────────
@@ -201,7 +204,7 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
 
   const dailyRevenue: DailyRevenuePoint[] = Array.from({ length: 7 }, (_, i) => {
     const day    = subDays(todayStart, 6 - i);
-    const dayEnd = new Date(day); dayEnd.setHours(23, 59, 59, 999);
+    const dayEnd = endOfDayBiz(day);
     return {
       date:    fmt(day),
       revenue: revenueIn(day, dayEnd),
@@ -216,8 +219,7 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
   const weeklyRevenue: WeeklyRevenuePoint[] = Array.from({ length: 8 }, (_, i) => {
     const weeksAgo = 7 - i;
     const wStart = subDays(todayStart, weeksAgo * 7 + 6);
-    const wEnd   = subDays(todayStart, weeksAgo * 7);
-    wEnd.setHours(23, 59, 59, 999);
+    const wEnd   = endOfDayBiz(subDays(todayStart, weeksAgo * 7));
     return {
       week:    fmtWeek(wStart),
       revenue: revenueIn(wStart, wEnd),
@@ -255,7 +257,7 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
     const hourCounts = new Map<number, number>();
     for (let h = storeOpenHour; h <= storeCloseHour; h++) hourCounts.set(h, 0);
     for (const o of rows) {
-      const rawHour = new Date(o.createdAt).getHours();
+      const rawHour = hourBiz(new Date(o.createdAt));
       const hour = Math.min(storeCloseHour, Math.max(storeOpenHour, rawHour));
       hourCounts.set(hour, (hourCounts.get(hour) ?? 0) + 1);
     }

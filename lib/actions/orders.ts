@@ -22,6 +22,7 @@ import type {
 } from "@/lib/db/schema";
 import { eq, ilike, desc, and, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { startOfDayBiz } from "@/lib/utils/business-time";
 import {
   generateOrderNumber,
   calculateItemPrice,
@@ -434,8 +435,7 @@ export interface DashboardStats {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+  const todayStart = startOfDayBiz(new Date());
 
   const allOrders = await db.select().from(orders);
 

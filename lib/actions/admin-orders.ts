@@ -16,6 +16,7 @@ import {
 import type { Order, OrderItem, OrderSpecialRequest } from "@/lib/db/schema";
 import { eq, ilike, and, desc, or, count, gte, lte, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { startOfDayBiz, subDaysBiz, startOfMonthBiz } from "@/lib/utils/business-time";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -228,9 +229,9 @@ export interface RevenueStats {
 
 export async function getRevenueStats(): Promise<RevenueStats> {
   const now   = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const week  = new Date(today); week.setDate(today.getDate() - 7);
-  const month = new Date(today); month.setDate(1);
+  const today = startOfDayBiz(now);
+  const week  = subDaysBiz(today, 7);
+  const month = startOfMonthBiz(today);
 
   // Only pull the columns we need — no join required
   const all = await db

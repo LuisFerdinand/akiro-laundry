@@ -4,6 +4,7 @@
 import { db } from "@/lib/db";
 import { orders, orderItems, customers, servicePricing } from "@/lib/db/schema";
 import { eq, gte, lte, and } from "drizzle-orm";
+import { startOfDayBiz, formatBiz } from "@/lib/utils/business-time";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -184,9 +185,9 @@ function buildEmailHtml(params: {
 // ─── Core: Fetch today's orders ───────────────────────────────────────────────
 
 async function fetchTodayOrders(targetDate?: Date) {
-  const day = targetDate ?? new Date();
-  const start = new Date(day); start.setHours(0, 0, 0, 0);
-  const end   = new Date(day); end.setHours(23, 59, 59, 999);
+  const day   = targetDate ?? new Date();
+  const start = startOfDayBiz(day);
+  const end   = new Date(start.getTime() + 86_400_000 - 1); // 23:59:59.999 business-local
 
   const orderRows = await db
     .select({
@@ -321,7 +322,7 @@ export async function sendDailySummaryEmail(
     const day       = targetDate ?? new Date();
     const orderList = await fetchTodayOrders(day);
 
-    const dateStr = day.toLocaleDateString("en-US", {
+    const dateStr = formatBiz(day, {
       weekday: "long", year: "numeric", month: "long", day: "numeric",
     });
 
@@ -364,7 +365,7 @@ export async function sendTestEmail(
     const today     = new Date();
     const orderList = await fetchTodayOrders(today);
 
-    const dateStr = today.toLocaleDateString("en-US", {
+    const dateStr = formatBiz(today, {
       weekday: "long", year: "numeric", month: "long", day: "numeric",
     });
 

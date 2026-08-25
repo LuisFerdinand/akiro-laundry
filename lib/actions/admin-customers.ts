@@ -7,6 +7,7 @@ import { customers, orders } from "@/lib/db/schema";
 import type { Customer } from "@/lib/db/schema";
 import { eq, desc, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { startOfMonthBiz, subMonthsBiz, formatBiz } from "@/lib/utils/business-time";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -131,7 +132,7 @@ export async function getCustomerInsights(): Promise<CustomerInsights> {
 
   // New this month
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfMonth = startOfMonthBiz(now);
   const newThisMonth = withStats.filter(
     (c) => new Date(c.createdAt) >= startOfMonth
   );
@@ -139,9 +140,9 @@ export async function getCustomerInsights(): Promise<CustomerInsights> {
   // New customers by month (last 6 months)
   const newByMonth: { month: string; count: number }[] = [];
   for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const nextMonth = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-    const monthLabel = d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+    const d = subMonthsBiz(now, i);
+    const nextMonth = subMonthsBiz(now, i - 1);
+    const monthLabel = formatBiz(d, { month: "short", year: "2-digit" });
     const count = allCustomers.filter((c) => {
       const created = new Date(c.createdAt);
       return created >= d && created < nextMonth;
