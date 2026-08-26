@@ -16,7 +16,7 @@ import { exportToXlsx } from "@/lib/utils/export-xlsx";
 import { formatUSD } from "@/lib/utils/order-form";
 import { ExportModal, type ExportDateRange } from "@/components/admin/ExportModal";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
-import type { CustomerWithStats, CustomerInsights, SortOption } from "@/lib/actions/admin-customers";
+import type { CustomerWithStats, CustomerInsights, MonthlyCustomerCount, SortOption } from "@/lib/actions/admin-customers";
 
 // ─── Create Customer Modal ────────────────────────────────────────────────────
 function CreateCustomerModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
@@ -186,8 +186,37 @@ function LeaderboardCard({
 }
 
 // ─── Monthly Bar Chart ────────────────────────────────────────────────────────
-function MonthlyNewCustomers({ data, thisMonthCount }: { data: { month: string; count: number }[]; thisMonthCount: number }) {
-  const max = Math.max(...data.map((d) => d.count), 1);
+
+/** Sequential green ramp — oldest month lightest, most recent month full brand green. */
+function lerpColor(hexA: string, hexB: string, t: number): string {
+  const a = parseInt(hexA.slice(1), 16);
+  const b = parseInt(hexB.slice(1), 16);
+  const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
+  const br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bl = Math.round(ab + (bb - ab) * t);
+  return `#${[r, g, bl].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** Round a max value up to a clean axis tick (5, 10, 20, 25, 50, 100…). */
+function niceCeil(n: number): number {
+  if (n <= 5) return 5;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(n)));
+  const residual   = n / magnitude;
+  const niceResidual = residual <= 1 ? 1 : residual <= 2 ? 2 : residual <= 5 ? 5 : 10;
+  return niceResidual * magnitude;
+}
+
+function MonthlyNewCustomers({ data, thisMonthCount }: { data: MonthlyCustomerCount[]; thisMonthCount: number }) {
+  const [hovered, setHovered] = useState<number | null>(null);
+
+  const rawMax  = Math.max(...data.map((d) => d.count), 0);
+  const axisMax = niceCeil(rawMax);
+  const chartH  = 160;
+
+  const ticks = [0, axisMax / 2, axisMax];
+
   return (
     <div style={{ background: "white", borderRadius: "14px", border: "1.5px solid #e2e8f0", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", overflow: "hidden" }}>
       <div style={{ padding: "14px 18px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -197,7 +226,7 @@ function MonthlyNewCustomers({ data, thisMonthCount }: { data: { month: string; 
           </div>
           <div>
             <p style={{ fontSize: "13px", fontWeight: 800, color: "#0f172a", fontFamily: "Sora, sans-serif" }}>New Customers</p>
-            <p style={{ fontSize: "10px", color: "#94a3b8" }}>Monthly growth · last 6 months</p>
+            <p style={{ fontSize: "10px", color: "#94a3b8" }}>Monthly growth · last 12 months</p>
           </div>
         </div>
         <div style={{ textAlign: "right" }}>
@@ -205,25 +234,88 @@ function MonthlyNewCustomers({ data, thisMonthCount }: { data: { month: string; 
           <p style={{ fontSize: "10px", color: "#94a3b8", marginTop: "2px" }}>this month</p>
         </div>
       </div>
-      <div style={{ padding: "18px 18px 14px" }}>
-        <div style={{ display: "flex", alignItems: "flex-end", gap: "8px", height: "80px" }}>
-          {data.map((d, i) => {
-            const isLast = i === data.length - 1;
-            const pct = (d.count / max) * 100;
-            return (
-              <div key={d.month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
-                <span style={{ fontSize: "10px", fontWeight: 700, color: isLast ? "#16a34a" : "#64748b" }}>{d.count}</span>
-                <div style={{
-                  width: "100%", height: `${Math.max(pct, 6)}%`, minHeight: "4px",
-                  borderRadius: "4px 4px 0 0",
-                  background: isLast ? "linear-gradient(180deg,#16a34a,#4ade80)" : "linear-gradient(180deg,#94a3b8,#cbd5e1)",
-                  boxShadow: isLast ? "0 2px 8px rgba(22,163,74,0.25)" : "none",
-                }} />
-              </div>
-            );
-          })}
+
+      <div style={{ padding: "20px 18px 8px", display: "flex", gap: "10px" }}>
+        {/* Y-axis ticks */}
+        <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", height: chartH, paddingBottom: "2px" }}>
+          {[...ticks].reverse().map((t) => (
+            <span key={t} style={{ fontSize: "9px", fontWeight: 700, color: "#94a3b8", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+              {Math.round(t)}
+            </span>
+          ))}
         </div>
-        <div style={{ display: "flex", gap: "8px", marginTop: "6px" }}>
+
+        {/* Plot area */}
+        <div style={{ position: "relative", flex: 1 }}>
+          {/* Gridlines */}
+          <div style={{ position: "absolute", inset: 0, height: chartH }}>
+            {ticks.map((t) => (
+              <div key={t} style={{
+                position: "absolute", left: 0, right: 0,
+                bottom: `${(t / axisMax) * 100}%`,
+                borderTop: "1px solid #eef2f6",
+              }} />
+            ))}
+          </div>
+
+          {/* Bars */}
+          <div style={{ position: "relative", display: "flex", alignItems: "flex-end", gap: "4px", height: chartH }}>
+            {data.map((d, i) => {
+              const isLast = i === data.length - 1;
+              const t      = data.length > 1 ? i / (data.length - 1) : 1;
+              const barColor = isLast ? "#16a34a" : lerpColor("#dcfce7", "#16a34a", t);
+              const pctH   = axisMax > 0 ? (d.count / axisMax) * 100 : 0;
+              const isHovered = hovered === i;
+
+              return (
+                <div key={d.month}
+                  style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end", position: "relative", cursor: "default" }}
+                  onMouseEnter={() => setHovered(i)}
+                  onMouseLeave={() => setHovered(null)}
+                >
+                  {/* Tooltip */}
+                  {isHovered && (
+                    <div style={{
+                      position: "absolute", bottom: `calc(${Math.max(pctH, 3)}% + 10px)`, left: "50%", transform: "translateX(-50%)",
+                      background: "#0f172a", color: "white", borderRadius: "6px", padding: "6px 10px",
+                      fontSize: "11px", fontWeight: 700, whiteSpace: "nowrap", zIndex: 5,
+                      boxShadow: "0 4px 14px rgba(0,0,0,0.25)", pointerEvents: "none",
+                    }}>
+                      {d.monthFull}: {d.count} new customer{d.count !== 1 ? "s" : ""}
+                      <div style={{
+                        position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)",
+                        width: 0, height: 0, borderLeft: "5px solid transparent", borderRight: "5px solid transparent",
+                        borderTop: "5px solid #0f172a",
+                      }} />
+                    </div>
+                  )}
+
+                  {/* Value label */}
+                  <span style={{ fontSize: "10px", fontWeight: 800, color: isLast ? "#16a34a" : "#64748b", marginBottom: "4px" }}>
+                    {d.count}
+                  </span>
+
+                  {/* Bar */}
+                  <div style={{
+                    width: "100%", maxWidth: 22, height: `${Math.max(pctH, d.count > 0 ? 3 : 0)}%`, minHeight: d.count > 0 ? "4px" : 0,
+                    borderRadius: "4px 4px 0 0",
+                    background: barColor,
+                    outline: isHovered ? "2px solid #0f172a" : "none",
+                    outlineOffset: "1px",
+                    boxShadow: isLast ? "0 2px 8px rgba(22,163,74,0.3)" : "none",
+                    transition: "outline 0.1s",
+                  }} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Month labels */}
+      <div style={{ padding: "0 18px 14px", display: "flex", gap: "10px" }}>
+        <div style={{ width: 20, flexShrink: 0 }} />
+        <div style={{ flex: 1, display: "flex", gap: "4px" }}>
           {data.map((d, i) => (
             <div key={d.month} style={{ flex: 1, textAlign: "center" }}>
               <span style={{ fontSize: "9px", fontWeight: 600, color: i === data.length - 1 ? "#16a34a" : "#94a3b8" }}>{d.month}</span>
@@ -231,6 +323,7 @@ function MonthlyNewCustomers({ data, thisMonthCount }: { data: { month: string; 
           ))}
         </div>
       </div>
+
       {thisMonthCount > 0 && (
         <div style={{ padding: "0 18px 14px" }}>
           <div style={{ background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: "8px", padding: "8px 12px", display: "flex", alignItems: "center", gap: "8px" }}>
@@ -374,11 +467,13 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
         </div>
 
         {/* ── Insights Row ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
           <LeaderboardCard title="Top Spenders" icon={Trophy} iconColor="#d97706" iconBg="linear-gradient(135deg,#fffbeb,#fef3c7)" customers={insights.topSpenders} valueKey="totalSpent" formatValue={formatUSD} />
           <LeaderboardCard title="Most Repeat"  icon={Star}   iconColor="#1a7fba"  iconBg="linear-gradient(135deg,#edf7fd,#c8e9f8)" customers={insights.mostRepeat}  valueKey="totalOrders" formatValue={(v) => `${v} orders`} />
-          <MonthlyNewCustomers data={insights.newByMonth} thisMonthCount={insights.newThisMonth.length} />
         </div>
+
+        {/* ── Monthly new-customer trend — full width for a clearer read ── */}
+        <MonthlyNewCustomers data={insights.newByMonth} thisMonthCount={insights.newThisMonth.length} />
 
         {/* ── Search + Sort ── */}
         <div style={{

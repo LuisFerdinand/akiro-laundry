@@ -3,9 +3,9 @@
 import { useState } from "react";
 import {
   Plus, Pencil, Trash2, Tag, Weight, Hash,
-  Droplets, Wind, FileText,
+  Droplets, Wind, FileText, ArrowUp, ArrowDown, MessageSquarePlus,
 } from "lucide-react";
-import { formatUSD, OrderItemFormData, EMPTY_ORDER_ITEM, calculateItemPrice } from "@/lib/utils/order-form";
+import { formatUSD, OrderItemFormData, EMPTY_ORDER_ITEM, calculateItemPrice, SpecialRequestFormData } from "@/lib/utils/order-form";
 import type { ServicePricing, Soap, Pewangi } from "@/lib/db/schema";
 import { ServiceItemModal } from "./ServiceItemModal";
 
@@ -19,6 +19,110 @@ interface ServiceStepProps {
   notes:     string;
   onChange:  (items: OrderItemFormData[], notes: string) => void;
   errors:    Record<string, string>;
+  /** Only rendered when provided — the edit-order flow omits these and keeps
+   *  special requests managed on the order detail page instead. */
+  specialRequests?:         SpecialRequestFormData[];
+  onSpecialRequestsChange?: (list: SpecialRequestFormData[]) => void;
+}
+
+// ─── Inline special requests (create-order flow only) ─────────────────────────
+
+function InlineSpecialRequests({
+  requests, onChange,
+}: {
+  requests: SpecialRequestFormData[];
+  onChange: (list: SpecialRequestFormData[]) => void;
+}) {
+  const [adding,      setAdding]      = useState(false);
+  const [description, setDescription] = useState("");
+  const [amount,      setAmount]      = useState("");
+  const [direction,   setDirection]   = useState<"add" | "subtract">("add");
+  const [error,       setError]       = useState<string | null>(null);
+
+  const handleAdd = () => {
+    if (!description.trim()) { setError("Description is required."); return; }
+    const amt = parseFloat(amount);
+    if (!amt || isNaN(amt) || amt <= 0) { setError("Enter an amount greater than 0."); return; }
+    const priceAdjustment = direction === "subtract" ? -Math.abs(amt) : Math.abs(amt);
+    onChange([...requests, { description: description.trim(), priceAdjustment }]);
+    setDescription(""); setAmount(""); setDirection("add"); setAdding(false); setError(null);
+  };
+
+  const handleRemove = (i: number) => onChange(requests.filter((_, idx) => idx !== i));
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-2">
+        <label className="text-[11px] font-black uppercase tracking-widest text-slate-400">Special Requests</label>
+        <span className="text-[10px] font-semibold text-slate-300">optional</span>
+      </div>
+
+      {requests.map((r, i) => {
+        const isPositive = r.priceAdjustment >= 0;
+        return (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, background: "#f8fafc", border: "1.5px solid #e8edf2" }}>
+            <div style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: isPositive ? "#f0fdf4" : "#fff1f2", border: `1.5px solid ${isPositive ? "#86efac" : "#fda4af"}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {isPositive ? <ArrowUp size={11} style={{ color: "#16a34a" }} /> : <ArrowDown size={11} style={{ color: "#e11d48" }} />}
+            </div>
+            <p style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{r.description}</p>
+            <span style={{ fontSize: 13, fontWeight: 800, color: isPositive ? "#16a34a" : "#e11d48", flexShrink: 0 }}>
+              {isPositive ? "+" : "−"}{formatUSD(Math.abs(r.priceAdjustment))}
+            </span>
+            <button type="button" onClick={() => handleRemove(i)}
+              style={{ background: "#fff1f2", border: "1px solid #fda4af", borderRadius: 6, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+              <Trash2 size={11} style={{ color: "#be123c" }} />
+            </button>
+          </div>
+        );
+      })}
+
+      {adding ? (
+        <div style={{ padding: 12, borderRadius: 10, border: "1.5px solid #b6def5", background: "#edf7fd", display: "flex", flexDirection: "column", gap: 10 }}>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="What did the customer ask for? e.g. 'Extra stain removal on jacket'"
+            rows={2}
+            style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, color: "#1e293b", outline: "none", background: "white", resize: "vertical", fontFamily: "inherit" }}
+          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1.5px solid #e2e8f0", flexShrink: 0 }}>
+              <button type="button" onClick={() => setDirection("add")}
+                style={{ padding: "9px 12px", border: "none", cursor: "pointer", background: direction === "add" ? "#16a34a" : "white", color: direction === "add" ? "white" : "#64748b", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+                <ArrowUp size={11} /> Add
+              </button>
+              <button type="button" onClick={() => setDirection("subtract")}
+                style={{ padding: "9px 12px", border: "none", cursor: "pointer", background: direction === "subtract" ? "#e11d48" : "white", color: direction === "subtract" ? "white" : "#64748b", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+                <ArrowDown size={11} /> Reduce
+              </button>
+            </div>
+            <input
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              type="number" min="0" step="0.01" placeholder="0.00"
+              style={{ flex: 1, boxSizing: "border-box", padding: "9px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, color: "#1e293b", outline: "none", background: "white" }}
+            />
+          </div>
+          {error && <p style={{ fontSize: 11, fontWeight: 600, color: "#be123c" }}>{error}</p>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" onClick={() => { setAdding(false); setError(null); }}
+              style={{ flex: 1, padding: 9, borderRadius: 8, border: "1.5px solid #e2e8f0", background: "white", fontSize: 12, fontWeight: 700, color: "#64748b", cursor: "pointer" }}>
+              Cancel
+            </button>
+            <button type="button" onClick={handleAdd}
+              style={{ flex: 2, padding: 9, borderRadius: 8, border: "none", background: "linear-gradient(135deg,#1a7fba,#2496d6)", color: "white", fontSize: 12, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <Plus size={12} /> Add Request
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setAdding(true)}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", padding: 10, borderRadius: 8, border: "1.5px dashed #b6def5", background: "#edf7fd", color: "#1a7fba", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+          <MessageSquarePlus size={13} /> Add Special Request
+        </button>
+      )}
+    </div>
+  );
 }
 
 // ─── Item summary card ────────────────────────────────────────────────────────
@@ -110,7 +214,10 @@ function ItemCard({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function ServiceStep({ services, soaps, pewangis, items, notes, onChange, errors }: ServiceStepProps) {
+export function ServiceStep({
+  services, soaps, pewangis, items, notes, onChange, errors,
+  specialRequests, onSpecialRequestsChange,
+}: ServiceStepProps) {
   // null = closed, -1 = adding new, N = editing index N
   const [modalTarget, setModalTarget] = useState<number | null>(null);
 
@@ -176,6 +283,14 @@ export function ServiceStep({ services, soaps, pewangis, items, notes, onChange,
       </button>
 
       <div style={{ borderTop: "1.5px dashed #e2e8f0" }} />
+
+      {/* Special requests — create-order flow only */}
+      {onSpecialRequestsChange && (
+        <>
+          <InlineSpecialRequests requests={specialRequests ?? []} onChange={onSpecialRequestsChange} />
+          <div style={{ borderTop: "1.5px dashed #e2e8f0" }} />
+        </>
+      )}
 
       {/* Notes */}
       <div className="space-y-1.5">

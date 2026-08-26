@@ -19,11 +19,17 @@ export interface CustomerWithStats extends Customer {
 
 export type SortOption = "recent" | "top_spender" | "most_orders" | "newest";
 
+export interface MonthlyCustomerCount {
+  month:     string;  // short label, e.g. "Aug 26" — axis tick
+  monthFull: string;  // full label, e.g. "August 2026" — tooltip
+  count:     number;
+}
+
 export interface CustomerInsights {
   topSpenders:    CustomerWithStats[];
   mostRepeat:     CustomerWithStats[];
   newThisMonth:   CustomerWithStats[];
-  newByMonth:     { month: string; count: number }[];
+  newByMonth:     MonthlyCustomerCount[];
 }
 
 // ─── List all customers with stats ───────────────────────────────────────────
@@ -137,17 +143,18 @@ export async function getCustomerInsights(): Promise<CustomerInsights> {
     (c) => new Date(c.createdAt) >= startOfMonth
   );
 
-  // New customers by month (last 6 months)
-  const newByMonth: { month: string; count: number }[] = [];
-  for (let i = 5; i >= 0; i--) {
+  // New customers by month (last 12 months)
+  const newByMonth: MonthlyCustomerCount[] = [];
+  for (let i = 11; i >= 0; i--) {
     const d = subMonthsBiz(now, i);
     const nextMonth = subMonthsBiz(now, i - 1);
-    const monthLabel = formatBiz(d, { month: "short", year: "2-digit" });
+    const monthLabel     = formatBiz(d, { month: "short", year: "2-digit" });
+    const monthFullLabel = formatBiz(d, { month: "long",  year: "numeric" });
     const count = allCustomers.filter((c) => {
       const created = new Date(c.createdAt);
       return created >= d && created < nextMonth;
     }).length;
-    newByMonth.push({ month: monthLabel, count });
+    newByMonth.push({ month: monthLabel, monthFull: monthFullLabel, count });
   }
 
   return { topSpenders, mostRepeat, newThisMonth, newByMonth };

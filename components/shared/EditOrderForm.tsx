@@ -94,6 +94,7 @@ export function EditOrderForm({ order, backHref }: Props) {
       pewangiId:         it.pewangiId,
     })),
     notes: order.notes ?? "",
+    specialRequests: [],
   };
 
   const [step,        setStep]        = useState<OrderFormStep>("service");

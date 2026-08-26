@@ -299,7 +299,7 @@ export interface CreateOrderResult {
 
 export async function createOrder(formData: OrderFormData): Promise<CreateOrderResult> {
   try {
-    const { customer, items, notes } = formData;
+    const { customer, items, notes, specialRequests } = formData;
 
     if (!items || items.length === 0) {
       return { success: false, error: "At least one service item is required." };
@@ -361,8 +361,13 @@ export async function createOrder(formData: OrderFormData): Promise<CreateOrderR
       }),
     );
 
-    // ── 3. Sum totals ─────────────────────────────────────────────────────────
-    const totalPrice = resolvedItems.reduce((sum, r) => sum + r.breakdown.subtotal, 0);
+    // ── 3. Sum totals — items + any special-request price adjustments ─────────
+    const validRequests = (specialRequests ?? []).filter(
+      (r) => r.description.trim() && r.priceAdjustment !== 0,
+    );
+    const totalPrice =
+      resolvedItems.reduce((sum, r) => sum + r.breakdown.subtotal, 0) +
+      validRequests.reduce((sum, r) => sum + r.priceAdjustment, 0);
 
     // ── 4. Insert order header ────────────────────────────────────────────────
     const orderNumber = generateOrderNumber();
@@ -400,6 +405,17 @@ export async function createOrder(formData: OrderFormData): Promise<CreateOrderR
         subtotal:       breakdown.subtotal.toString(),
       })),
     );
+
+    // ── 6. Insert special requests, if any ─────────────────────────────────────
+    if (validRequests.length > 0) {
+      await db.insert(orderSpecialRequests).values(
+        validRequests.map((r) => ({
+          orderId:         newOrder.id,
+          description:     r.description.trim(),
+          priceAdjustment: r.priceAdjustment.toFixed(2),
+        })),
+      );
+    }
 
     revalidatePath("/employee/orders");
     return { success: true, orderId: newOrder.id, orderNumber: newOrder.orderNumber };

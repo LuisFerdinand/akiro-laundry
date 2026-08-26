@@ -44,9 +44,10 @@ import { printReceipt } from "@/components/employee/PrintReceipt";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const EMPTY_FORM: OrderFormData = {
-  customer: { name: "", phone: "", address: "" },
-  items:    [],
-  notes:    "",
+  customer:        { name: "", phone: "", address: "" },
+  items:           [],
+  notes:           "",
+  specialRequests: [],
 };
 
 const STEP_TITLES: Record<OrderFormStep, {
@@ -116,6 +117,7 @@ export default function NewOrderPage() {
     formData.items.map((it) => services.find((s) => s.id === it.servicePricingId) ?? null),
     formData.items.map((it) => soaps.find((s) => s.id === it.soapId) ?? null),
     formData.items.map((it) => pewangis.find((p) => p.id === it.pewangiId) ?? null),
+    formData.specialRequests,
   );
 
   // ── Derived services summary for WA message ────────────────────────────────
@@ -367,6 +369,8 @@ export default function NewOrderPage() {
                 notes={formData.notes}
                 onChange={(items, notes) => setFormData((f) => ({ ...f, items, notes }))}
                 errors={errors}
+                specialRequests={formData.specialRequests}
+                onSpecialRequestsChange={(specialRequests) => setFormData((f) => ({ ...f, specialRequests }))}
               />
             )}
             {step === "review" && (

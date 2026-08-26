@@ -77,6 +77,7 @@ const SAMPLE_RECEIPT_DATA: Omit<ReceiptData, "settings"> = {
       { servicePricingId: 2, weightKg: null, quantity: 2,    soapId: null, pewangiId: null },
     ],
     notes: "Handle the silk shirt with extra care please.",
+    specialRequests: [],
   },
   services: [
     { id: 1, name: "Wash & Dry — Regular", basePricePerKg: "3.00", category: "package", pricingUnit: "per_kg",  minimumKg: null, duration: null, notes: null, isActive: true, createdAt: new Date(), updatedAt: null },
@@ -89,6 +90,7 @@ const SAMPLE_RECEIPT_DATA: Omit<ReceiptData, "settings"> = {
       { baseServiceCost: 10.50, soapCost: 1.05, pewangiCost: 0.70, subtotal: 12.25 },
       { baseServiceCost: 8.00,  soapCost: 0,    pewangiCost: 0,    subtotal: 8.00 },
     ],
+    specialRequestsTotal: 0,
     totalPrice: 20.25,
   },
   paymentMethod: "cash",

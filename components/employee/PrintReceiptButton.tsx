@@ -74,6 +74,7 @@ export function PrintReceiptButton({ order, receiptSettings }: Props) {
 
     const breakdown = {
       totalPrice: parseFloat(order.totalPrice),
+      specialRequestsTotal: order.specialRequests.reduce((sum, r) => sum + parseFloat(r.priceAdjustment), 0),
       items: order.items.map((item) => {
         const isPerPcs        = item.pricingUnit === "per_pcs";
         const qty             = isPerPcs ? (item.quantity ?? 0) : parseFloat(item.weightKg ?? "0");
@@ -95,6 +96,7 @@ export function PrintReceiptButton({ order, receiptSettings }: Props) {
         },
         items: formItems,
         notes: order.notes ?? "",
+        specialRequests: [],
       },
       services,
       soaps,

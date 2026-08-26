@@ -1,5 +1,5 @@
 // components/employee/order-steps/ReviewStep.tsx
-import { User, Phone, MapPin, Layers, Weight, Droplets, Wind, FileText, Hash } from "lucide-react";
+import { User, Phone, MapPin, Layers, Weight, Droplets, Wind, FileText, Hash, ArrowUp, ArrowDown } from "lucide-react";
 import { OrderFormData, OrderPriceBreakdown, formatUSD } from "@/lib/utils/order-form";
 import type { ServicePricing, Soap, Pewangi } from "@/lib/db/schema";
 
@@ -133,6 +133,30 @@ export function ReviewStep({ formData, services, soaps, pewangis, breakdown }: R
           </SectionCard>
         );
       })}
+
+      {/* ── Special requests ──────────────────────────────── */}
+      {formData.specialRequests.length > 0 && (
+        <SectionCard title="Special Requests">
+          <div style={{ padding: "0 14px" }}>
+            {formData.specialRequests.map((r, i) => {
+              const isPositive = r.priceAdjustment >= 0;
+              return (
+                <div key={i} className="flex items-center gap-3 py-2.5"
+                  style={{ borderBottom: i < formData.specialRequests.length - 1 ? "1px solid #f1f5f9" : "none" }}>
+                  <div className="flex items-center justify-center shrink-0"
+                    style={{ width: 28, height: 28, borderRadius: "5px", background: isPositive ? "#f0fdf4" : "#fff1f2", border: `1.5px solid ${isPositive ? "#86efac" : "#fda4af"}` }}>
+                    {isPositive ? <ArrowUp size={12} style={{ color: "#16a34a" }} /> : <ArrowDown size={12} style={{ color: "#e11d48" }} />}
+                  </div>
+                  <p className="flex-1 min-w-0 text-sm font-semibold leading-snug" style={{ color: "#1e293b" }}>{r.description}</p>
+                  <span className="text-sm font-black shrink-0" style={{ color: isPositive ? "#16a34a" : "#e11d48" }}>
+                    {isPositive ? "+" : "−"}{formatUSD(Math.abs(r.priceAdjustment))}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      )}
 
       {/* ── Notes ──────────────────────────────────────────── */}
       {formData.notes && (

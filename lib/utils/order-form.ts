@@ -29,10 +29,17 @@ export interface OrderItemFormData {
   pewangiId: number | null;
 }
 
+/** One special-request line — priceAdjustment is signed (negative = discount). */
+export interface SpecialRequestFormData {
+  description:     string;
+  priceAdjustment: number;
+}
+
 export interface OrderFormData {
-  customer: CustomerFormData;
-  items:    OrderItemFormData[];   // ≥ 1 item required
-  notes:    string;
+  customer:        CustomerFormData;
+  items:           OrderItemFormData[];   // ≥ 1 item required
+  notes:           string;
+  specialRequests: SpecialRequestFormData[];
 }
 
 // ─── Per-item price breakdown ─────────────────────────────────────────────────
@@ -47,8 +54,9 @@ export interface ItemPriceBreakdown {
 // ─── Full-order price breakdown ───────────────────────────────────────────────
 
 export interface OrderPriceBreakdown {
-  items:      ItemPriceBreakdown[];
-  totalPrice: number;
+  items:                 ItemPriceBreakdown[];
+  specialRequestsTotal:  number;
+  totalPrice:            number;   // sum(items) + specialRequestsTotal
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -153,10 +161,11 @@ export function calculateItemPrice(
  * Pass parallel arrays — items[i] uses services[i], soaps[i], pewangis[i].
  */
 export function calculateOrderPrice(
-  items:    OrderItemFormData[],
-  services: (ServicePricing | null)[],
-  soaps:    (Soap | null)[],
-  pewangis: (Pewangi | null)[],
+  items:            OrderItemFormData[],
+  services:         (ServicePricing | null)[],
+  soaps:            (Soap | null)[],
+  pewangis:         (Pewangi | null)[],
+  specialRequests:  SpecialRequestFormData[] = [],
 ): OrderPriceBreakdown {
   const breakdowns = items.map((item, i) =>
     calculateItemPrice(
@@ -168,8 +177,10 @@ export function calculateOrderPrice(
     ),
   );
 
-  const totalPrice = round2(breakdowns.reduce((sum, b) => sum + b.subtotal, 0));
-  return { items: breakdowns, totalPrice };
+  const itemsTotal          = round2(breakdowns.reduce((sum, b) => sum + b.subtotal, 0));
+  const specialRequestsTotal = round2(specialRequests.reduce((sum, r) => sum + r.priceAdjustment, 0));
+  const totalPrice          = round2(itemsTotal + specialRequestsTotal);
+  return { items: breakdowns, specialRequestsTotal, totalPrice };
 }
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
