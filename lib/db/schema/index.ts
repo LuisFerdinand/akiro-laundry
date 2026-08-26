@@ -127,6 +127,11 @@ export const orders = pgTable("orders", {
   estimatedDoneAt: timestamp("estimated_done_at"),
   createdAt:       timestamp("created_at").defaultNow().notNull(),
   updatedAt:       timestamp("updated_at").defaultNow().notNull(),
+
+  // ── Edit tracking ──
+  // Bumped only by updateOrder() (correcting customer/items/notes) — status
+  // changes and payment do NOT increment this. Drives the "Edited ×N" badge.
+  editCount: integer("edit_count").default(0).notNull(),
 });
 
 // ─── Order Items ──────────────────────────────────────────────────────────────

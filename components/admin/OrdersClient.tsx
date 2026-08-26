@@ -15,6 +15,7 @@ import { getOrdersForExport } from "@/lib/actions/export";
 import { exportToXlsx } from "@/lib/utils/export-xlsx";
 import { ExportModal, type ExportDateRange } from "@/components/admin/ExportModal";
 import { DeleteOrderButton } from "@/components/shared/DeleteOrderButton";
+import { EditedBadge } from "@/components/shared/EditedBadge";
 import type { PaginatedOrders, OrderFilters } from "@/lib/actions/admin-orders";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -291,9 +292,12 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
                       onMouseLeave={(e) => { e.currentTarget.style.background = i % 2 === 0 ? "white" : "#fafafa"; }}
                     >
                       <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}>
-                        <span style={{ fontSize: "12px", fontWeight: 700, color: "#1a7fba", fontFamily: "monospace" }}>
-                          {order.orderNumber}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span style={{ fontSize: "12px", fontWeight: 700, color: "#1a7fba", fontFamily: "monospace" }}>
+                            {order.orderNumber}
+                          </span>
+                          <EditedBadge editCount={order.editCount} compact />
+                        </div>
                       </td>
                       <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -375,6 +379,11 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
                           <Link href={`/admin/orders/${order.id}`} style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", fontWeight: 700, color: "#1a7fba", textDecoration: "none", background: "#edf7fd", padding: "4px 10px", borderRadius: "6px", border: "1px solid #b6def5", whiteSpace: "nowrap" }}>
                             View <ArrowUpRight size={10} />
                           </Link>
+                          {order.paymentStatus !== "paid" && (
+                            <Link href={`/admin/orders/${order.id}/edit`} style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", fontWeight: 700, color: "#7c3aed", textDecoration: "none", background: "#f5f3ff", padding: "4px 10px", borderRadius: "6px", border: "1px solid #c4b5fd", whiteSpace: "nowrap" }}>
+                              Edit
+                            </Link>
+                          )}
                           <DeleteOrderButton orderId={order.id} orderNumber={order.orderNumber} />
                         </div>
                       </td>

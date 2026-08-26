@@ -8,9 +8,10 @@ import { OrderStatusUpdater }  from "@/components/employee/OrderStatusUpdater";
 import { PrintReceiptButton }  from "@/components/employee/PrintReceiptButton";
 import { DeleteOrderButton }   from "@/components/shared/DeleteOrderButton";
 import { SpecialRequestsPanel } from "@/components/shared/SpecialRequestsPanel";
+import { EditedBadge }         from "@/components/shared/EditedBadge";
 import {
   ArrowLeft, User, Phone, Layers, Weight, Calendar,
-  Clock, FileText, Droplets, Wind, Hash,
+  Clock, FileText, Droplets, Wind, Hash, Pencil,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -107,7 +108,10 @@ export default async function OrderDetailPage({ params }: PageProps) {
         </div>
         <div className="flex-1 min-w-0">
           <h1 className="font-black text-lg leading-tight tracking-tight" style={{ color: "#1e293b" }}>{order.customerName}</h1>
-          <p className="font-mono text-xs mt-0.5" style={{ color: "#94a3b8" }}>{order.orderNumber}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <p className="font-mono text-xs" style={{ color: "#94a3b8" }}>{order.orderNumber}</p>
+            <EditedBadge editCount={order.editCount} />
+          </div>
         </div>
         <span className="shrink-0 text-[10px] font-black uppercase tracking-wide"
           style={{ padding: "4px 10px", borderRadius: "4px", background: statusStyle.bg, border: `1.5px solid ${statusStyle.border}`, color: statusStyle.color }}>
@@ -238,7 +242,14 @@ export default async function OrderDetailPage({ params }: PageProps) {
         templateData={waTemplateData}
       />
 
-      {/* Delete order */}
+      {/* Edit / Delete order */}
+      {order.paymentStatus !== "paid" && (
+        <Link href={`/employee/orders/${order.id}/edit`}
+          className="flex items-center justify-center gap-2 w-full h-11 rounded-md font-black text-sm transition-all active:scale-[0.98]"
+          style={{ background: "#edf7fd", border: "1.5px solid #b6def5", color: "#1a7fba" }}>
+          <Pencil size={14} /> Edit Order
+        </Link>
+      )}
       <DeleteOrderButton
         orderId={order.id}
         orderNumber={order.orderNumber}

@@ -8,12 +8,13 @@ import {
   ArrowLeft, User, Phone, FileText, CreditCard, Calendar,
   Hash, BadgeCheck, AlertTriangle, Clock, Waves,
   PackageCheck, ShoppingBag, Tag, Weight, Hash as PcsIcon,
-  Droplets, Wind,
+  Droplets, Wind, Pencil,
 } from "lucide-react";
 import type { AdminOrderItem } from "@/lib/actions/admin-orders";
 import { WhatsAppNotify } from "@/components/employee/WhatsAppNotify";
 import { DeleteOrderButton } from "@/components/shared/DeleteOrderButton";
 import { SpecialRequestsPanel } from "@/components/shared/SpecialRequestsPanel";
+import { EditedBadge } from "@/components/shared/EditedBadge";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -283,12 +284,15 @@ export default async function AdminOrderDetailPage({
           justifyContent: "space-between", flexWrap: "wrap", gap: "12px",
         }}>
           <div>
-            <h1 style={{
-              fontFamily: "Sora,sans-serif", fontWeight: 800, fontSize: "26px",
-              color: "#0f172a", letterSpacing: "-0.02em", marginBottom: "4px",
-            }}>
-              {order.orderNumber}
-            </h1>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+              <h1 style={{
+                fontFamily: "Sora,sans-serif", fontWeight: 800, fontSize: "26px",
+                color: "#0f172a", letterSpacing: "-0.02em",
+              }}>
+                {order.orderNumber}
+              </h1>
+              <EditedBadge editCount={order.editCount} />
+            </div>
             <p style={{ fontSize: "13px", color: "#94a3b8" }}>
               Kria iha{" "}
               {new Date(order.createdAt).toLocaleString("pt-TL", {
@@ -334,6 +338,17 @@ export default async function AdminOrderDetailPage({
               notes={order.notes}
               templateData={waTemplateData}
             />
+
+            {!isPaid && (
+              <Link href={`/admin/orders/${order.id}/edit`} style={{
+                display: "inline-flex", alignItems: "center", gap: "6px",
+                padding: "6px 14px", borderRadius: "999px",
+                background: "#edf7fd", border: "1.5px solid #b6def5",
+                fontSize: "12px", fontWeight: 700, color: "#1a7fba", textDecoration: "none",
+              }}>
+                <Pencil size={13} /> Edit
+              </Link>
+            )}
 
             <DeleteOrderButton
               orderId={order.id}

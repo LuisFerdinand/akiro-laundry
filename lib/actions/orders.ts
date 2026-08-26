@@ -410,6 +410,141 @@ export async function createOrder(formData: OrderFormData): Promise<CreateOrderR
   }
 }
 
+// ─── Update Order ─────────────────────────────────────────────────────────────
+// Corrects customer/service/notes data on an existing order (typo fixes, wrong
+// weight, wrong service picked, etc). Each successful edit bumps `editCount` so
+// staff can see an order was changed after creation. Paid orders are locked —
+// edit the total after payment and the receipt no longer matches what was collected.
+
+export interface UpdateOrderResult {
+  success: boolean;
+  error?:  string;
+}
+
+export async function updateOrder(
+  orderId:  number,
+  formData: OrderFormData,
+): Promise<UpdateOrderResult> {
+  try {
+    const { customer, items, notes } = formData;
+
+    if (!items || items.length === 0) {
+      return { success: false, error: "At least one service item is required." };
+    }
+
+    const [existing] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+    if (!existing) return { success: false, error: "Order not found." };
+    if (existing.paymentStatus === "paid") {
+      return { success: false, error: "This order has already been paid and can no longer be edited." };
+    }
+
+    // ── 1. Resolve customer — reassign to a picked existing customer, or
+    //        update the current one in place so typos get fixed rather than
+    //        spawning a duplicate customer record ──────────────────────────
+    let customerId = existing.customerId;
+    if (customer.existingCustomerId) {
+      customerId = customer.existingCustomerId;
+    } else {
+      await db
+        .update(customers)
+        .set({
+          name:      customer.name.trim(),
+          phone:     normalizeForStorage(customer.phone),
+          address:   customer.address.trim(),
+          updatedAt: new Date(),
+        })
+        .where(eq(customers.id, existing.customerId));
+    }
+
+    // ── 2. Resolve service, soap, and pewangi rows for each item ──────────────
+    const resolvedItems = await Promise.all(
+      items.map(async (item) => {
+        if (!item.servicePricingId) {
+          throw new Error("Each item must have a servicePricingId.");
+        }
+
+        const [serviceRow] = await db
+          .select()
+          .from(servicePricing)
+          .where(eq(servicePricing.id, item.servicePricingId))
+          .limit(1);
+        if (!serviceRow) throw new Error(`Service ${item.servicePricingId} not found.`);
+
+        const soapRow = item.soapId
+          ? (await db.select().from(soaps).where(eq(soaps.id, item.soapId)).limit(1))[0] ?? null
+          : null;
+
+        const pewangiRow = item.pewangiId
+          ? (await db.select().from(pewangi).where(eq(pewangi.id, item.pewangiId)).limit(1))[0] ?? null
+          : null;
+
+        const breakdown = calculateItemPrice(
+          serviceRow,
+          item.weightKg,
+          item.quantity,
+          soapRow,
+          pewangiRow,
+        );
+
+        return { item, serviceRow, breakdown };
+      }),
+    );
+
+    // ── 3. Sum totals ─────────────────────────────────────────────────────────
+    const totalPrice = resolvedItems.reduce((sum, r) => sum + r.breakdown.subtotal, 0);
+
+    // ── 4. Replace order items wholesale — simplest way to keep them in sync
+    //        with whatever the staffer edited in the form ─────────────────────
+    await db.delete(orderItems).where(eq(orderItems.orderId, orderId));
+    await db.insert(orderItems).values(
+      resolvedItems.map(({ item, serviceRow, breakdown }) => ({
+        orderId,
+        servicePricingId: serviceRow.id,
+        weightKg:
+          serviceRow.pricingUnit !== "per_pcs" && item.weightKg != null
+            ? item.weightKg.toString()
+            : null,
+        quantity:
+          serviceRow.pricingUnit === "per_pcs" && item.quantity != null
+            ? item.quantity
+            : null,
+        soapId:         item.soapId    ?? null,
+        pewangiId:      item.pewangiId ?? null,
+        basePricePerKg: serviceRow.basePricePerKg,
+        soapCost:       breakdown.soapCost.toString(),
+        pewangiCost:    breakdown.pewangiCost.toString(),
+        subtotal:       breakdown.subtotal.toString(),
+      })),
+    );
+
+    // ── 5. Update order header + bump the edit counter ─────────────────────────
+    await db
+      .update(orders)
+      .set({
+        customerId,
+        totalPrice: totalPrice.toString(),
+        notes:      notes.trim() || null,
+        editCount:  existing.editCount + 1,
+        updatedAt:  new Date(),
+      })
+      .where(eq(orders.id, orderId));
+
+    revalidatePath("/employee/orders");
+    revalidatePath(`/employee/orders/${orderId}`);
+    revalidatePath("/admin/orders");
+    revalidatePath(`/admin/orders/${orderId}`);
+    return { success: true };
+  } catch (err) {
+    console.error("[updateOrder]", err);
+    const code = (err as { code?: string } | null)?.code;
+    if (code === "23505") {
+      return { success: false, error: "That phone number belongs to another customer." };
+    }
+    const message = err instanceof Error ? err.message : "Something went wrong. Please try again.";
+    return { success: false, error: message };
+  }
+}
+
 // ─── Phone search ─────────────────────────────────────────────────────────────
 
 export async function searchCustomersByPhone(query: string): Promise<Customer[]> {

@@ -13,6 +13,7 @@ import {
 } from "@/lib/utils/order-form";
 import { updateOrderStatus, type OrderWithDetails, type EmployeeOrderFilters } from "@/lib/actions/orders";
 import { DeleteOrderButton } from "@/components/shared/DeleteOrderButton";
+import { EditedBadge } from "@/components/shared/EditedBadge";
 import { WhatsAppNotify } from "@/components/employee/WhatsAppNotify";
 import type { Order } from "@/lib/db/schema";
 import type { WaTemplateData } from "@/lib/actions/wa-templates";
@@ -113,7 +114,10 @@ function OrderRow({
             <p className="font-bold text-[13px] text-foreground group-hover:text-brand truncate max-w-[140px] sm:max-w-none transition-colors">
               {order.customerName}
             </p>
-            <p className="text-[10px] text-muted-foreground font-mono truncate">{order.orderNumber}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-[10px] text-muted-foreground font-mono truncate">{order.orderNumber}</p>
+              <EditedBadge editCount={order.editCount} compact />
+            </div>
           </div>
         </Link>
       </td>

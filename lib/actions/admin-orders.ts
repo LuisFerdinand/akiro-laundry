@@ -29,8 +29,9 @@ export interface AdminOrderItem extends OrderItem {
 
 /** Full order record returned by all admin queries */
 export interface AdminOrderWithDetails extends Order {
-  customerName:  string;
-  customerPhone: string;
+  customerName:    string;
+  customerPhone:   string;
+  customerAddress: string | null;
   items: AdminOrderItem[];
   specialRequests: OrderSpecialRequest[];
 }
@@ -157,9 +158,10 @@ export async function getAdminOrders(
   // Fetch page of orders
   const orderRows = await db
     .select({
-      order:         orders,
-      customerName:  customers.name,
-      customerPhone: customers.phone,
+      order:           orders,
+      customerName:    customers.name,
+      customerPhone:   customers.phone,
+      customerAddress: customers.address,
     })
     .from(orders)
     .leftJoin(customers, eq(orders.customerId, customers.id))
@@ -174,8 +176,9 @@ export async function getAdminOrders(
 
   const rows: AdminOrderWithDetails[] = orderRows.map((r) => ({
     ...r.order,
-    customerName:    r.customerName  ?? "Unknown",
-    customerPhone:   r.customerPhone ?? "—",
+    customerName:    r.customerName    ?? "Unknown",
+    customerPhone:   r.customerPhone   ?? "—",
+    customerAddress: r.customerAddress ?? null,
     items:           itemsMap.get(r.order.id) ?? [],
     specialRequests: requestsMap.get(r.order.id) ?? [],
   }));
@@ -195,9 +198,10 @@ export async function getAdminOrderById(
 ): Promise<AdminOrderWithDetails | null> {
   const rows = await db
     .select({
-      order:         orders,
-      customerName:  customers.name,
-      customerPhone: customers.phone,
+      order:           orders,
+      customerName:    customers.name,
+      customerPhone:   customers.phone,
+      customerAddress: customers.address,
     })
     .from(orders)
     .leftJoin(customers, eq(orders.customerId, customers.id))
@@ -211,8 +215,9 @@ export async function getAdminOrderById(
 
   return {
     ...rows[0].order,
-    customerName:    rows[0].customerName  ?? "Unknown",
-    customerPhone:   rows[0].customerPhone ?? "—",
+    customerName:    rows[0].customerName    ?? "Unknown",
+    customerPhone:   rows[0].customerPhone   ?? "—",
+    customerAddress: rows[0].customerAddress ?? null,
     items:           itemsMap.get(id) ?? [],
     specialRequests: requestsMap.get(id) ?? [],
   };
