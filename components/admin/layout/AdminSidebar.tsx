@@ -55,6 +55,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin",           icon: LayoutDashboard, label: "Dashboard",     exact: true },
       { href: "/admin/orders",    icon: ShoppingBag,     label: "Orders"                    },
       { href: "/admin/customers", icon: Users,           label: "Customers"                  },
+      { href: "/admin/marketing", icon: Megaphone,       label: "Marketing"                  },
       { href: "/admin/reviews",   icon: Star,            label: "Reviews"                    },
     ],
   },

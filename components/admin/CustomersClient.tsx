@@ -7,22 +7,24 @@ import Link from "next/link";
 import {
   Search, Plus, X, Loader2, Save,
   Users, ArrowUpRight, Trophy, Star,
-  UserPlus, Crown, Medal, Award,
-  ShoppingBag, Sparkles, BarChart3, ChevronDown, Download,
+  Crown, Medal, Award,
+  ShoppingBag, BarChart3, ChevronDown, Download,
 } from "lucide-react";
 import { createCustomer } from "@/lib/actions/admin-customers";
 import { getCustomersForExport } from "@/lib/actions/export";
 import { exportToXlsx } from "@/lib/utils/export-xlsx";
-import { formatUSD } from "@/lib/utils/order-form";
+import { formatUSD, REFERRAL_SOURCES } from "@/lib/utils/order-form";
 import { ExportModal, type ExportDateRange } from "@/components/admin/ExportModal";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
-import type { CustomerWithStats, CustomerInsights, MonthlyCustomerCount, SortOption } from "@/lib/actions/admin-customers";
+import { NewCustomersPanel } from "@/components/admin/NewCustomersPanel";
+import type { CustomerWithStats, CustomerInsights, SortOption } from "@/lib/actions/admin-customers";
 
 // ─── Create Customer Modal ────────────────────────────────────────────────────
 function CreateCustomerModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [referralSource, setReferralSource] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, start] = useTransition();
 
@@ -30,7 +32,7 @@ function CreateCustomerModal({ onClose, onSuccess }: { onClose: () => void; onSu
     if (!name.trim() || !phone.trim() || !address.trim()) { setError("All fields are required."); return; }
     setError(null);
     start(async () => {
-      const result = await createCustomer({ name, phone, address });
+      const result = await createCustomer({ name, phone, address, referralSource });
       if (result.success) onSuccess();
       else setError(result.error ?? "Failed to create customer.");
     });
@@ -76,6 +78,30 @@ function CreateCustomerModal({ onClose, onSuccess }: { onClose: () => void; onSu
           <div><label style={lbl}>Full Name</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Maria Santos" style={inp} /></div>
           <div><label style={lbl}>Phone Number</label><input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+62 8XX XXXX XXXX" style={inp} /></div>
           <div><label style={lbl}>Address</label><textarea value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, area, city…" rows={2} style={{ ...inp, resize: "vertical", fontFamily: "inherit" }} /></div>
+          <div>
+            <label style={lbl}>Heard about us via (optional)</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+              {REFERRAL_SOURCES.map((src) => {
+                const active = referralSource === src;
+                return (
+                  <button
+                    key={src}
+                    type="button"
+                    onClick={() => setReferralSource(active ? null : src)}
+                    style={{
+                      padding: "7px 12px", borderRadius: "8px", cursor: "pointer",
+                      border: `1.5px solid ${active ? "#1a7fba" : "#e2e8f0"}`,
+                      background: active ? "#edf7fd" : "white",
+                      color: active ? "#0f5a85" : "#64748b",
+                      fontSize: "12px", fontWeight: 700,
+                    }}
+                  >
+                    {src}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           {error && <div style={{ background: "#fff1f2", border: "1.5px solid #fda4af", borderRadius: "7px", padding: "10px 14px" }}><p style={{ fontSize: "12px", fontWeight: 600, color: "#be123c" }}>{error}</p></div>}
           <button onClick={handleSubmit} disabled={isPending} style={{
             height: 46, borderRadius: "9px", border: "none",
@@ -185,156 +211,6 @@ function LeaderboardCard({
   );
 }
 
-// ─── Monthly Bar Chart ────────────────────────────────────────────────────────
-
-/** Sequential green ramp — oldest month lightest, most recent month full brand green. */
-function lerpColor(hexA: string, hexB: string, t: number): string {
-  const a = parseInt(hexA.slice(1), 16);
-  const b = parseInt(hexB.slice(1), 16);
-  const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
-  const br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
-  const r = Math.round(ar + (br - ar) * t);
-  const g = Math.round(ag + (bg - ag) * t);
-  const bl = Math.round(ab + (bb - ab) * t);
-  return `#${[r, g, bl].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
-}
-
-/** Round a max value up to a clean axis tick (5, 10, 20, 25, 50, 100…). */
-function niceCeil(n: number): number {
-  if (n <= 5) return 5;
-  const magnitude = Math.pow(10, Math.floor(Math.log10(n)));
-  const residual   = n / magnitude;
-  const niceResidual = residual <= 1 ? 1 : residual <= 2 ? 2 : residual <= 5 ? 5 : 10;
-  return niceResidual * magnitude;
-}
-
-function MonthlyNewCustomers({ data, thisMonthCount }: { data: MonthlyCustomerCount[]; thisMonthCount: number }) {
-  const [hovered, setHovered] = useState<number | null>(null);
-
-  const rawMax  = Math.max(...data.map((d) => d.count), 0);
-  const axisMax = niceCeil(rawMax);
-  const chartH  = 160;
-
-  const ticks = [0, axisMax / 2, axisMax];
-
-  return (
-    <div style={{ background: "white", borderRadius: "14px", border: "1.5px solid #e2e8f0", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", overflow: "hidden" }}>
-      <div style={{ padding: "14px 18px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={{ width: 34, height: 34, borderRadius: "9px", background: "linear-gradient(135deg,#f0fdf4,#dcfce7)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <UserPlus size={16} style={{ color: "#16a34a" }} />
-          </div>
-          <div>
-            <p style={{ fontSize: "13px", fontWeight: 800, color: "#0f172a", fontFamily: "Sora, sans-serif" }}>New Customers</p>
-            <p style={{ fontSize: "10px", color: "#94a3b8" }}>Monthly growth · last 12 months</p>
-          </div>
-        </div>
-        <div style={{ textAlign: "right" }}>
-          <p style={{ fontSize: "22px", fontWeight: 800, color: "#16a34a", fontFamily: "Sora, sans-serif", lineHeight: 1 }}>{thisMonthCount}</p>
-          <p style={{ fontSize: "10px", color: "#94a3b8", marginTop: "2px" }}>this month</p>
-        </div>
-      </div>
-
-      <div style={{ padding: "20px 18px 8px", display: "flex", gap: "10px" }}>
-        {/* Y-axis ticks */}
-        <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", height: chartH, paddingBottom: "2px" }}>
-          {[...ticks].reverse().map((t) => (
-            <span key={t} style={{ fontSize: "9px", fontWeight: 700, color: "#94a3b8", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
-              {Math.round(t)}
-            </span>
-          ))}
-        </div>
-
-        {/* Plot area */}
-        <div style={{ position: "relative", flex: 1 }}>
-          {/* Gridlines */}
-          <div style={{ position: "absolute", inset: 0, height: chartH }}>
-            {ticks.map((t) => (
-              <div key={t} style={{
-                position: "absolute", left: 0, right: 0,
-                bottom: `${(t / axisMax) * 100}%`,
-                borderTop: "1px solid #eef2f6",
-              }} />
-            ))}
-          </div>
-
-          {/* Bars */}
-          <div style={{ position: "relative", display: "flex", alignItems: "flex-end", gap: "4px", height: chartH }}>
-            {data.map((d, i) => {
-              const isLast = i === data.length - 1;
-              const t      = data.length > 1 ? i / (data.length - 1) : 1;
-              const barColor = isLast ? "#16a34a" : lerpColor("#dcfce7", "#16a34a", t);
-              const pctH   = axisMax > 0 ? (d.count / axisMax) * 100 : 0;
-              const isHovered = hovered === i;
-
-              return (
-                <div key={d.month}
-                  style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end", position: "relative", cursor: "default" }}
-                  onMouseEnter={() => setHovered(i)}
-                  onMouseLeave={() => setHovered(null)}
-                >
-                  {/* Tooltip */}
-                  {isHovered && (
-                    <div style={{
-                      position: "absolute", bottom: `calc(${Math.max(pctH, 3)}% + 10px)`, left: "50%", transform: "translateX(-50%)",
-                      background: "#0f172a", color: "white", borderRadius: "6px", padding: "6px 10px",
-                      fontSize: "11px", fontWeight: 700, whiteSpace: "nowrap", zIndex: 5,
-                      boxShadow: "0 4px 14px rgba(0,0,0,0.25)", pointerEvents: "none",
-                    }}>
-                      {d.monthFull}: {d.count} new customer{d.count !== 1 ? "s" : ""}
-                      <div style={{
-                        position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)",
-                        width: 0, height: 0, borderLeft: "5px solid transparent", borderRight: "5px solid transparent",
-                        borderTop: "5px solid #0f172a",
-                      }} />
-                    </div>
-                  )}
-
-                  {/* Value label */}
-                  <span style={{ fontSize: "10px", fontWeight: 800, color: isLast ? "#16a34a" : "#64748b", marginBottom: "4px" }}>
-                    {d.count}
-                  </span>
-
-                  {/* Bar */}
-                  <div style={{
-                    width: "100%", maxWidth: 22, height: `${Math.max(pctH, d.count > 0 ? 3 : 0)}%`, minHeight: d.count > 0 ? "4px" : 0,
-                    borderRadius: "4px 4px 0 0",
-                    background: barColor,
-                    outline: isHovered ? "2px solid #0f172a" : "none",
-                    outlineOffset: "1px",
-                    boxShadow: isLast ? "0 2px 8px rgba(22,163,74,0.3)" : "none",
-                    transition: "outline 0.1s",
-                  }} />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Month labels */}
-      <div style={{ padding: "0 18px 14px", display: "flex", gap: "10px" }}>
-        <div style={{ width: 20, flexShrink: 0 }} />
-        <div style={{ flex: 1, display: "flex", gap: "4px" }}>
-          {data.map((d, i) => (
-            <div key={d.month} style={{ flex: 1, textAlign: "center" }}>
-              <span style={{ fontSize: "9px", fontWeight: 600, color: i === data.length - 1 ? "#16a34a" : "#94a3b8" }}>{d.month}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {thisMonthCount > 0 && (
-        <div style={{ padding: "0 18px 14px" }}>
-          <div style={{ background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: "8px", padding: "8px 12px", display: "flex", alignItems: "center", gap: "8px" }}>
-            <Sparkles size={12} style={{ color: "#16a34a" }} />
-            <p style={{ fontSize: "11px", fontWeight: 600, color: "#14532d" }}>{thisMonthCount} new customer{thisMonthCount !== 1 ? "s" : ""} joined this month!</p>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─── Sort Options ─────────────────────────────────────────────────────────────
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
@@ -473,7 +349,7 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
         </div>
 
         {/* ── Monthly new-customer trend — full width for a clearer read ── */}
-        <MonthlyNewCustomers data={insights.newByMonth} thisMonthCount={insights.newThisMonth.length} />
+        <NewCustomersPanel initialData={insights.newByMonth} thisMonthCount={insights.newThisMonth.length} />
 
         {/* ── Search + Sort ── */}
         <div style={{

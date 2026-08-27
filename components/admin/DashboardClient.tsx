@@ -2,8 +2,10 @@
 // components/admin/DashboardClient.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
+import type { DateRange } from "react-day-picker";
+import { useMeasuredWidth } from "@/lib/hooks/use-measured-width";
 import {
   ArrowUpRight, TrendingUp, TrendingDown, ShoppingBag, Users,
   Wallet, Clock, Waves, PackageCheck,
@@ -15,9 +17,13 @@ import type {
   FullDashboardStats,
   DailyRevenuePoint,
   MonthlyRevenuePoint,
+  TrendGranularity,
+  TrendSeriesPoint,
 } from "@/lib/actions/dashboard-stats";
+import { getRevenueTrendSeries } from "@/lib/actions/dashboard-stats";
 import { BusyHourChart } from "@/components/admin/BusyHourChart";
 import { SegmentedControl } from "@/components/admin/SegmentedControl";
+import { DateRangePicker } from "@/components/admin/DateRangePicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -116,23 +122,38 @@ function MonthlyBarChart({
 
 interface TrendPoint { label: string; revenue: number; orders: number }
 
+function niceTrendMax(n: number): number {
+  if (n <= 1) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(n)));
+  const r = n / mag;
+  const nice = r <= 1 ? 1 : r <= 2 ? 2 : r <= 2.5 ? 2.5 : r <= 5 ? 5 : 10;
+  return nice * mag;
+}
+
 function TrendChart({ data, metric, color }: { data: TrendPoint[]; metric: "revenue" | "orders"; color: string }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const [wrapRef, W] = useMeasuredWidth(720);
 
-  const values = data.map((d) => d[metric]);
-  const max    = Math.max(...values, 1);
-  const avg    = values.reduce((s, v) => s + v, 0) / (values.length || 1);
-  const fmtVal = (v: number) => (metric === "revenue" ? formatUSD(v) : `${Math.round(v)}`);
-
-  const W = 1000, H = 220;
-  const padTop = 26, padBottom = 32, padLeft = 8, padRight = 16;
-  const innerW = W - padLeft - padRight;
+  const H = 248;
+  const padTop = 18, padBottom = 30, padLeft = 52, padRight = 18;
+  const innerW = Math.max(W - padLeft - padRight, 10);
   const innerH = H - padTop - padBottom;
-  const step   = data.length > 1 ? innerW / (data.length - 1) : innerW;
+
+  const values  = data.map((d) => d[metric]);
+  const rawMax  = Math.max(...values, 0);
+  const axisMax = niceTrendMax(rawMax);
+  const avg     = values.reduce((s, v) => s + v, 0) / (values.length || 1);
+  const fmtVal  = (v: number) =>
+    metric === "revenue"
+      ? v >= 1000 ? `$${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k` : `$${Math.round(v)}`
+      : `${Math.round(v)}`;
+
+  const step = data.length > 1 ? innerW / (data.length - 1) : 0;
+  const xAt  = (i: number) => (data.length > 1 ? padLeft + i * step : padLeft + innerW / 2);
+  const yAt  = (v: number) => padTop + innerH - (v / axisMax) * innerH;
 
   const points = data.map((d, i) => ({
-    x: padLeft + i * step,
-    y: padTop + innerH - (d[metric] / max) * innerH,
+    x: xAt(i), y: yAt(d[metric]),
     label: d.label, revenue: d.revenue, orders: d.orders,
   }));
 
@@ -143,100 +164,129 @@ function TrendChart({ data, metric, color }: { data: TrendPoint[]; metric: "reve
     const midX = ((prev.x + p.x) / 2).toFixed(1);
     return `${acc} C ${midX} ${prev.y.toFixed(1)}, ${midX} ${p.y.toFixed(1)}, ${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
   }, "");
-  const areaPath = `${linePath} L ${points[points.length - 1].x.toFixed(1)} ${(padTop + innerH).toFixed(1)} L ${points[0].x.toFixed(1)} ${(padTop + innerH).toFixed(1)} Z`;
+  const baseY = padTop + innerH;
+  const areaPath = points.length
+    ? `${linePath} L ${points[points.length - 1].x.toFixed(1)} ${baseY} L ${points[0].x.toFixed(1)} ${baseY} Z`
+    : "";
 
-  const avgY     = padTop + innerH - (avg / max) * innerH;
-  const hovered  = hoverIdx !== null ? points[hoverIdx] : null;
-  const last     = points[points.length - 1];
-  const gridYs   = [0.25, 0.5, 0.75, 1].map((f) => padTop + innerH * (1 - f));
-  const gradId   = `trendFill-${metric}`;
+  const avgY    = yAt(avg);
+  const hovered = hoverIdx !== null ? points[hoverIdx] : null;
+  const last    = points[points.length - 1];
+  const gradId  = `trendFill-${metric}`;
+  const yTicks  = [0, 0.25, 0.5, 0.75, 1].map((f) => f * axisMax);
+
+  // Thin x labels so they never collide / wrap.
+  const maxLabels = Math.max(2, Math.floor(innerW / 68));
+  const labelStride = Math.ceil(data.length / maxLabels);
 
   const handleMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (points.length === 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const relX = ((e.clientX - rect.left) / rect.width) * W;
-    let nearest = 0, nearestDist = Infinity;
-    points.forEach((p, i) => {
-      const dist = Math.abs(p.x - relX);
-      if (dist < nearestDist) { nearestDist = dist; nearest = i; }
-    });
+    let nearest = 0, nd = Infinity;
+    points.forEach((p, i) => { const d = Math.abs(p.x - relX); if (d < nd) { nd = d; nearest = i; } });
     setHoverIdx(nearest);
   };
 
   return (
-    <div style={{ position: "relative" }}>
+    <div ref={wrapRef} style={{ position: "relative", width: "100%" }}>
       <svg
-        viewBox={`0 0 ${W} ${H}`}
-        width="100%" height={H}
-        preserveAspectRatio="none"
+        width={W} height={H}
         onMouseMove={handleMove}
         onMouseLeave={() => setHoverIdx(null)}
-        style={{ display: "block", overflow: "visible", cursor: "crosshair" }}
+        style={{ display: "block", cursor: "crosshair" }}
       >
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.32" />
+            <stop offset="0%" stopColor={color} stopOpacity="0.28" />
             <stop offset="100%" stopColor={color} stopOpacity="0" />
           </linearGradient>
         </defs>
 
-        {/* grid */}
-        {gridYs.map((y, i) => (
-          <line key={i} x1={padLeft} y1={y} x2={W - padRight} y2={y} stroke="#f1f5f9" strokeWidth="1" />
-        ))}
+        {/* horizontal grid + y-axis value labels */}
+        {yTicks.map((v, i) => {
+          const y = yAt(v);
+          return (
+            <g key={i}>
+              <line x1={padLeft} y1={y} x2={W - padRight} y2={y} stroke="#eef2f6" strokeWidth="1" />
+              <text x={padLeft - 10} y={y + 3.5} textAnchor="end" fontSize="10.5" fontWeight="600" fill="#94a3b8">
+                {fmtVal(v)}
+              </text>
+            </g>
+          );
+        })}
 
         {/* average reference line */}
-        <line x1={padLeft} y1={avgY} x2={W - padRight} y2={avgY} stroke="#cbd5e1" strokeWidth="1.4" strokeDasharray="5 5" />
-        <text x={W - padRight} y={avgY - 8} textAnchor="end" fontSize="11.5" fontWeight="700" fill="#94a3b8">
-          avg {fmtVal(avg)}
-        </text>
+        {avg > 0 && (
+          <>
+            <line x1={padLeft} y1={avgY} x2={W - padRight} y2={avgY} stroke="#cbd5e1" strokeWidth="1.3" strokeDasharray="4 4" />
+            <text x={W - padRight} y={avgY - 6} textAnchor="end" fontSize="10.5" fontWeight="700" fill="#94a3b8">
+              avg {metric === "revenue" ? formatUSD(avg) : Math.round(avg)}
+            </text>
+          </>
+        )}
 
         {/* area + line */}
-        <path d={areaPath} fill={`url(#${gradId})`} stroke="none" />
-        <path d={linePath} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        {areaPath && <path d={areaPath} fill={`url(#${gradId})`} stroke="none" />}
+        {linePath && <path d={linePath} fill="none" stroke={color} strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round" />}
 
         {/* hover guide */}
         {hovered && (
-          <line x1={hovered.x} y1={padTop} x2={hovered.x} y2={padTop + innerH} stroke={color} strokeWidth="1" strokeDasharray="3 3" opacity="0.35" />
+          <line x1={hovered.x} y1={padTop} x2={hovered.x} y2={baseY} stroke={color} strokeWidth="1" strokeDasharray="3 3" opacity="0.4" />
         )}
 
         {/* live pulse on latest point */}
-        <circle cx={last.x} cy={last.y} r="9" fill={color} opacity="0.28">
-          <animate attributeName="r" values="6;13;6" dur="2.2s" repeatCount="indefinite" />
-          <animate attributeName="opacity" values="0.32;0;0.32" dur="2.2s" repeatCount="indefinite" />
-        </circle>
+        {last && (
+          <circle cx={last.x} cy={last.y} r="7" fill={color} opacity="0.28">
+            <animate attributeName="r" values="5;12;5" dur="2.4s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.3;0;0.3" dur="2.4s" repeatCount="indefinite" />
+          </circle>
+        )}
 
         {/* points */}
-        {points.map((p, i) => (
-          <circle
-            key={i} cx={p.x} cy={p.y}
-            r={hoverIdx === i ? 6 : 3.5}
-            fill={hoverIdx === i || i === points.length - 1 ? color : "white"}
-            stroke={color} strokeWidth="2.5"
-            style={{ transition: "r 0.12s ease" }}
-          />
-        ))}
+        {points.map((p, i) => {
+          const emphasised = hoverIdx === i || i === points.length - 1;
+          return (
+            <circle
+              key={i} cx={p.x} cy={p.y}
+              r={hoverIdx === i ? 5.5 : emphasised ? 4 : 3}
+              fill={emphasised ? color : "white"}
+              stroke={color} strokeWidth="2.25"
+              style={{ transition: "r 0.12s ease" }}
+            />
+          );
+        })}
 
-        {/* x-axis labels */}
-        {points.map((p, i) => (
-          <text key={i} x={p.x} y={H - 8} textAnchor="middle" fontSize="11" fontWeight="600" fill={hoverIdx === i ? "#334155" : "#94a3b8"}>
-            {p.label}
-          </text>
-        ))}
+        {/* x-axis labels (thinned) */}
+        {points.map((p, i) => {
+          if (i % labelStride !== 0 && i !== points.length - 1) return null;
+          const anchor = i === 0 ? "start" : i === points.length - 1 ? "end" : "middle";
+          return (
+            <text
+              key={i} x={p.x} y={H - 9}
+              textAnchor={anchor as "start" | "middle" | "end"}
+              fontSize="10.5" fontWeight="600"
+              fill={hoverIdx === i ? "#334155" : "#94a3b8"}
+            >
+              {p.label}
+            </text>
+          );
+        })}
       </svg>
 
       {hovered && (
         <div
           style={{
             position: "absolute",
-            left: `${(hovered.x / W) * 100}%`,
-            top: `${hovered.y}px`,
-            transform: "translate(-50%, -130%)",
+            left: `${Math.min(Math.max(hovered.x, 70), W - 70)}px`,
+            top: `${Math.max(hovered.y - 14, 4)}px`,
+            transform: "translate(-50%, -100%)",
             background: "#0f172a",
             color: "white",
             borderRadius: "10px",
-            padding: "9px 13px",
+            padding: "8px 12px",
             fontSize: "11.5px",
-            lineHeight: 1.6,
+            lineHeight: 1.55,
             whiteSpace: "nowrap",
             pointerEvents: "none",
             boxShadow: "0 10px 24px rgba(15,23,42,0.28)",
@@ -468,8 +518,37 @@ export function DashboardClient({ stats, social }: Props) {
   } = stats;
 
   const [trendMetric, setTrendMetric] = useState<"revenue" | "orders">("revenue");
-  const [trendPeriod, setTrendPeriod] = useState<"daily" | "weekly" | "monthly">("daily");
+  const [trendPeriod, setTrendPeriod] = useState<TrendGranularity>("daily");
   const [paymentPeriod, setPaymentPeriod] = useState<"daily" | "weekly" | "monthly" | "all">("all");
+
+  // Custom date-range override for the performance-trend chart.
+  const [trendRange, setTrendRange] = useState<DateRange | undefined>(undefined);
+  const [customTrend, setCustomTrend] = useState<TrendSeriesPoint[] | null>(null);
+  const [trendLoading, startTrend] = useTransition();
+
+  const toLocalISO = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  };
+
+  const handleTrendRange = (r: DateRange | undefined) => {
+    setTrendRange(r);
+    if (!r?.from || !r?.to) { setCustomTrend(null); return; }
+    startTrend(async () => {
+      setCustomTrend(await getRevenueTrendSeries(toLocalISO(r.from!), toLocalISO(r.to!), trendPeriod));
+    });
+  };
+
+  const handleTrendPeriod = (p: TrendGranularity) => {
+    setTrendPeriod(p);
+    if (trendRange?.from && trendRange?.to) {
+      startTrend(async () => {
+        setCustomTrend(await getRevenueTrendSeries(toLocalISO(trendRange.from!), toLocalISO(trendRange.to!), p));
+      });
+    }
+  };
 
   const activePaymentBreakdown =
     paymentPeriod === "all" ? paymentBreakdown : paymentBreakdownByPeriod[paymentPeriod];
@@ -479,8 +558,11 @@ export function DashboardClient({ stats, social }: Props) {
     : paymentPeriod === "monthly" ? "This month"
     : "Last 6 months";
 
-  const trendData: TrendPoint[] =
-    trendPeriod === "daily"
+  const isCustomTrend = !!(trendRange?.from && trendRange?.to);
+
+  const trendData: TrendPoint[] = customTrend
+    ? customTrend.map((d) => ({ label: d.label, revenue: d.revenue, orders: d.orders }))
+    : trendPeriod === "daily"
       ? dailyRevenue.map((d) => ({ label: d.date, revenue: d.revenue, orders: d.orders }))
       : trendPeriod === "weekly"
         ? weeklyRevenue.map((d) => ({ label: d.week, revenue: d.revenue, orders: d.orders }))
@@ -556,11 +638,13 @@ export function DashboardClient({ stats, social }: Props) {
                 {trendMetric === "revenue" ? "Revenue" : "Orders"} Trend
               </p>
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "1px" }}>
-                {trendPeriod === "daily" ? "Last 7 days" : trendPeriod === "weekly" ? "Last 8 weeks" : "Last 6 months"} · hover to inspect
+                {isCustomTrend
+                  ? `Custom range${trendLoading ? " · loading…" : ""}`
+                  : `${trendPeriod === "daily" ? "Last 7 days" : trendPeriod === "weekly" ? "Last 8 weeks" : "Last 6 months"} · hover to inspect`}
               </p>
             </div>
           </div>
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
             <SegmentedControl
               options={[{ value: "revenue" as const, label: "Revenue" }, { value: "orders" as const, label: "Orders" }]}
               value={trendMetric}
@@ -569,12 +653,36 @@ export function DashboardClient({ stats, social }: Props) {
             <SegmentedControl
               options={[{ value: "daily" as const, label: "Daily" }, { value: "weekly" as const, label: "Weekly" }, { value: "monthly" as const, label: "Monthly" }]}
               value={trendPeriod}
-              onChange={setTrendPeriod}
+              onChange={handleTrendPeriod}
             />
+            <DateRangePicker
+              value={trendRange}
+              onChange={handleTrendRange}
+              maxDays={trendPeriod === "daily" ? 31 : trendPeriod === "weekly" ? 182 : 730}
+              align="right"
+              size="sm"
+            />
+            {isCustomTrend && (
+              <button
+                onClick={() => handleTrendRange(undefined)}
+                style={{
+                  padding: "6px 10px", borderRadius: "8px", border: "1.5px solid #e2e8f0",
+                  background: "white", color: "#64748b", fontSize: "11px", fontWeight: 700, cursor: "pointer",
+                }}
+              >
+                Reset
+              </button>
+            )}
           </div>
         </div>
 
-        <TrendChart data={trendData} metric={trendMetric} color={trendColor} />
+        {trendData.length === 0 ? (
+          <div style={{ height: 220, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: "12px", fontWeight: 600 }}>
+            {trendLoading ? "Loading…" : "No data in this range"}
+          </div>
+        ) : (
+          <TrendChart data={trendData} metric={trendMetric} color={trendColor} />
+        )}
 
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: "14px", paddingTop: "14px", borderTop: "1px solid #f1f5f9" }}>
           <div>

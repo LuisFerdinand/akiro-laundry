@@ -646,3 +646,106 @@ body {
     @apply font-sans;
   }
 }
+
+/* ════════════════════════════════════════════════════════
+   Booking-style date-range calendar (react-day-picker v9/v10)
+   Scoped to .akiro-cal — see components/ui/calendar.tsx
+   ════════════════════════════════════════════════════════ */
+.akiro-cal {
+  --akiro-cal-band: #e2f0fb;   /* range fill */
+  --akiro-cal-edge: #1a7fba;   /* start / end pill */
+  --akiro-cal-mid:  #0f5a85;   /* in-range day text */
+  --akiro-cal-hover: #cfe6f7;
+}
+
+/* table cells sit flush so the range band is continuous */
+.akiro-cal .rdp-month_grid { border-collapse: collapse; }
+.akiro-cal .rdp-day {
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  text-align: center;
+}
+
+/* the continuous range band lives on the <td> */
+.akiro-cal .rdp-range_start,
+.akiro-cal .rdp-range_middle,
+.akiro-cal .rdp-range_end {
+  background-color: var(--akiro-cal-band);
+}
+.akiro-cal .rdp-range_start {
+  border-top-left-radius: 999px;
+  border-bottom-left-radius: 999px;
+}
+.akiro-cal .rdp-range_end {
+  border-top-right-radius: 999px;
+  border-bottom-right-radius: 999px;
+}
+/* first / last day of a week row: round the exposed band edge */
+.akiro-cal .rdp-week > .rdp-range_middle:first-child,
+.akiro-cal .rdp-week > .rdp-range_end:first-child {
+  border-top-left-radius: 999px;
+  border-bottom-left-radius: 999px;
+}
+.akiro-cal .rdp-week > .rdp-range_middle:last-child,
+.akiro-cal .rdp-week > .rdp-range_start:last-child {
+  border-top-right-radius: 999px;
+  border-bottom-right-radius: 999px;
+}
+
+/* the day button */
+.akiro-cal .rdp-day_button {
+  position: relative;
+  z-index: 1;
+  width: 2.25rem;
+  height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-weight: 500;
+  color: var(--color-foreground);
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.akiro-cal .rdp-day_button:hover {
+  background-color: var(--akiro-cal-hover);
+}
+
+/* solid pill on the start & end dates (and a lone selected start) */
+.akiro-cal .rdp-range_start .rdp-day_button,
+.akiro-cal .rdp-range_end .rdp-day_button,
+.akiro-cal .rdp-selected:not(.rdp-range_middle) .rdp-day_button {
+  background-color: var(--akiro-cal-edge);
+  color: #fff;
+  font-weight: 700;
+}
+.akiro-cal .rdp-range_start .rdp-day_button:hover,
+.akiro-cal .rdp-range_end .rdp-day_button:hover {
+  background-color: var(--akiro-cal-edge);
+}
+
+/* in-between days: transparent button over the band */
+.akiro-cal .rdp-range_middle .rdp-day_button {
+  background-color: transparent;
+  color: var(--akiro-cal-mid);
+  font-weight: 600;
+}
+.akiro-cal .rdp-range_middle .rdp-day_button:hover {
+  background-color: var(--akiro-cal-hover);
+}
+
+/* today marker (only when not part of the range) */
+.akiro-cal .rdp-today:not(.rdp-selected):not(.rdp-range_middle) .rdp-day_button {
+  color: var(--akiro-cal-edge);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--akiro-cal-edge) 45%, transparent);
+}
+
+/* outside / disabled */
+.akiro-cal .rdp-outside .rdp-day_button { color: color-mix(in srgb, var(--color-muted-foreground) 45%, transparent); }
+.akiro-cal .rdp-disabled .rdp-day_button {
+  color: color-mix(in srgb, var(--color-muted-foreground) 35%, transparent);
+  pointer-events: none;
+}
+.akiro-cal .rdp-disabled { background-color: transparent !important; }

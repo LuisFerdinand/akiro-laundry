@@ -318,9 +318,10 @@ export async function createOrder(formData: OrderFormData): Promise<CreateOrderR
         const [newCustomer] = await db
           .insert(customers)
           .values({
-            name:    customer.name.trim(),
-            phone:   phoneE164,
-            address: customer.address.trim(),
+            name:           customer.name.trim(),
+            phone:          phoneE164,
+            address:        customer.address.trim(),
+            referralSource: customer.referralSource?.trim() || null,
           })
           .returning({ id: customers.id });
         customerId = newCustomer.id;

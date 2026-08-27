@@ -3,7 +3,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { User, MapPin, Loader2, X, CheckCircle2, ChevronDown } from "lucide-react";
-import { CustomerFormData } from "@/lib/utils/order-form";
+import { CustomerFormData, REFERRAL_SOURCES } from "@/lib/utils/order-form";
 import { searchCustomersByPhone, searchCustomersByName } from "@/lib/actions/orders";
 import type { Customer } from "@/lib/db/schema";
 import {
@@ -429,7 +429,7 @@ export function CustomerStep({ data, onChange, errors }: CustomerStepProps) {
     setNameSuggestions([]);
     setShowNameDropdown(false);
     setNameLookupState("idle");
-    onChange({ name: "", phone: "", address: "" });
+    onChange({ name: "", phone: "", address: "", referralSource: null });
   };
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -734,6 +734,32 @@ export function CustomerStep({ data, onChange, errors }: CustomerStepProps) {
                   e.currentTarget.style.boxShadow   = "none";
                 }}
               />
+            </div>
+          </Field>
+
+          {/* ── Referral source (optional) ──────────────────────────────── */}
+          <Field label="Where did they hear about us? (optional)">
+            <div className="flex flex-wrap gap-2">
+              {REFERRAL_SOURCES.map((src) => {
+                const active = data.referralSource === src;
+                return (
+                  <button
+                    key={src}
+                    type="button"
+                    onClick={() =>
+                      onChange({ ...data, referralSource: active ? null : src })
+                    }
+                    className="px-3.5 h-10 rounded-md text-sm font-bold transition-all duration-150"
+                    style={{
+                      border: `2px solid ${active ? "#1a7fba" : "#e2e8f0"}`,
+                      background: active ? "linear-gradient(135deg,#edf7fd,#c8e9f8)" : "white",
+                      color: active ? "#0f5a85" : "#64748b",
+                    }}
+                  >
+                    {src}
+                  </button>
+                );
+              })}
             </div>
           </Field>
         </div>

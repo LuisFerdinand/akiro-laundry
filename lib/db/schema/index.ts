@@ -62,6 +62,9 @@ export const customers = pgTable("customers", {
   name:      text("name").notNull(),
   phone:     text("phone").notNull().unique(),
   address:   text("address").notNull(),
+  // How the customer first heard about Akiro — optional, captured at order time.
+  // "Facebook" | "Tiktok" | "Belun" | "Banner/Brosur" (free text, nullable).
+  referralSource: text("referral_source"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -213,6 +216,22 @@ export const cashRegisterTransactions = pgTable("cash_register_transactions", {
   createdAt:    timestamp("created_at").defaultNow().notNull(),
 });
 
+// ─── Marketing Campaigns ──────────────────────────────────────────────────────
+// One row per ad / marketing campaign. Drives the Marketing & ROAS page: the
+// business outcomes (new customers, revenue, orders, top services) are derived
+// live from the campaign's date window — nothing is denormalised here.
+export const marketingCampaigns = pgTable("marketing_campaigns", {
+  id:        serial("id").primaryKey(),
+  name:      text("name").notNull(),
+  channel:   text("channel").notNull(), // "facebook" | "tiktok" | "banner" | "belun" | "other"
+  spend:     numeric("spend", { precision: 12, scale: 2 }).notNull(),
+  startDate: timestamp("start_date").notNull(),
+  endDate:   timestamp("end_date").notNull(),
+  notes:     text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 export const customersRelations = relations(customers, ({ many }) => ({
   orders: many(orders),
@@ -297,6 +316,8 @@ export type CashRegister            = typeof cashRegister.$inferSelect;
 export type ExpenseCategory    = typeof expenseCategories.$inferSelect;
 export type NewExpenseCategory = typeof expenseCategories.$inferInsert;
 export type CashRegisterTransaction = typeof cashRegisterTransactions.$inferSelect;
+export type MarketingCampaign    = typeof marketingCampaigns.$inferSelect;
+export type NewMarketingCampaign = typeof marketingCampaigns.$inferInsert;
 
 export * from "./cms";
 export * from "./whatsapp";

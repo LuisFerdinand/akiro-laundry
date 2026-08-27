@@ -10,7 +10,13 @@ export interface CustomerFormData {
   name:    string;
   phone:   string;
   address: string;
+  /** Optional acquisition channel — only captured when creating a new customer. */
+  referralSource?: string | null;
 }
+
+/** How a customer first heard about Akiro. Optional at order time. */
+export const REFERRAL_SOURCES = ["Facebook", "Tiktok", "Belun", "Banner/Brosur"] as const;
+export type ReferralSource = typeof REFERRAL_SOURCES[number];
 
 /**
  * One service line in the order form.

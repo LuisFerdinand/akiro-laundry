@@ -9,7 +9,7 @@ import {
   servicePricing,
   cashRegister,
 } from "@/lib/db/schema";
-import { eq, desc, gte, inArray } from "drizzle-orm";
+import { eq, desc, gte, inArray, or } from "drizzle-orm";
 import {
   startOfDayBiz,
   endOfDayBiz,
@@ -111,6 +111,103 @@ function fmtMonth(d: Date) {
 }
 function fmtWeek(d: Date) {
   return formatBiz(d, { month: "short", day: "numeric" });
+}
+
+// ─── Custom-range revenue / orders trend ─────────────────────────────────────
+
+export type TrendGranularity = "daily" | "weekly" | "monthly";
+
+export interface TrendSeriesPoint { label: string; revenue: number; orders: number }
+
+/** Bucket caps so the trend line stays legible whatever range is picked. */
+const TREND_CAPS: Record<TrendGranularity, number> = { daily: 31, weekly: 26, monthly: 24 };
+
+export async function getRevenueTrendSeries(
+  fromISO: string,
+  toISO: string,
+  granularity: TrendGranularity,
+): Promise<TrendSeriesPoint[]> {
+  const parse = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
+  let from = startOfDayBiz(parse(fromISO));
+  const to = endOfDayBiz(parse(toISO));
+  if (from > to) from = startOfDayBiz(parse(toISO));
+
+  // Build buckets (each as [start, end]) oldest-first, trimmed to the cap.
+  const buckets: { label: string; start: Date; end: Date }[] = [];
+
+  const pushDay = (dayStart: Date) => {
+    const end = endOfDayBiz(dayStart);
+    buckets.push({
+      label: formatBiz(dayStart, { month: "short", day: "numeric" }),
+      start: dayStart,
+      end:   end > to ? to : end,
+    });
+  };
+
+  if (granularity === "daily") {
+    let cursor = startOfDayBiz(from);
+    const span = Math.round((endOfDayBiz(to).getTime() - cursor.getTime()) / 86_400_000) + 1;
+    if (span > TREND_CAPS.daily) cursor = startOfDayBiz(subDaysBiz(to, TREND_CAPS.daily - 1));
+    while (cursor <= to) { pushDay(cursor); cursor = startOfDayBiz(subDaysBiz(cursor, -1)); }
+  } else if (granularity === "weekly") {
+    // Week windows anchored to `to`, walking backwards.
+    const weeks: { start: Date; end: Date }[] = [];
+    let weekEnd = endOfDayBiz(to);
+    while (weekEnd.getTime() > from.getTime() && weeks.length < TREND_CAPS.weekly) {
+      const weekStart = startOfDayBiz(subDaysBiz(weekEnd, 6));
+      weeks.unshift({ start: weekStart, end: weekEnd });
+      weekEnd = new Date(weekStart.getTime() - 1);
+    }
+    for (const w of weeks) {
+      buckets.push({ label: formatBiz(w.start, { month: "short", day: "numeric" }), start: w.start, end: w.end });
+    }
+  } else {
+    // monthly
+    let m = startOfMonthBiz(from);
+    const limit = startOfMonthBiz(to);
+    const months: Date[] = [];
+    while (m <= limit) { months.push(m); m = subMonthsBiz(m, -1); }
+    const trimmed = months.slice(-TREND_CAPS.monthly);
+    trimmed.forEach((mStart, i) => {
+      const next = i < trimmed.length - 1 ? trimmed[i + 1] : subMonthsBiz(mStart, -1);
+      const mEnd = new Date(next.getTime() - 1);
+      buckets.push({
+        label: formatBiz(mStart, { month: "short", year: "2-digit" }),
+        start: mStart,
+        end:   mEnd > to ? to : mEnd,
+      });
+    });
+  }
+
+  if (buckets.length === 0) return [];
+
+  const windowStart = buckets[0].start;
+  const rows = await db
+    .select({
+      totalPrice:    orders.totalPrice,
+      paymentStatus: orders.paymentStatus,
+      paidAt:        orders.paidAt,
+      createdAt:     orders.createdAt,
+    })
+    .from(orders)
+    .where(or(gte(orders.createdAt, windowStart), gte(orders.paidAt, windowStart)));
+
+  const price    = (o: { totalPrice: string }) => parseFloat(o.totalPrice ?? "0");
+  const paidDate = (o: { paidAt: Date | null; createdAt: Date }) => new Date(o.paidAt ?? o.createdAt);
+
+  return buckets.map((b) => {
+    let revenue = 0;
+    let orderCount = 0;
+    for (const o of rows) {
+      const created = new Date(o.createdAt);
+      if (created >= b.start && created <= b.end) orderCount++;
+      if (o.paymentStatus === "paid") {
+        const pd = paidDate(o);
+        if (pd >= b.start && pd <= b.end) revenue += price(o);
+      }
+    }
+    return { label: b.label, revenue, orders: orderCount };
+  });
 }
 
 // ─── Main function ────────────────────────────────────────────────────────────

@@ -7,11 +7,11 @@ import Link from "next/link";
 import {
   ArrowLeft, User, Phone, MapPin, ShoppingBag,
   TrendingUp, Calendar, Edit2, Save, X, Loader2,
-  CheckCircle2, ArrowUpRight, Clock, Waves, PackageCheck,
+  CheckCircle2, ArrowUpRight, Clock, Waves, PackageCheck, Megaphone,
 } from "lucide-react";
 import { updateCustomer } from "@/lib/actions/admin-customers";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
-import { formatUSD, ORDER_STATUS_LABELS } from "@/lib/utils/order-form";
+import { formatUSD, ORDER_STATUS_LABELS, REFERRAL_SOURCES } from "@/lib/utils/order-form";
 import type { CustomerDetail } from "@/lib/actions/admin-customers";
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string; border: string }> = {
@@ -30,6 +30,7 @@ export function CustomerDetailClient({ customer }: Props) {
   const [name,     setName]     = useState(customer.name);
   const [phone,    setPhone]    = useState(customer.phone);
   const [address,  setAddress]  = useState(customer.address);
+  const [referralSource, setReferralSource] = useState<string | null>(customer.referralSource ?? null);
   const [error,    setError]    = useState<string | null>(null);
   const [saved,    setSaved]    = useState(false);
   const [isPending, start]      = useTransition();
@@ -40,7 +41,7 @@ export function CustomerDetailClient({ customer }: Props) {
     }
     setError(null);
     start(async () => {
-      const result = await updateCustomer(customer.id, { name, phone, address });
+      const result = await updateCustomer(customer.id, { name, phone, address, referralSource });
       if (result.success) {
         setSaved(true);
         setEditing(false);
@@ -137,7 +138,7 @@ export function CustomerDetailClient({ customer }: Props) {
             </div>
             {editing && (
               <div style={{ display: "flex", gap: "6px" }}>
-                <button onClick={() => { setEditing(false); setName(customer.name); setPhone(customer.phone); setAddress(customer.address); setError(null); }}
+                <button onClick={() => { setEditing(false); setName(customer.name); setPhone(customer.phone); setAddress(customer.address); setReferralSource(customer.referralSource ?? null); setError(null); }}
                   style={{ padding: "4px 10px", borderRadius: "6px", border: "1.5px solid #e2e8f0", background: "white", fontSize: "11px", fontWeight: 700, color: "#64748b", cursor: "pointer" }}>
                   <X size={11} style={{ display: "inline", marginRight: 4 }} />Cancel
                 </button>
@@ -199,6 +200,41 @@ export function CustomerDetailClient({ customer }: Props) {
                 ? <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2}
                     style={{ ...inputStyle, resize: "vertical" as const, fontFamily: "inherit" }} />
                 : <p style={{ fontSize: "15px", fontWeight: 600, color: "#1e293b" }}>{address}</p>}
+            </div>
+
+            {/* Referral source */}
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "7px", marginBottom: editing ? "6px" : "4px" }}>
+                <Megaphone size={12} style={{ color: "#94a3b8" }} />
+                <span style={{ fontSize: "10px", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em" }}>Heard About Us Via</span>
+              </div>
+              {editing ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                  {REFERRAL_SOURCES.map((src) => {
+                    const active = referralSource === src;
+                    return (
+                      <button
+                        key={src}
+                        type="button"
+                        onClick={() => setReferralSource(active ? null : src)}
+                        style={{
+                          padding: "6px 11px", borderRadius: "8px", cursor: "pointer",
+                          border: `1.5px solid ${active ? "#1a7fba" : "#e2e8f0"}`,
+                          background: active ? "#edf7fd" : "white",
+                          color: active ? "#0f5a85" : "#64748b",
+                          fontSize: "12px", fontWeight: 700,
+                        }}
+                      >
+                        {src}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p style={{ fontSize: "15px", fontWeight: 600, color: customer.referralSource ? "#1e293b" : "#94a3b8" }}>
+                  {customer.referralSource ?? "—"}
+                </p>
+              )}
             </div>
           </div>
         </div>

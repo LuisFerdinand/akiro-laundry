@@ -43,6 +43,13 @@
       "when": 1787746884291,
       "tag": "0005_open_longshot",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787800203015,
+      "tag": "0006_spooky_electro",
+      "breakpoints": true
     }
   ]
 }

@@ -44,7 +44,7 @@ import { printReceipt } from "@/components/employee/PrintReceipt";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const EMPTY_FORM: OrderFormData = {
-  customer:        { name: "", phone: "", address: "" },
+  customer:        { name: "", phone: "", address: "", referralSource: null },
   items:           [],
   notes:           "",
   specialRequests: [],
