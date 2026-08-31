@@ -59,3 +59,48 @@ export function hourBiz(date: Date): number {
 export function formatBiz(date: Date, opts: Intl.DateTimeFormatOptions): string {
   return new Intl.DateTimeFormat("en-US", { ...opts, timeZone: BUSINESS_TIMEZONE }).format(date);
 }
+
+// ─── Finance period presets ──────────────────────────────────────────────────
+// Pure helper (no "use server") shared by the Buku Besar / Buku Kecil pages and
+// their clients. Boundaries follow the same plain-Date convention as
+// lib/actions/export.ts (`new Date(iso + "T00:00:00")`), not business-tz.
+
+export type FinancePeriod =
+  | "this_month" | "last_month" | "last_3_months" | "this_year" | "all";
+
+export const FINANCE_PERIODS: { value: FinancePeriod; label: string }[] = [
+  { value: "this_month",    label: "This Month"    },
+  { value: "last_month",    label: "Last Month"    },
+  { value: "last_3_months", label: "Last 3 Months" },
+  { value: "this_year",     label: "This Year"     },
+  { value: "all",           label: "All Time"      },
+];
+
+export function financePeriodRange(period: FinancePeriod): { from: string; to: string; label: string } {
+  const iso = (d: Date) => {
+    const y  = d.getFullYear();
+    const m  = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  };
+  const now   = new Date();
+  const today = iso(now);
+  const label = FINANCE_PERIODS.find((p) => p.value === period)?.label ?? "This Month";
+
+  switch (period) {
+    case "last_month": {
+      const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const last  = new Date(now.getFullYear(), now.getMonth(), 0);
+      return { from: iso(first), to: iso(last), label };
+    }
+    case "last_3_months":
+      return { from: iso(new Date(now.getFullYear(), now.getMonth() - 2, 1)), to: today, label };
+    case "this_year":
+      return { from: iso(new Date(now.getFullYear(), 0, 1)), to: today, label };
+    case "all":
+      return { from: "2000-01-01", to: today, label };
+    case "this_month":
+    default:
+      return { from: iso(new Date(now.getFullYear(), now.getMonth(), 1)), to: today, label };
+  }
+}

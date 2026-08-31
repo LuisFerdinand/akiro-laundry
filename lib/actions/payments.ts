@@ -44,7 +44,7 @@ export interface RecordManualTransactionInput {
   direction: "income" | "outcome";
   amount: number;
   description: string;
-  /** Required when direction === "outcome" */
+  /** Required when direction === "outcome"; optional for income. */
   categoryId?: number | null;
 }
 
@@ -140,6 +140,9 @@ export async function recordManualTransaction(
     if (!amount || amount <= 0) {
       return { success: false, error: "Amount must be greater than zero." };
     }
+    // Expense entries must be categorised. Income categories are optional at the
+    // action level (the Buku Kecil form still requires one); this keeps the
+    // legacy Cash Register income form working.
     if (direction === "outcome" && !categoryId) {
       return { success: false, error: "Please select a category for expense entries." };
     }
@@ -164,6 +167,9 @@ export async function recordManualTransaction(
       description:  description.trim(),
       balanceAfter: newBalance.toFixed(2),
     });
+
+    revalidatePath("/admin/buku-kecil");
+    revalidatePath("/admin/buku-besar");
 
     revalidatePath("/admin/cash-register");
     revalidatePath("/employee/cash-register");
@@ -267,14 +273,19 @@ export async function processPayment(
 
 // ─── Expense Category CRUD ────────────────────────────────────────────────────
 
-export async function getExpenseCategories(): Promise<ExpenseCategory[]> {
-  return db.select().from(expenseCategories).orderBy(expenseCategories.name);
+export async function getExpenseCategories(
+  kind?: "income" | "expense",
+): Promise<ExpenseCategory[]> {
+  const rows = await db.select().from(expenseCategories).orderBy(expenseCategories.name);
+  if (!kind) return rows;
+  return rows.filter((c) => c.kind === kind || c.kind === "both");
 }
 
 export async function createExpenseCategory(input: {
   name: string;
   description?: string;
   color?: string;
+  kind?: "income" | "expense" | "both";
 }): Promise<{ success: boolean; category?: ExpenseCategory; error?: string }> {
   try {
     const [cat] = await db
@@ -283,9 +294,11 @@ export async function createExpenseCategory(input: {
         name:        input.name.trim(),
         description: input.description?.trim() ?? null,
         color:       input.color ?? "#64748b",
+        kind:        input.kind ?? "expense",
       })
       .returning();
     revalidatePath("/admin/cash-register");
+    revalidatePath("/admin/buku-kecil");
     return { success: true, category: cat };
   } catch (err: any) {
     if (err?.code === "23505")
@@ -296,7 +309,7 @@ export async function createExpenseCategory(input: {
 
 export async function updateExpenseCategory(
   id: number,
-  input: { name?: string; description?: string; color?: string },
+  input: { name?: string; description?: string; color?: string; kind?: "income" | "expense" | "both" },
 ): Promise<{ success: boolean; error?: string }> {
   try {
     await db
@@ -305,9 +318,11 @@ export async function updateExpenseCategory(
         ...(input.name        && { name: input.name.trim() }),
         ...(input.description !== undefined && { description: input.description }),
         ...(input.color       && { color: input.color }),
+        ...(input.kind        && { kind: input.kind }),
       })
       .where(eq(expenseCategories.id, id));
     revalidatePath("/admin/cash-register");
+    revalidatePath("/admin/buku-kecil");
     return { success: true };
   } catch (err) {
     return { success: false, error: "Failed to update category." };

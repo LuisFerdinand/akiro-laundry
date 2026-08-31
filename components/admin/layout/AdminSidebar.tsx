@@ -17,6 +17,8 @@ import {
   Users,
   Wrench,
   Wallet,
+  BookOpen,
+  Notebook,
   Package,
   UserCog,
   Settings,
@@ -62,7 +64,9 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Finance",
     items: [
-      { href: "/admin/cash-register", icon: Wallet, label: "Cash Register" },
+      { href: "/admin/cash-register", icon: Wallet,   label: "Cash Register" },
+      { href: "/admin/buku-besar",    icon: BookOpen, label: "Buku Besar"    },
+      { href: "/admin/buku-kecil",    icon: Notebook, label: "Buku Kecil"    },
     ],
   },
   {

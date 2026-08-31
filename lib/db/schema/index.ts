@@ -188,9 +188,24 @@ export const expenseCategories = pgTable("expense_categories", {
   name:        text("name").notNull().unique(),       // e.g. "Store Improvement", "Supplies"
   description: text("description"),
   color:       text("color").default("#64748b"),      // hex for UI badge coloring
+  // Which side of the ledger this category applies to — controls which
+  // categories the Buku Kecil entry form offers. "income" | "expense" | "both".
+  kind:        text("kind").notNull().default("expense"),
   // No isActive — categories are hard-deleted. Past transactions retain categoryId
   // which resolves to null via ON DELETE SET NULL on the FK.
   createdAt:   timestamp("created_at").defaultNow().notNull(),
+});
+
+// ─── Finance Pie Configs ──────────────────────────────────────────────────────
+// Backs the 3 customizable pie charts on the Buku Besar page. Each row is one
+// chart slot (1-3); `categoryKeys` is a comma-separated list of recap keys
+// (e.g. "inc:orders,exp:change,exp:cat:4").
+export const financePieConfigs = pgTable("finance_pie_configs", {
+  id:           serial("id").primaryKey(),
+  slot:         integer("slot").notNull().unique(),   // 1 | 2 | 3
+  title:        text("title").notNull(),
+  categoryKeys: text("category_keys").notNull().default(""),
+  updatedAt:    timestamp("updated_at").defaultNow().notNull(),
 });
 
 // ─── Cash Register Transactions ───────────────────────────────────────────────
@@ -315,6 +330,8 @@ export type NewOrderSpecialRequest = typeof orderSpecialRequests.$inferInsert;
 export type CashRegister            = typeof cashRegister.$inferSelect;
 export type ExpenseCategory    = typeof expenseCategories.$inferSelect;
 export type NewExpenseCategory = typeof expenseCategories.$inferInsert;
+export type FinancePieConfig    = typeof financePieConfigs.$inferSelect;
+export type NewFinancePieConfig = typeof financePieConfigs.$inferInsert;
 export type CashRegisterTransaction = typeof cashRegisterTransactions.$inferSelect;
 export type MarketingCampaign    = typeof marketingCampaigns.$inferSelect;
 export type NewMarketingCampaign = typeof marketingCampaigns.$inferInsert;

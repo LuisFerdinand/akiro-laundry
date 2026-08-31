@@ -289,13 +289,19 @@ export async function deleteOrder(id: number): Promise<OrderActionResult> {
       .set({ orderId: null })
       .where(eq(cashRegisterTransactions.orderId, id));
 
-    // order_items cascade automatically (ON DELETE CASCADE on order_id).
+    // Delete child rows explicitly, in FK order, so this works regardless of
+    // whether ON DELETE CASCADE was actually applied in the target database.
+    // (neon-http has no interactive transactions; child-first ordering means a
+    // mid-failure can only leave harmless orphan children, never a live order.)
+    await db.delete(orderSpecialRequests).where(eq(orderSpecialRequests.orderId, id));
+    await db.delete(orderItems).where(eq(orderItems.orderId, id));
     await db.delete(orders).where(eq(orders.id, id));
 
     revalidatePath("/admin/orders");
     revalidatePath("/employee/orders");
     return { success: true };
   } catch (e: any) {
-    return { success: false, error: e.message ?? "Failed to delete order." };
+    console.error("[deleteOrder]", e);
+    return { success: false, error: e?.message ?? "Failed to delete order." };
   }
 }

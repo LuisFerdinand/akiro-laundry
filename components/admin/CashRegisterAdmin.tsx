@@ -86,6 +86,7 @@ export function CashRegisterAdmin({ initialState, revenue, initialCategories }: 
   const [catName,    setCatName]    = useState("");
   const [catDesc,    setCatDesc]    = useState("");
   const [catColor,   setCatColor]   = useState(PALETTE[0]);
+  const [catKind,    setCatKind]    = useState<"expense" | "income" | "both">("expense");
   const [catFeedback,setCatFeedback]= useState<{ ok: boolean; msg: string } | null>(null);
   const [catPending, startCat]      = useTransition();
   const [editingId,  setEditingId]  = useState<number | null>(null);
@@ -145,11 +146,12 @@ export function CashRegisterAdmin({ initialState, revenue, initialCategories }: 
         name:        catName.trim(),
         description: catDesc.trim() || undefined,
         color:       catColor,
+        kind:        catKind,
       });
       if (result.success && result.category) {
         setCategories((prev) => [...prev, result.category!].sort((a, b) => a.name.localeCompare(b.name)));
         setCatFeedback({ ok: true, msg: `"${result.category.name}" created.` });
-        setCatName(""); setCatDesc(""); setCatColor(PALETTE[0]);
+        setCatName(""); setCatDesc(""); setCatColor(PALETTE[0]); setCatKind("expense");
       } else {
         setCatFeedback({ ok: false, msg: result.error ?? "Failed." });
       }
@@ -511,8 +513,13 @@ export function CashRegisterAdmin({ initialState, revenue, initialCategories }: 
                         </>
                       ) : (
                         <>
-                          <span style={{ flex: 1, fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>
+                          <span style={{ flex: 1, fontSize: "12px", fontWeight: 600, color: "#1e293b", display: "flex", alignItems: "center", gap: "6px" }}>
                             {cat.name}
+                            {cat.kind !== "expense" && (
+                              <span style={{ fontSize: "9px", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "1px 5px" }}>
+                                {cat.kind}
+                              </span>
+                            )}
                           </span>
                           <button
                             onClick={() => { setEditingId(cat.id); setEditName(cat.name); }}
@@ -561,6 +568,29 @@ export function CashRegisterAdmin({ initialState, revenue, initialCategories }: 
                   onFocus={(e) => { e.currentTarget.style.borderColor = "#b6def5"; }}
                   onBlur={(e)  => { e.currentTarget.style.borderColor = "#e2e8f0"; }}
                 />
+
+                {/* Applies to (kind) — drives which categories the Buku Kecil form offers */}
+                <div>
+                  <p style={{ fontSize: "10px", fontWeight: 700, color: "#94a3b8", marginBottom: "6px" }}>Applies to</p>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    {([
+                      { v: "expense" as const, label: "Expense" },
+                      { v: "income"  as const, label: "Income"  },
+                      { v: "both"    as const, label: "Both"    },
+                    ]).map((o) => {
+                      const active = catKind === o.v;
+                      return (
+                        <button key={o.v} type="button" onClick={() => setCatKind(o.v)} style={{
+                          flex: 1, padding: "6px 4px", borderRadius: "7px",
+                          border: `1.5px solid ${active ? "#1a7fba" : "#e2e8f0"}`,
+                          background: active ? "#edf7fd" : "white",
+                          color: active ? "#1a7fba" : "#64748b",
+                          fontSize: "11px", fontWeight: 700, cursor: "pointer",
+                        }}>{o.label}</button>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 {/* Colour picker */}
                 <div>

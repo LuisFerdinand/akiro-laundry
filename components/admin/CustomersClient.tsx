@@ -11,8 +11,8 @@ import {
   ShoppingBag, BarChart3, ChevronDown, Download,
 } from "lucide-react";
 import { createCustomer } from "@/lib/actions/admin-customers";
-import { getCustomersForExport } from "@/lib/actions/export";
-import { exportToXlsx } from "@/lib/utils/export-xlsx";
+import { getCustomersForExport, getCustomersBySourceForExport } from "@/lib/actions/export";
+import { exportSheetsToXlsx } from "@/lib/utils/export-xlsx";
 import { formatUSD, REFERRAL_SOURCES } from "@/lib/utils/order-form";
 import { ExportModal, type ExportDateRange } from "@/components/admin/ExportModal";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
@@ -116,6 +116,30 @@ function CreateCustomerModal({ onClose, onSuccess }: { onClose: () => void; onSu
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Referral source badge ────────────────────────────────────────────────────
+const SOURCE_COLORS: Record<string, string> = {
+  Facebook:        "#1877f2",
+  Tiktok:          "#0f172a",
+  Belun:           "#16a34a",
+  "Banner/Brosur": "#d97706",
+};
+
+function SourceBadge({ source }: { source: string | null }) {
+  if (!source) return <span style={{ fontSize: "12px", color: "#cbd5e1" }}>—</span>;
+  const color = SOURCE_COLORS[source] ?? "#64748b";
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: "4px",
+      padding: "2px 8px", borderRadius: "20px",
+      background: color + "18", border: `1px solid ${color}40`,
+      fontSize: "10px", fontWeight: 700, color, whiteSpace: "nowrap",
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0 }} />
+      {source}
+    </span>
   );
 }
 
@@ -272,15 +296,21 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
 
   // ── Export handler ────────────────────────────────────────────────────────
   const handleExport = async ({ from, to }: ExportDateRange) => {
-    const rows = await getCustomersForExport(from, to);
+    const [rows, bySource] = await Promise.all([
+      getCustomersForExport(from, to),
+      getCustomersBySourceForExport(from, to),
+    ]);
     if (rows.length === 0) throw new Error("No customers found in the selected date range.");
 
     const fromLabel = from.replace(/-/g, "");
     const toLabel   = to.replace(/-/g, "");
-    exportToXlsx(rows, {
-      filename:  `customers_${fromLabel}_${toLabel}`,
-      sheetName: "Customers",
-    });
+    exportSheetsToXlsx(
+      [
+        { name: "Customers", rows },
+        { name: "By Source", rows: bySource },
+      ],
+      `customers_${fromLabel}_${toLabel}`,
+    );
   };
 
   const totalSpent  = customers.reduce((s, c) => s + c.totalSpent,  0);
@@ -426,7 +456,7 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#f8fafc" }}>
-                  {["#", "Customer", "Phone", "Address", "Orders", "Total Spent", "Last Order", ""].map((h) => (
+                  {["#", "Customer", "Phone", "Source", "Address", "Orders", "Total Spent", "Last Order", ""].map((h) => (
                     <th key={h} style={{ padding: "11px 16px", textAlign: "left", fontSize: "10px", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -434,7 +464,7 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
               <tbody>
                 {customers.length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ padding: "48px", textAlign: "center" }}>
+                    <td colSpan={9} style={{ padding: "48px", textAlign: "center" }}>
                       <Users size={28} style={{ color: "#cbd5e1", margin: "0 auto 10px", display: "block" }} />
                       <p style={{ fontSize: "14px", fontWeight: 600, color: "#94a3b8" }}>
                         {search ? `No customers matching "${search}"` : "No customers found"}
@@ -473,6 +503,7 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
                       </div>
                     </td>
                     <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}><span style={{ fontSize: "12px", color: "#475569" }}>{c.phone}</span></td>
+                    <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}><SourceBadge source={c.referralSource} /></td>
                     <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9", maxWidth: "180px" }}><span style={{ fontSize: "12px", color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>{c.address}</span></td>
                     <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>

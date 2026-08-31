@@ -9,7 +9,7 @@ import {
   servicePricing,
 } from "@/lib/db/schema";
 import { eq, gte, lte, and, inArray } from "drizzle-orm";
-import { formatUSD } from "@/lib/utils/order-form";
+import { formatUSD, REFERRAL_SOURCES } from "@/lib/utils/order-form";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,6 +17,7 @@ export interface OrderExportRow extends Record<string, unknown> {
   "Order #":        string;
   Customer:         string;
   Phone:            string;
+  Source:           string;
   Services:         string;
   "Weight / Qty":   string;
   "Total Price":    string;
@@ -30,11 +31,19 @@ export interface OrderExportRow extends Record<string, unknown> {
 export interface CustomerExportRow extends Record<string, unknown> {
   Name:           string;
   Phone:          string;
+  Source:         string;
   Address:        string;
   "Total Orders": number;
   "Total Spent":  string;
   "Last Order":   string;
   "Member Since": string;
+}
+
+export interface CustomerBySourceRow extends Record<string, unknown> {
+  Source:          string;
+  "New Customers": number;
+  "Total Orders":  number;
+  "Total Spent":   string;
 }
 
 // ─── Orders Export ────────────────────────────────────────────────────────────
@@ -59,6 +68,7 @@ export async function getOrdersForExport(
       createdAt:     orders.createdAt,
       customerName:  customers.name,
       customerPhone: customers.phone,
+      referralSource: customers.referralSource,
     })
     .from(orders)
     .innerJoin(customers, eq(orders.customerId, customers.id))
@@ -122,6 +132,7 @@ export async function getOrdersForExport(
       "Order #":        o.orderNumber,
       Customer:         o.customerName,
       Phone:            o.customerPhone,
+      Source:           o.referralSource ?? "—",
       Services:         serviceNames,
       "Weight / Qty":   weightQty,
       "Total Price":    formatUSD(parseFloat(String(o.totalPrice))),
@@ -194,6 +205,7 @@ export async function getCustomersForExport(
     return {
       Name:           c.name,
       Phone:          c.phone,
+      Source:         c.referralSource ?? "—",
       Address:        c.address,
       "Total Orders": totalOrders,
       "Total Spent":  formatUSD(totalSpent),
@@ -207,4 +219,63 @@ export async function getCustomersForExport(
       }),
     };
   });
+}
+
+// ─── Customers grouped by referral source (summary sheet) ─────────────────────
+
+export async function getCustomersBySourceForExport(
+  from: string,
+  to:   string,
+): Promise<CustomerBySourceRow[]> {
+  const start = new Date(from + "T00:00:00");
+  const end   = new Date(to   + "T23:59:59");
+
+  const customerRows = await db
+    .select()
+    .from(customers)
+    .where(and(gte(customers.createdAt, start), lte(customers.createdAt, end)));
+
+  if (customerRows.length === 0) return [];
+
+  const customerIds = customerRows.map((c) => c.id);
+  const orderRows = await db
+    .select({
+      customerId: orders.customerId,
+      totalPrice: orders.totalPrice,
+    })
+    .from(orders)
+    .where(
+      customerIds.length === 1
+        ? eq(orders.customerId, customerIds[0])
+        : inArray(orders.customerId, customerIds),
+    );
+
+  const ordersByCustomer = new Map<number, { totalPrice: string }[]>();
+  for (const o of orderRows) {
+    const list = ordersByCustomer.get(o.customerId) ?? [];
+    list.push({ totalPrice: o.totalPrice });
+    ordersByCustomer.set(o.customerId, list);
+  }
+
+  const buckets = [...REFERRAL_SOURCES, "Unknown"] as const;
+  return buckets
+    .map((label) => {
+      const inBucket = customerRows.filter((c) =>
+        label === "Unknown" ? !c.referralSource : c.referralSource === label,
+      );
+      let totalOrders = 0;
+      let totalSpent  = 0;
+      for (const c of inBucket) {
+        const cOrders = ordersByCustomer.get(c.id) ?? [];
+        totalOrders += cOrders.length;
+        totalSpent  += cOrders.reduce((s, o) => s + parseFloat(String(o.totalPrice)), 0);
+      }
+      return {
+        Source:          label,
+        "New Customers": inBucket.length,
+        "Total Orders":  totalOrders,
+        "Total Spent":   formatUSD(totalSpent),
+      };
+    })
+    .filter((row) => row["New Customers"] > 0);
 }
