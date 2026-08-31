@@ -14,7 +14,7 @@ import {
   orderSpecialRequests,
 } from "@/lib/db/schema";
 import type { Order, OrderItem, OrderSpecialRequest } from "@/lib/db/schema";
-import { eq, ilike, and, desc, or, count, gte, lte, inArray } from "drizzle-orm";
+import { eq, ilike, and, desc, or, count, gt, gte, lte, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { startOfDayBiz, subDaysBiz, startOfMonthBiz } from "@/lib/utils/business-time";
 
@@ -49,6 +49,7 @@ export interface OrderFilters {
   search?:   string;
   status?:   string;
   payment?:  string;
+  edited?:   string;   // "all" | "edited" — "edited" keeps only orders corrected after creation
   dateFrom?: string;   // ISO date string "YYYY-MM-DD"
   dateTo?:   string;   // ISO date string "YYYY-MM-DD"
   page?:     number;
@@ -118,7 +119,7 @@ async function fetchSpecialRequestsByOrderIds(
 export async function getAdminOrders(
   filters: OrderFilters = {},
 ): Promise<PaginatedOrders> {
-  const { search, status, payment, dateFrom, dateTo, page = 1, limit = 25 } = filters;
+  const { search, status, payment, edited, dateFrom, dateTo, page = 1, limit = 25 } = filters;
   const offset = (page - 1) * limit;
 
   // Build WHERE conditions
@@ -138,6 +139,9 @@ export async function getAdminOrders(
   }
   if (payment && payment !== "all") {
     conditions.push(eq(orders.paymentStatus, payment as Order["paymentStatus"]));
+  }
+  if (edited === "edited") {
+    conditions.push(gt(orders.editCount, 0));
   }
   if (dateFrom) {
     conditions.push(gte(orders.createdAt, new Date(dateFrom)));

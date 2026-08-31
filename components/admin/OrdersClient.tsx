@@ -8,7 +8,7 @@ import Link from "next/link";
 import {
   Search, ChevronLeft, ChevronRight,
   ArrowUpRight, Clock, Waves, PackageCheck, ShoppingBag,
-  CreditCard, AlertCircle, Filter, X, Loader2, Download,
+  CreditCard, AlertCircle, Filter, X, Loader2, Download, PencilLine,
 } from "lucide-react";
 import { formatUSD, ORDER_STATUS_LABELS } from "@/lib/utils/order-form";
 import { getOrdersForExport } from "@/lib/actions/export";
@@ -47,6 +47,7 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
   const [search,      setSearch]      = useState(initialFilters.search  ?? "");
   const [status,      setStatus]      = useState(initialFilters.status  ?? "all");
   const [payment,     setPayment]     = useState(initialFilters.payment ?? "all");
+  const [edited,      setEdited]      = useState(initialFilters.edited ?? "all");
   const [showExport,  setShowExport]  = useState(false);
   const [isPending,   start]          = useTransition();
 
@@ -56,20 +57,23 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
     setSearch(initialFilters.search  ?? "");
     setStatus(initialFilters.status  ?? "all");
     setPayment(initialFilters.payment ?? "all");
-  }, [initialFilters.search, initialFilters.status, initialFilters.payment]);
+    setEdited(initialFilters.edited ?? "all");
+  }, [initialFilters.search, initialFilters.status, initialFilters.payment, initialFilters.edited]);
 
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
-  const pushUrl = (overrides: { search?: string; status?: string; payment?: string }) => {
+  const pushUrl = (overrides: { search?: string; status?: string; payment?: string; edited?: string }) => {
     const sp = new URLSearchParams(searchParams.toString());
     const next = {
       search:  "search"  in overrides ? overrides.search  : search,
       status:  "status"  in overrides ? overrides.status  : status,
       payment: "payment" in overrides ? overrides.payment : payment,
+      edited:  "edited"  in overrides ? overrides.edited  : edited,
     };
     if (next.search)              sp.set("search",  next.search);   else sp.delete("search");
     if (next.status  !== "all")   sp.set("status",  next.status!);  else sp.delete("status");
     if (next.payment !== "all")   sp.set("payment", next.payment!); else sp.delete("payment");
+    if (next.edited  === "edited") sp.set("edited", "edited");       else sp.delete("edited");
     sp.delete("page");
     start(() => router.push(`${pathname}?${sp.toString()}`));
   };
@@ -96,6 +100,13 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
     setPayment(v);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     pushUrl({ payment: v });
+  };
+
+  const handleEdited = () => {
+    const v = edited === "edited" ? "all" : "edited";
+    setEdited(v);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    pushUrl({ edited: v });
   };
 
   // ── Export handler ─────────────────────────────────────────────────────────
@@ -238,6 +249,20 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
               );
             })}
           </div>
+
+          <button
+            onClick={handleEdited}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: "5px",
+              padding: "6px 12px", borderRadius: "999px", border: "1.5px solid",
+              borderColor: edited === "edited" ? "#c4b5fd" : "#e2e8f0",
+              background:  edited === "edited" ? "#f5f3ff" : "white",
+              color:       edited === "edited" ? "#7c3aed" : "#64748b",
+              fontSize: "11px", fontWeight: 700, cursor: "pointer", transition: "all 0.12s",
+            }}
+          >
+            <PencilLine size={11} /> Edited
+          </button>
 
           {isPending && (
             <div style={{ display: "flex", alignItems: "center", gap: "6px", marginLeft: "auto" }}>

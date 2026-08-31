@@ -5,7 +5,7 @@ import { OrdersClient }   from "@/components/admin/OrdersClient";
 export default async function AdminOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string; status?: string; payment?: string; page?: string }>;
+  searchParams: Promise<{ search?: string; status?: string; payment?: string; edited?: string; page?: string }>;
 }) {
   // ✅ Next.js 15 — searchParams is a Promise, must be awaited
   const sp = await searchParams;
@@ -14,6 +14,7 @@ export default async function AdminOrdersPage({
     search:  sp.search,
     status:  sp.status,
     payment: sp.payment,
+    edited:  sp.edited,
     page:    sp.page ? parseInt(sp.page) : 1,
     limit:   25,
   };
