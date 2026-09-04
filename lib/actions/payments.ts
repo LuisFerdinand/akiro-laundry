@@ -224,6 +224,11 @@ export async function processPayment(
       const register       = await getOrCreateRegister();
       const currentBalance = parseFloat(register.balance);
 
+      // The customer hands over `amountTendered` and receives `change` back, so
+      // the net cash that actually stays in the drawer is exactly `totalPrice`.
+      // We book that single amount — the overpayment that funds the change was
+      // never in the drawer, so there is no separate "change out" movement.
+      // (The change figure itself is still stored on the order for the receipt.)
       const balanceAfterPayment = currentBalance + totalPrice;
       await db
         .update(cashRegister)
@@ -238,23 +243,6 @@ export async function processPayment(
         description:  `Payment received for order ${order.orderNumber}`,
         balanceAfter: balanceAfterPayment.toFixed(2),
       });
-
-      if (change > 0) {
-        const balanceAfterChange = balanceAfterPayment - change;
-        await db
-          .update(cashRegister)
-          .set({ balance: balanceAfterChange.toFixed(2), lastUpdatedAt: new Date() })
-          .where(eq(cashRegister.id, register.id));
-
-        await db.insert(cashRegisterTransactions).values({
-          direction:    "outcome",
-          amount:       change.toFixed(2),
-          type:         "change_out",
-          orderId,
-          description:  `Change given for order ${order.orderNumber}`,
-          balanceAfter: balanceAfterChange.toFixed(2),
-        });
-      }
     }
 
     revalidatePath("/employee/orders");

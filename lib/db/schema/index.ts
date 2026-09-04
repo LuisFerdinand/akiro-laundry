@@ -219,7 +219,9 @@ export const cashRegisterTransactions = pgTable("cash_register_transactions", {
   // amount is always stored as POSITIVE; direction field tells you in/out
  
   type: text("type").notNull(),
-  // "payment_in" | "change_out" | "manual_adjustment" | "initial" | "manual_income" | "manual_outcome"
+  // "payment_in" | "manual_adjustment" | "initial" | "manual_income" | "manual_outcome"
+  // "change_out" is legacy — cash sales no longer book a separate change movement
+  // (net drawer effect of a cash sale is just the sale price)
  
   // ✦ NEW — category (required for manual_outcome type, null for payment_in/change_out/adjustments)
   // ON DELETE SET NULL so hard-deleting a category doesn't break ledger history
