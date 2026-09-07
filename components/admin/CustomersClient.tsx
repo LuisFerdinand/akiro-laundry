@@ -10,14 +10,24 @@ import {
   Crown, Medal, Award,
   ShoppingBag, BarChart3, ChevronDown, Download,
 } from "lucide-react";
+import type { DateRange } from "react-day-picker";
 import { createCustomer } from "@/lib/actions/admin-customers";
 import { getCustomersForExport, getCustomersBySourceForExport } from "@/lib/actions/export";
 import { exportSheetsToXlsx } from "@/lib/utils/export-xlsx";
 import { formatUSD, REFERRAL_SOURCES } from "@/lib/utils/order-form";
 import { ExportModal, type ExportDateRange } from "@/components/admin/ExportModal";
+import { DateRangePicker } from "@/components/admin/DateRangePicker";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { NewCustomersPanel } from "@/components/admin/NewCustomersPanel";
-import type { CustomerWithStats, CustomerInsights, SortOption } from "@/lib/actions/admin-customers";
+import type { CustomerWithStats, CustomerInsights, SortOption, InactiveRange } from "@/lib/actions/admin-customers";
+
+// yyyy-mm-dd in local time — matches the param format the customers page reads.
+function toLocalISO(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
 
 // ─── Create Customer Modal ────────────────────────────────────────────────────
 function CreateCustomerModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
@@ -244,44 +254,65 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "newest",      label: "Newest Customers" },
 ];
 
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 interface Props {
-  customers:     CustomerWithStats[];
-  insights:      CustomerInsights;
-  initialSearch: string;
-  initialSort:   SortOption;
+  customers:       CustomerWithStats[];
+  insights:        CustomerInsights;
+  initialSearch:   string;
+  initialSort:     SortOption;
+  initialInactive: InactiveRange | null;
 }
 
-export function CustomersClient({ customers, insights, initialSearch, initialSort }: Props) {
+function toDateRange(r: InactiveRange | null): DateRange | undefined {
+  if (!r) return undefined;
+  const parse = (iso: string) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  };
+  return { from: parse(r.from), to: parse(r.to) };
+}
+
+export function CustomersClient({ customers, insights, initialSearch, initialSort, initialInactive }: Props) {
   const router       = useRouter();
   const pathname     = usePathname();
   const searchParams = useSearchParams();
 
   const [search,      setSearch]      = useState(initialSearch);
   const [sort,        setSort]        = useState<SortOption>(initialSort);
+  const [inactive,    setInactive]    = useState<DateRange | undefined>(toDateRange(initialInactive));
   const [showModal,   setShowModal]   = useState(false);
   const [showExport,  setShowExport]  = useState(false);
   const [isPending,   start]          = useTransition();
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const pushUrl = (newSearch: string, newSort: SortOption) => {
+  const pushUrl = (newSearch: string, newSort: SortOption, newInactive: DateRange | undefined) => {
     const sp = new URLSearchParams(searchParams.toString());
     if (newSearch) sp.set("search", newSearch); else sp.delete("search");
     sp.set("sort", newSort);
-    start(() => router.push(`${pathname}?${sp.toString()}`));
+    if (newInactive?.from && newInactive?.to) {
+      sp.set("inactiveFrom", toLocalISO(newInactive.from));
+      sp.set("inactiveTo",   toLocalISO(newInactive.to));
+    } else {
+      sp.delete("inactiveFrom");
+      sp.delete("inactiveTo");
+    }
+    // scroll: false — keep the viewport where it is instead of jumping to the
+    // top of the page on every search / sort / filter change.
+    start(() => router.push(`${pathname}?${sp.toString()}`, { scroll: false }));
   };
 
   const handleSearch = (v: string) => {
     setSearch(v);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => pushUrl(v, sort), 350);
+    debounceRef.current = setTimeout(() => pushUrl(v, sort, inactive), 350);
   };
 
   const handleClearSearch = () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setSearch("");
-    pushUrl("", sort);
+    pushUrl("", sort, inactive);
   };
 
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
@@ -289,7 +320,14 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
   const handleSort = (v: SortOption) => {
     setSort(v);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    pushUrl(search, v);
+    pushUrl(search, v, inactive);
+  };
+
+  const handleInactive = (r: DateRange | undefined) => {
+    setInactive(r);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    // Only hit the server once a full range is picked (or the range is cleared).
+    if (!r || (r.from && r.to)) pushUrl(search, sort, r);
   };
 
   const handleCreated = () => { setShowModal(false); router.refresh(); };
@@ -336,6 +374,11 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
             <p style={{ fontSize: "13px", color: "#94a3b8" }}>
               {customers.length} customer{customers.length !== 1 ? "s" : ""} · {formatUSD(totalSpent)} total revenue · {totalOrders} orders
             </p>
+            {inactive?.from && inactive?.to && (
+              <p style={{ fontSize: "12px", fontWeight: 700, color: "#b45309", marginTop: "3px" }}>
+                Showing customers with no order between {inactive.from.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} and {inactive.to.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              </p>
+            )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             {/* Export button */}
@@ -381,10 +424,12 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
         {/* ── Monthly new-customer trend — full width for a clearer read ── */}
         <NewCustomersPanel initialData={insights.newByMonth} thisMonthCount={insights.newThisMonth.length} />
 
-        {/* ── Search + Sort ── */}
+        {/* ── Search + Sort — sticks to the top of the scroll area so it stays
+             reachable while the table below scrolls ── */}
         <div style={{
+          position: "sticky", top: 0, zIndex: 30,
           background: "white", borderRadius: "12px", border: "1.5px solid #e2e8f0",
-          padding: "14px 18px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+          padding: "14px 18px", boxShadow: "0 4px 12px rgba(15,23,42,0.06)",
           display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap",
         }}>
           <div style={{ position: "relative", flex: "1", minWidth: "200px", maxWidth: "380px" }}>
@@ -419,6 +464,18 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
+            <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", whiteSpace: "nowrap" }}>
+              No order during:
+            </span>
+            <DateRangePicker
+              value={inactive}
+              onChange={handleInactive}
+              align="right"
+              size="sm"
+            />
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <BarChart3 size={13} style={{ color: "#94a3b8" }} />
             <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b" }}>Sort:</span>
             <div style={{ position: "relative" }}>
@@ -452,12 +509,12 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
           boxShadow: "0 1px 6px rgba(0,0,0,0.04)", overflow: "hidden",
           opacity: isPending ? 0.55 : 1, transition: "opacity 0.2s",
         }}>
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflow: "auto", maxHeight: "58vh" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr style={{ background: "#f8fafc" }}>
+                <tr>
                   {["#", "Customer", "Phone", "Source", "Address", "Orders", "Total Spent", "Last Order", ""].map((h) => (
-                    <th key={h} style={{ padding: "11px 16px", textAlign: "left", fontSize: "10px", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>{h}</th>
+                    <th key={h} style={{ position: "sticky", top: 0, zIndex: 1, background: "#f8fafc", padding: "11px 16px", textAlign: "left", fontSize: "10px", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", borderBottom: "1px solid #e2e8f0", boxShadow: "inset 0 -1px 0 #e2e8f0", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -467,7 +524,11 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
                     <td colSpan={9} style={{ padding: "48px", textAlign: "center" }}>
                       <Users size={28} style={{ color: "#cbd5e1", margin: "0 auto 10px", display: "block" }} />
                       <p style={{ fontSize: "14px", fontWeight: 600, color: "#94a3b8" }}>
-                        {search ? `No customers matching "${search}"` : "No customers found"}
+                        {search
+                          ? `No customers matching "${search}"`
+                          : inactive?.from && inactive?.to
+                            ? "Every customer placed an order during that period"
+                            : "No customers found"}
                       </p>
                       {search && (
                         <button onClick={handleClearSearch} style={{ marginTop: "10px", fontSize: "12px", fontWeight: 700, color: "#1a7fba", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>

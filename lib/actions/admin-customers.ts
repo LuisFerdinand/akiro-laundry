@@ -26,6 +26,12 @@ export interface CustomerWithStats extends Customer {
 
 export type SortOption = "recent" | "top_spender" | "most_orders" | "newest";
 
+/** Date window (yyyy-mm-dd, inclusive) for the "no order in this period" filter. */
+export interface InactiveRange {
+  from: string;
+  to:   string;
+}
+
 export interface MonthlyCustomerCount {
   month:     string;  // short label, e.g. "Aug 26" — axis tick
   monthFull: string;  // full label, e.g. "August 2026" — tooltip
@@ -44,6 +50,7 @@ export interface CustomerInsights {
 export async function getAdminCustomers(
   search?: string,
   sort: SortOption = "recent",
+  inactive?: InactiveRange,
 ): Promise<CustomerWithStats[]> {
   const allCustomers = await db
     .select()
@@ -80,19 +87,36 @@ export async function getAdminCustomers(
     };
   });
 
+  // Inactivity filter — customers who have ordered before but placed no order
+  // inside the selected date window (a churn / win-back list).
+  let scoped = withStats;
+  if (inactive) {
+    const winStart = startOfDayBiz(new Date(`${inactive.from}T00:00:00.000Z`)).getTime();
+    const winEnd   = endOfDayBiz(new Date(`${inactive.to}T00:00:00.000Z`)).getTime();
+    scoped = withStats.filter((c) => {
+      const custOrders = allOrders.filter((o) => o.customerId === c.id);
+      if (custOrders.length === 0) return false;
+      const orderedInWindow = custOrders.some((o) => {
+        const t = new Date(o.createdAt).getTime();
+        return t >= winStart && t <= winEnd;
+      });
+      return !orderedInWindow;
+    });
+  }
+
   // Apply sort
   switch (sort) {
     case "top_spender":
-      return withStats.sort((a, b) => b.totalSpent - a.totalSpent);
+      return scoped.sort((a, b) => b.totalSpent - a.totalSpent);
     case "most_orders":
-      return withStats.sort((a, b) => b.totalOrders - a.totalOrders);
+      return scoped.sort((a, b) => b.totalOrders - a.totalOrders);
     case "newest":
-      return withStats.sort(
+      return scoped.sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
     case "recent":
     default:
-      return withStats.sort((a, b) => {
+      return scoped.sort((a, b) => {
         const aDate = a.lastOrderDate ? new Date(a.lastOrderDate).getTime() : 0;
         const bDate = b.lastOrderDate ? new Date(b.lastOrderDate).getTime() : 0;
         return bDate - aDate;
