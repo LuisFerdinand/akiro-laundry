@@ -122,6 +122,8 @@ export async function setCashRegisterBalance(
     revalidatePath("/admin/cash-register");
     revalidatePath("/employee/cash-register");
     revalidatePath("/admin");
+    revalidatePath("/admin/buku-kecil");
+    revalidatePath("/admin/buku-besar");
     return { success: true };
   } catch (err) {
     console.error("[setCashRegisterBalance]", err);
@@ -251,6 +253,12 @@ export async function processPayment(
       revalidatePath("/employee/cash-register");
       revalidatePath("/admin/cash-register");
       revalidatePath("/admin");
+      // A cash payment writes a payment_in ledger row — the finance pages read
+      // that same table, so they must be revalidated too (recordManualTransaction
+      // already does this; processPayment previously did not, which left Buku
+      // Kecil / Buku Besar showing stale data after every order payment).
+      revalidatePath("/admin/buku-kecil");
+      revalidatePath("/admin/buku-besar");
     }
     return { success: true, change };
   } catch (err) {

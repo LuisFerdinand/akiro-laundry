@@ -299,6 +299,11 @@ export async function deleteOrder(id: number): Promise<OrderActionResult> {
 
     revalidatePath("/admin/orders");
     revalidatePath("/employee/orders");
+    // The order's cash-register rows are kept (just detached) — refresh the
+    // finance / register views that read them.
+    revalidatePath("/admin/cash-register");
+    revalidatePath("/admin/buku-kecil");
+    revalidatePath("/admin/buku-besar");
     return { success: true };
   } catch (e: any) {
     console.error("[deleteOrder]", e);

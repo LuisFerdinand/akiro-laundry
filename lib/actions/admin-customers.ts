@@ -38,11 +38,33 @@ export interface MonthlyCustomerCount {
   count:     number;
 }
 
+/** Window the retention rate is measured over. */
+export type RetentionGranularity = "week" | "month" | "quarter";
+
+/**
+ * One period of the retention story:
+ *   retentionRate = retained / base × 100   (customers active in the previous
+ *                                            period who ordered again this one)
+ *   churnRate     = 100 − retentionRate
+ */
+export interface RetentionBucket {
+  label:         string;  // short axis label, e.g. "Sep 26" / "Sep 8" / "Jul–Sep 26"
+  periodFull:    string;  // "September 2026" / "Week of September 8" / "July – September 2026"
+  prevFull:      string;  // same, for the cohort (previous) period
+  base:          number;  // distinct customers with ≥1 order in the previous period
+  retained:      number;  // of `base`, how many also ordered this period
+  churned:       number;  // base − retained
+  retentionRate: number;  // 0–100 (0 when base === 0)
+  churnRate:     number;  // 0–100
+  partial:       boolean; // this period isn't over yet
+}
+
 export interface CustomerInsights {
-  topSpenders:    CustomerWithStats[];
-  mostRepeat:     CustomerWithStats[];
-  newThisMonth:   CustomerWithStats[];
-  newByMonth:     MonthlyCustomerCount[];
+  topSpenders:      CustomerWithStats[];
+  mostRepeat:       CustomerWithStats[];
+  newThisMonth:     CustomerWithStats[];
+  newByMonth:       MonthlyCustomerCount[];
+  retentionByMonth: RetentionBucket[];
 }
 
 // ─── List all customers with stats ───────────────────────────────────────────
@@ -188,7 +210,119 @@ export async function getCustomerInsights(): Promise<CustomerInsights> {
     newByMonth.push({ month: monthLabel, monthFull: monthFullLabel, count });
   }
 
-  return { topSpenders, mostRepeat, newThisMonth, newByMonth };
+  // Retention / churn — monthly series for the initial paint (the panel can
+  // refetch weekly / quarterly on demand via getRetentionSeries).
+  const retentionByMonth = buildRetentionSeries("month", allOrders);
+
+  return { topSpenders, mostRepeat, newThisMonth, newByMonth, retentionByMonth };
+}
+
+// ─── Retention / churn series (week / month / quarter) ────────────────────────
+
+interface RetentionPeriod {
+  start: Date; endExcl: Date; prevStart: Date;
+  label: string; periodFull: string; prevFull: string; partial: boolean;
+}
+
+/** Period boundaries for the last N buckets of the chosen granularity. */
+function retentionPeriods(granularity: RetentionGranularity): RetentionPeriod[] {
+  const now = new Date();
+  const DAY = 86_400_000;
+  const out: RetentionPeriod[] = [];
+
+  if (granularity === "week") {
+    const todayEnd = startOfDayBiz(now).getTime() + DAY; // exclusive end of today
+    for (let i = 11; i >= 0; i--) {
+      const endExcl   = new Date(todayEnd - i * 7 * DAY);
+      const start     = new Date(endExcl.getTime() - 7 * DAY);
+      const prevStart = new Date(start.getTime() - 7 * DAY);
+      out.push({
+        start, endExcl, prevStart,
+        label:      formatBiz(start, { month: "short", day: "numeric" }),
+        periodFull: `Week of ${formatBiz(start, { month: "long", day: "numeric" })}`,
+        prevFull:   `Week of ${formatBiz(prevStart, { month: "long", day: "numeric" })}`,
+        partial:    i === 0,
+      });
+    }
+    return out;
+  }
+
+  if (granularity === "quarter") {
+    for (let i = 5; i >= 0; i--) {
+      const start        = subMonthsBiz(now, i * 3 + 2);
+      const endExcl      = subMonthsBiz(now, i * 3 - 1);
+      const prevStart    = subMonthsBiz(now, i * 3 + 5);
+      const lastMonth    = subMonthsBiz(now, i * 3);
+      const prevLastMon  = subMonthsBiz(now, i * 3 + 3);
+      out.push({
+        start, endExcl, prevStart,
+        label:      `${formatBiz(start, { month: "short" })}–${formatBiz(lastMonth, { month: "short", year: "2-digit" })}`,
+        periodFull: `${formatBiz(start, { month: "long" })} – ${formatBiz(lastMonth, { month: "long", year: "numeric" })}`,
+        prevFull:   `${formatBiz(prevStart, { month: "long" })} – ${formatBiz(prevLastMon, { month: "long", year: "numeric" })}`,
+        partial:    i === 0,
+      });
+    }
+    return out;
+  }
+
+  // month
+  for (let i = 11; i >= 0; i--) {
+    const start     = subMonthsBiz(now, i);
+    const endExcl   = subMonthsBiz(now, i - 1);
+    const prevStart = subMonthsBiz(now, i + 1);
+    out.push({
+      start, endExcl, prevStart,
+      label:      formatBiz(start, { month: "short", year: "2-digit" }),
+      periodFull: formatBiz(start, { month: "long", year: "numeric" }),
+      prevFull:   formatBiz(prevStart, { month: "long", year: "numeric" }),
+      partial:    i === 0,
+    });
+  }
+  return out;
+}
+
+function buildRetentionSeries(
+  granularity: RetentionGranularity,
+  orderRows: { customerId: number; createdAt: Date }[],
+): RetentionBucket[] {
+  const customersActive = (from: Date, toExcl: Date) => {
+    const s = new Set<number>();
+    const a = from.getTime(), b = toExcl.getTime();
+    for (const o of orderRows) {
+      const t = new Date(o.createdAt).getTime();
+      if (t >= a && t < b) s.add(o.customerId);
+    }
+    return s;
+  };
+
+  return retentionPeriods(granularity).map((p) => {
+    const baseSet = customersActive(p.prevStart, p.start);
+    const thisSet = customersActive(p.start, p.endExcl);
+    let retained = 0;
+    baseSet.forEach((id) => { if (thisSet.has(id)) retained++; });
+    const base = baseSet.size;
+    const retentionRate = base > 0 ? (retained / base) * 100 : 0;
+    return {
+      label:         p.label,
+      periodFull:    p.periodFull,
+      prevFull:      p.prevFull,
+      base,
+      retained,
+      churned:       base - retained,
+      retentionRate,
+      churnRate:     base > 0 ? 100 - retentionRate : 0,
+      partial:       p.partial,
+    };
+  });
+}
+
+export async function getRetentionSeries(
+  granularity: RetentionGranularity,
+): Promise<RetentionBucket[]> {
+  const rows = await db
+    .select({ customerId: orders.customerId, createdAt: orders.createdAt })
+    .from(orders);
+  return buildRetentionSeries(granularity, rows);
 }
 
 // ─── New-customer series (day / month buckets over a custom range) ────────────

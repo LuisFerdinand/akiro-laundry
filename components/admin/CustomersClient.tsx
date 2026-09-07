@@ -19,6 +19,7 @@ import { ExportModal, type ExportDateRange } from "@/components/admin/ExportModa
 import { DateRangePicker } from "@/components/admin/DateRangePicker";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { NewCustomersPanel } from "@/components/admin/NewCustomersPanel";
+import { RetentionPanel } from "@/components/admin/RetentionPanel";
 import type { CustomerWithStats, CustomerInsights, SortOption, InactiveRange } from "@/lib/actions/admin-customers";
 
 // yyyy-mm-dd in local time — matches the param format the customers page reads.
@@ -421,8 +422,11 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
           <LeaderboardCard title="Most Repeat"  icon={Star}   iconColor="#1a7fba"  iconBg="linear-gradient(135deg,#edf7fd,#c8e9f8)" customers={insights.mostRepeat}  valueKey="totalOrders" formatValue={(v) => `${v} orders`} />
         </div>
 
-        {/* ── Monthly new-customer trend — full width for a clearer read ── */}
-        <NewCustomersPanel initialData={insights.newByMonth} thisMonthCount={insights.newThisMonth.length} />
+        {/* ── New customers + retention — two columns on desktop, stacked on narrow ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: "16px", alignItems: "stretch" }}>
+          <NewCustomersPanel initialData={insights.newByMonth} thisMonthCount={insights.newThisMonth.length} />
+          <RetentionPanel initialData={insights.retentionByMonth} />
+        </div>
 
         {/* ── Search + Sort — sticks to the top of the scroll area so it stays
              reachable while the table below scrolls ── */}
