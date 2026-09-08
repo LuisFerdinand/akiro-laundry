@@ -1,1 +1,0 @@
-ALTER TABLE "orders" ADD COLUMN "edit_count" integer DEFAULT 0 NOT NULL;

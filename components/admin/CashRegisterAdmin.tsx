@@ -664,11 +664,19 @@ export function CashRegisterAdmin({ initialState, revenue, initialCategories }: 
           ) : (
             <div>
               {state.recentTransactions.map((tx, i) => {
-                const isIncome   = (tx as any).direction === "income";
-                const catName    = (tx as any).categoryName as string | null;
-                const catColor   = catName
+                const isIncome    = (tx as any).direction === "income";
+                const isChangeOut = tx.type === "change_out";
+                const catName     = (tx as any).categoryName as string | null;
+                const catColor    = catName
                   ? (activeCategories.find((c) => c.name === catName)?.color ?? "#64748b")
                   : "#64748b";
+
+                // income = green · change returned to customer = amber · other outflow = red
+                const tone = isIncome
+                  ? { icon: "#16a34a", bg: "#f0fdf4", border: "#86efac", amount: "#16a34a" }
+                  : isChangeOut
+                  ? { icon: "#b45309", bg: "#fffbeb", border: "#fcd34d", amount: "#d97706" }
+                  : { icon: "#e11d48", bg: "#fff1f2", border: "#fda4af", amount: "#e11d48" };
 
                 return (
                   <div
@@ -684,13 +692,13 @@ export function CashRegisterAdmin({ initialState, revenue, initialCategories }: 
                   >
                     <div style={{
                       width: 34, height: 34, flexShrink: 0, borderRadius: "8px",
-                      background: isIncome ? "#f0fdf4" : "#fff1f2",
-                      border: `1.5px solid ${isIncome ? "#86efac" : "#fda4af"}`,
+                      background: tone.bg,
+                      border: `1.5px solid ${tone.border}`,
                       display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
                       {isIncome
-                        ? <TrendingUp   size={14} style={{ color: "#16a34a" }} />
-                        : <TrendingDown size={14} style={{ color: "#e11d48" }} />}
+                        ? <TrendingUp   size={14} style={{ color: tone.icon }} />
+                        : <TrendingDown size={14} style={{ color: tone.icon }} />}
                     </div>
 
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -712,7 +720,7 @@ export function CashRegisterAdmin({ initialState, revenue, initialCategories }: 
 
                     <span style={{
                       fontSize: "14px", fontWeight: 800, whiteSpace: "nowrap",
-                      color: isIncome ? "#16a34a" : "#e11d48",
+                      color: tone.amount,
                     }}>
                       {isIncome ? "+" : "−"}{formatUSD(parseFloat(tx.amount))}
                     </span>

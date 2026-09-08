@@ -37,6 +37,7 @@ interface RawTx {
   direction: "income" | "outcome";
   type: string;
   categoryId: number | null;
+  orderId: number | null;
   amount: string;
   balanceAfter: string;
   description: string;
@@ -92,6 +93,7 @@ async function fetchTransactions(fromISO: string, toISO: string): Promise<RawTx[
       direction:     cashRegisterTransactions.direction,
       type:          cashRegisterTransactions.type,
       categoryId:    cashRegisterTransactions.categoryId,
+      orderId:       cashRegisterTransactions.orderId,
       amount:        cashRegisterTransactions.amount,
       balanceAfter:  cashRegisterTransactions.balanceAfter,
       description:   cashRegisterTransactions.description,
@@ -108,6 +110,39 @@ async function fetchTransactions(fromISO: string, toISO: string): Promise<RawTx[
     .orderBy(asc(cashRegisterTransactions.createdAt));
 
   return rows as RawTx[];
+}
+
+// ─── Net change given back to the revenue ─────────────────────────────────────
+// A cash sale books two rows: `payment_in` for the full amount tendered and
+// `change_out` for the change returned. The drawer/cash-register menu shows both
+// (the real cash movement), but the finance books should only ever see the
+// revenue. This collapses each pair: the `change_out` row is dropped and its
+// amount is subtracted from the sibling `payment_in` (matched by orderId), both
+// from the amount and from the running balance.
+//
+// Legacy rows still work: an order with a lone `payment_in` (already equal to the
+// revenue, no `change_out`) is left untouched.
+function netChangeOut(txs: RawTx[]): RawTx[] {
+  const changeByOrder = new Map<number, number>();
+  for (const t of txs) {
+    if (t.type === "change_out" && t.orderId != null) {
+      changeByOrder.set(t.orderId, (changeByOrder.get(t.orderId) ?? 0) + parseFloat(t.amount));
+    }
+  }
+  if (changeByOrder.size === 0) return txs;
+
+  return txs
+    .filter((t) => t.type !== "change_out")
+    .map((t) => {
+      if (t.type !== "payment_in" || t.orderId == null) return t;
+      const chg = changeByOrder.get(t.orderId);
+      if (!chg) return t;
+      return {
+        ...t,
+        amount:       (parseFloat(t.amount) - chg).toFixed(2),
+        balanceAfter: (parseFloat(t.balanceAfter) - chg).toFixed(2),
+      };
+    });
 }
 
 // ─── Ledger (Buku Kecil) ──────────────────────────────────────────────────────
@@ -127,7 +162,7 @@ export interface LedgerEntry {
 }
 
 export async function getLedger(fromISO: string, toISO: string): Promise<LedgerEntry[]> {
-  const txs = await fetchTransactions(fromISO, toISO);
+  const txs = netChangeOut(await fetchTransactions(fromISO, toISO));
   return txs.map((tx) => {
     const meta   = classify(tx);
     const amount = parseFloat(tx.amount);
@@ -168,7 +203,7 @@ export interface FinanceRecap {
 }
 
 export async function getFinanceRecap(fromISO: string, toISO: string): Promise<FinanceRecap> {
-  const txs = await fetchTransactions(fromISO, toISO);
+  const txs = netChangeOut(await fetchTransactions(fromISO, toISO));
 
   const acc = new Map<string, RecapRow>();
   for (const tx of txs) {
@@ -187,6 +222,10 @@ export async function getFinanceRecap(fromISO: string, toISO: string): Promise<F
 
   const totalIncome  = income.reduce((s, r) => s + r.total, 0);
   const totalExpense = expense.reduce((s, r) => s + r.total, 0);
+  // Change given to customers is netted out of order income upstream
+  // (netChangeOut) and never reaches the recap, so operating expense is simply
+  // the full expense total. The `exp:change` lookup is kept as a belt-and-braces
+  // guard in case a raw change_out row is ever surfaced here again.
   const changeTotal  = acc.get("exp:change")?.total ?? 0;
   const operatingExpense = totalExpense - changeTotal;
 
@@ -246,7 +285,7 @@ export interface PieConfig {
 const DEFAULT_PIE_CONFIGS: { slot: number; title: string; categoryKeys: string }[] = [
   { slot: 1, title: "Income Mix",       categoryKeys: "inc:orders,inc:adjust,inc:none" },
   { slot: 2, title: "Expense Mix",      categoryKeys: "exp:adjust,exp:none" },
-  { slot: 3, title: "Income vs Expense", categoryKeys: "inc:orders,exp:change,exp:adjust,exp:none" },
+  { slot: 3, title: "Income vs Expense", categoryKeys: "inc:orders,exp:adjust,exp:none" },
 ];
 
 export async function getFinancePieConfigs(): Promise<PieConfig[]> {

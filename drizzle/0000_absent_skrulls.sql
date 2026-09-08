@@ -29,6 +29,7 @@ CREATE TABLE "customers" (
 	"name" text NOT NULL,
 	"phone" text NOT NULL,
 	"address" text NOT NULL,
+	"referral_source" text,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "customers_phone_unique" UNIQUE("phone")
@@ -39,8 +40,30 @@ CREATE TABLE "expense_categories" (
 	"name" text NOT NULL,
 	"description" text,
 	"color" text DEFAULT '#64748b',
+	"kind" text DEFAULT 'expense' NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "expense_categories_name_unique" UNIQUE("name")
+);
+--> statement-breakpoint
+CREATE TABLE "finance_pie_configs" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"slot" integer NOT NULL,
+	"title" text NOT NULL,
+	"category_keys" text DEFAULT '' NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "finance_pie_configs_slot_unique" UNIQUE("slot")
+);
+--> statement-breakpoint
+CREATE TABLE "marketing_campaigns" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"channel" text NOT NULL,
+	"spend" numeric(12, 2) NOT NULL,
+	"start_date" timestamp NOT NULL,
+	"end_date" timestamp NOT NULL,
+	"notes" text,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "order_items" (
@@ -55,6 +78,14 @@ CREATE TABLE "order_items" (
 	"soap_cost" numeric(10, 2) DEFAULT '0',
 	"pewangi_cost" numeric(10, 2) DEFAULT '0',
 	"subtotal" numeric(10, 2) NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "order_special_requests" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"order_id" integer NOT NULL,
+	"description" text NOT NULL,
+	"price_adjustment" numeric(10, 2) NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -73,6 +104,7 @@ CREATE TABLE "orders" (
 	"estimated_done_at" timestamp,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"edit_count" integer DEFAULT 0 NOT NULL,
 	CONSTRAINT "orders_order_number_unique" UNIQUE("order_number")
 );
 --> statement-breakpoint
@@ -103,7 +135,8 @@ CREATE TABLE "service_pricing" (
 	"duration" text,
 	"notes" text,
 	"is_active" boolean DEFAULT true NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp
 );
 --> statement-breakpoint
 CREATE TABLE "soaps" (
@@ -382,6 +415,9 @@ CREATE TABLE "wa_template_settings" (
 	"business_url" text DEFAULT 'akirolaundry.com' NOT NULL,
 	"greeting_template" text DEFAULT 'Ola Sr/a *{{customerName}}*,
 Ami husi *{{businessName}}* hakarak informa kona-ba ita-nia pedidu foun.' NOT NULL,
+	"greeting_morning" text DEFAULT 'Bondia' NOT NULL,
+	"greeting_afternoon" text DEFAULT 'Botarde' NOT NULL,
+	"greeting_evening" text DEFAULT 'Bonoite' NOT NULL,
 	"order_detail_header" text DEFAULT '🧾 *DETALLU PEDIDU*' NOT NULL,
 	"order_detail_body" text DEFAULT '📌 *N.º Pedidu:*  {{orderNumber}}
 👕 *Servisu:*     {{servicesSummary}}
@@ -406,6 +442,8 @@ CREATE TABLE "receipt_settings" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"paper_width" text DEFAULT '58mm' NOT NULL,
 	"paper_padding" text DEFAULT '3mm 4mm 8mm' NOT NULL,
+	"font_size" text DEFAULT 'normal' NOT NULL,
+	"divider_char" text DEFAULT '-' NOT NULL,
 	"font_family" text DEFAULT '''IBM Plex Mono'', ''Courier New'', monospace' NOT NULL,
 	"font_import_url" text DEFAULT 'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap' NOT NULL,
 	"base_font_size_px" integer DEFAULT 9 NOT NULL,
@@ -437,6 +475,29 @@ CREATE TABLE "receipt_settings" (
 	"footer_thank_you" text DEFAULT 'Thank you for choosing {{shopName}}!' NOT NULL,
 	"footer_contact" text DEFAULT '📞 +670 7675 8 7380  ·  akirolaundry.com' NOT NULL,
 	"unpaid_message_template" text DEFAULT '*** AMOUNT DUE: {{totalPrice}} ***' NOT NULL,
+	"payment_paid_template" text DEFAULT 'Payment: {{paymentMethod}}
+Amount Paid: {{amountPaid}}
+Change: {{change}}' NOT NULL,
+	"receipt_template" text DEFAULT '*{{shopName}}*
+{{shopTagline}}
+{{divider}}
+Order: {{orderNumber}}
+Date    : {{date}}
+Customer: {{customerName}}
+Phone   : {{customerPhone}}
+Address : {{customerAddress}}
+{{divider}}
+{{items}}
+{{divider}}
+*TOTAL: {{totalPrice}}*
+{{divider}}
+{{paymentLine}}
+{{divider}}
+Note:
+{{notes}}
+{{divider}}
+Thank you for choosing {{shopName}}!
+{{footerContact}}' NOT NULL,
 	"print_delay_ms" integer DEFAULT 600 NOT NULL,
 	"is_active" boolean DEFAULT true NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
@@ -448,6 +509,7 @@ ALTER TABLE "order_items" ADD CONSTRAINT "order_items_order_id_orders_id_fk" FOR
 ALTER TABLE "order_items" ADD CONSTRAINT "order_items_service_pricing_id_service_pricing_id_fk" FOREIGN KEY ("service_pricing_id") REFERENCES "public"."service_pricing"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "order_items" ADD CONSTRAINT "order_items_soap_id_soaps_id_fk" FOREIGN KEY ("soap_id") REFERENCES "public"."soaps"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "order_items" ADD CONSTRAINT "order_items_pewangi_id_pewangi_id_fk" FOREIGN KEY ("pewangi_id") REFERENCES "public"."pewangi"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "order_special_requests" ADD CONSTRAINT "order_special_requests_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "orders" ADD CONSTRAINT "orders_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_footer_links" ADD CONSTRAINT "cms_footer_links_footer_id_cms_footer_id_fk" FOREIGN KEY ("footer_id") REFERENCES "public"."cms_footer"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_gallery_images" ADD CONSTRAINT "cms_gallery_images_section_id_cms_gallery_section_id_fk" FOREIGN KEY ("section_id") REFERENCES "public"."cms_gallery_section"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
