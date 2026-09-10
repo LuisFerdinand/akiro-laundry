@@ -136,9 +136,74 @@ export const waStatusTemplates = pgTable("wa_status_templates", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// ─── WhatsApp Promo Blasts ───────────────────────────────────────────────────
+// A "promo blast" = one marketing message sent to many registered customers at
+// once. Each blast is one `wa_promo_campaigns` row; every targeted customer is
+// one `wa_promo_recipients` row so we keep a per-person delivery log.
+//
+// Message placeholders (substituted per recipient at send time):
+//   {{customerName}} — customer's full name
+//   {{firstName}}    — first word of the name
+//   {{businessName}} — from wa_template_settings
+//   {{businessPhone}}— from wa_template_settings
+//   {{businessUrl}}  — from wa_template_settings
+
+export const waPromoCampaigns = pgTable("wa_promo_campaigns", {
+  id: serial("id").primaryKey(),
+
+  // Optional short label so the history list is scannable ("Ramadan 20% off").
+  title: text("title"),
+
+  // The raw message body, WITH {{placeholders}} still in it.
+  message: text("message").notNull(),
+
+  // "manual" — links generated for the admin to click / broadcast by hand.
+  // "fonnte" — pushed through the Fonnte HTTP API.
+  provider: text("provider").notNull().default("manual"),
+
+  // "draft" | "sending" | "sent" | "failed"
+  status: text("status").notNull().default("draft"),
+
+  recipientCount: integer("recipient_count").notNull().default(0),
+  sentCount:      integer("sent_count").notNull().default(0),
+  failedCount:    integer("failed_count").notNull().default(0),
+
+  // Email of the admin who created the blast (from the auth session).
+  createdBy: text("created_by"),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  sentAt:    timestamp("sent_at"),
+});
+
+export const waPromoRecipients = pgTable("wa_promo_recipients", {
+  id: serial("id").primaryKey(),
+
+  campaignId: integer("campaign_id")
+    .references(() => waPromoCampaigns.id, { onDelete: "cascade" })
+    .notNull(),
+
+  // Snapshot of who we sent to — kept even if the customer is later edited or
+  // deleted. customerId is a soft link (no FK) for the same reason.
+  customerId: integer("customer_id"),
+  name:       text("name").notNull(),
+  phone:      text("phone").notNull(), // E.164, as stored on the customer
+
+  // "pending" | "sent" | "failed" | "skipped"
+  status: text("status").notNull().default("pending"),
+
+  // Provider error text, when status = "failed".
+  error: text("error"),
+
+  sentAt: timestamp("sent_at"),
+});
+
 // ─── Exported Types ───────────────────────────────────────────────────────────
 
 export type WaTemplateSettings    = typeof waTemplateSettings.$inferSelect;
 export type NewWaTemplateSettings = typeof waTemplateSettings.$inferInsert;
 export type WaStatusTemplate      = typeof waStatusTemplates.$inferSelect;
 export type NewWaStatusTemplate   = typeof waStatusTemplates.$inferInsert;
+export type WaPromoCampaign       = typeof waPromoCampaigns.$inferSelect;
+export type NewWaPromoCampaign    = typeof waPromoCampaigns.$inferInsert;
+export type WaPromoRecipient      = typeof waPromoRecipients.$inferSelect;
+export type NewWaPromoRecipient   = typeof waPromoRecipients.$inferInsert;
