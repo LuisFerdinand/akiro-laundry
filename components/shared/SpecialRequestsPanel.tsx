@@ -119,7 +119,7 @@ export function SpecialRequestsPanel({ orderId, specialRequests, isPaid }: Props
         }}>
           <Lock size={12} style={{ color: "#94a3b8", flexShrink: 0 }} />
           <p style={{ fontSize: "11px", color: "#94a3b8" }}>
-            This order is paid — special requests are locked to keep the total consistent with the payment.
+            This order has a payment on file — special requests are locked to keep the total consistent with what was collected.
           </p>
         </div>
       ) : adding ? (

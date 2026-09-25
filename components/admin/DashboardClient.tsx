@@ -909,8 +909,9 @@ export function DashboardClient({ stats, social }: Props) {
             </thead>
             <tbody>
               {recentOrders.map((o, i) => {
-                const sc     = STATUS_CONFIG[o.status];
-                const isPaid = o.paymentStatus === "paid";
+                const sc        = STATUS_CONFIG[o.status];
+                const isPaid    = o.paymentStatus === "paid";
+                const isPartial = o.paymentStatus === "partial";
                 return (
                   <tr key={o.id}
                     style={{ background: i % 2 === 0 ? "white" : "#fafafa", transition: "background 0.1s" }}
@@ -927,8 +928,13 @@ export function DashboardClient({ stats, social }: Props) {
                       <span style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>{formatUSD(parseFloat(o.totalPrice))}</span>
                     </td>
                     <td style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9" }}>
-                      <span style={{ fontSize: "10px", fontWeight: 700, padding: "3px 8px", borderRadius: "999px", color: isPaid ? "#16a34a" : "#d97706", background: isPaid ? "#f0fdf4" : "#fffbeb", border: `1px solid ${isPaid ? "#86efac" : "#fcd34d"}` }}>
-                        {isPaid ? "Paid" : "Unpaid"}
+                      <span style={{
+                        fontSize: "10px", fontWeight: 700, padding: "3px 8px", borderRadius: "999px",
+                        color:      isPaid ? "#16a34a" : isPartial ? "#b45309" : "#d97706",
+                        background: isPaid ? "#f0fdf4" : isPartial ? "#fffbeb" : "#fff7ed",
+                        border: `1px solid ${isPaid ? "#86efac" : isPartial ? "#fcd34d" : "#fed7aa"}`,
+                      }}>
+                        {isPaid ? "Paid" : isPartial ? "Partial" : "Unpaid"}
                       </span>
                     </td>
                     <td style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9" }}>

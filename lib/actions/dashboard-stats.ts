@@ -36,8 +36,12 @@ export interface BusyHoursByPeriod {
 
 export interface PaymentBreakdown {
   paid:        number;
+  /** Orders not yet fully paid — "unpaid" + "partial" (DP received). */
   unpaid:      number;
+  /** Subset of `unpaid` that has a partial (DP) payment on file. */
+  partial:     number;
   paidRevenue: number;
+  /** Outstanding balance still owed across unpaid + partial orders. */
   unpaidValue: number;
 }
 
@@ -228,6 +232,7 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
       customerId:    orders.customerId,
       totalPrice:    orders.totalPrice,
       paymentStatus: orders.paymentStatus,
+      amountPaid:    orders.amountPaid,
       status:        orders.status,
       orderNumber:   orders.orderNumber,
       paidAt:        orders.paidAt,
@@ -239,13 +244,18 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
 
   // ── 2. Derived slices ────────────────────────────────────────────────────────
 
-  const inRange   = (d: Date, from: Date, to?: Date) => d >= from && (!to || d <= to);
-  const price     = (o: { totalPrice: string }) => parseFloat(o.totalPrice ?? "0");
+  const inRange    = (d: Date, from: Date, to?: Date) => d >= from && (!to || d <= to);
+  const price      = (o: { totalPrice: string }) => parseFloat(o.totalPrice ?? "0");
+  // Outstanding balance still owed — full price when untouched, remainder when a
+  // DP (partial payment) has already been applied.
+  const outstanding = (o: { totalPrice: string; amountPaid?: string | null }) =>
+    price(o) - (o.amountPaid ? parseFloat(o.amountPaid) : 0);
   const paidDate  = (o: { paidAt: Date | null; createdAt: Date }) =>
     new Date(o.paidAt ?? o.createdAt);
 
   const paidOrders   = allOrders.filter((o) => o.paymentStatus === "paid");
-  const unpaidOrders = allOrders.filter((o) => o.paymentStatus === "unpaid");
+  // "Unpaid" bucket = anything not fully paid yet — plain unpaid + partial (DP).
+  const unpaidOrders = allOrders.filter((o) => o.paymentStatus !== "paid");
 
   // Revenue (counted on paid date)
   const revenueIn = (from: Date, to?: Date) =>
@@ -274,8 +284,9 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
   const paymentBreakdown = {
     paid:        paidOrders.length,
     unpaid:      unpaidOrders.length,
+    partial:     unpaidOrders.filter((o) => o.paymentStatus === "partial").length,
     paidRevenue: paidOrders.reduce((s, o) => s + price(o), 0),
-    unpaidValue: unpaidOrders.reduce((s, o) => s + price(o), 0),
+    unpaidValue: unpaidOrders.reduce((s, o) => s + outstanding(o), 0),
   };
 
   // Paid orders are bucketed by paid date, unpaid by createdAt (they have no
@@ -286,8 +297,9 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
     return {
       paid:        paidIn.length,
       unpaid:      unpaidIn.length,
+      partial:     unpaidIn.filter((o) => o.paymentStatus === "partial").length,
       paidRevenue: paidIn.reduce((s, o) => s + price(o), 0),
-      unpaidValue: unpaidIn.reduce((s, o) => s + price(o), 0),
+      unpaidValue: unpaidIn.reduce((s, o) => s + outstanding(o), 0),
     };
   };
 

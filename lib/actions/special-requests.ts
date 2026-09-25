@@ -60,8 +60,8 @@ export async function addSpecialRequest(
 
     const [order] = await db.select({ paymentStatus: orders.paymentStatus }).from(orders).where(eq(orders.id, orderId)).limit(1);
     if (!order) return { success: false, error: "Order not found." };
-    if (order.paymentStatus === "paid")
-      return { success: false, error: "This order is already paid — its total can't be changed." };
+    if (order.paymentStatus !== "unpaid")
+      return { success: false, error: "This order has a payment on file — its total can't be changed." };
 
     const priceAdjustment = direction === "subtract" ? -Math.abs(amount) : Math.abs(amount);
 
@@ -88,8 +88,8 @@ export async function removeSpecialRequest(
   try {
     const [order] = await db.select({ paymentStatus: orders.paymentStatus }).from(orders).where(eq(orders.id, orderId)).limit(1);
     if (!order) return { success: false, error: "Order not found." };
-    if (order.paymentStatus === "paid")
-      return { success: false, error: "This order is already paid — its total can't be changed." };
+    if (order.paymentStatus !== "unpaid")
+      return { success: false, error: "This order has a payment on file — its total can't be changed." };
 
     await db.delete(orderSpecialRequests).where(eq(orderSpecialRequests.id, id));
     await recomputeOrderTotal(orderId);

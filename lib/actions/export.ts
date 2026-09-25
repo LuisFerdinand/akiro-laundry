@@ -136,7 +136,7 @@ export async function getOrdersForExport(
       Services:         serviceNames,
       "Weight / Qty":   weightQty,
       "Total Price":    formatUSD(parseFloat(String(o.totalPrice))),
-      "Payment Status": o.paymentStatus === "paid" ? "Paid" : "Unpaid",
+      "Payment Status": o.paymentStatus === "paid" ? "Paid" : o.paymentStatus === "partial" ? "Partial (DP)" : "Unpaid",
       "Payment Method": methodLabel,
       Status:           statusLabel,
       Notes:            o.notes ?? "",

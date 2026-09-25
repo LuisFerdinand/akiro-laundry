@@ -18,7 +18,7 @@ export default async function EditOrderPage({ params }: PageProps) {
 
   const backHref = `/employee/orders/${id}`;
 
-  if (order.paymentStatus === "paid") {
+  if (order.paymentStatus !== "unpaid") {
     return (
       <div className="space-y-4 pb-8 pt-2">
         <Link href={backHref}
@@ -33,7 +33,9 @@ export default async function EditOrderPage({ params }: PageProps) {
             <Lock size={18} style={{ color: "#94a3b8" }} />
           </div>
           <div>
-            <p className="font-black text-sm text-slate-700">This order is paid and locked</p>
+            <p className="font-black text-sm text-slate-700">
+              This order is {order.paymentStatus === "partial" ? "partially paid" : "paid"} and locked
+            </p>
             <p className="text-xs text-slate-400 mt-1 max-w-xs">
               Editing is disabled once a payment has been recorded, so the receipt always matches what was collected.
             </p>

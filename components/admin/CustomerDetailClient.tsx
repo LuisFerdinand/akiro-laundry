@@ -291,7 +291,8 @@ export function CustomerDetailClient({ customer }: Props) {
               <tbody>
                 {customer.recentOrders.map((o, i) => {
                   const sc = STATUS_CONFIG[o.status] ?? STATUS_CONFIG.pending;
-                  const isPaid = o.paymentStatus === "paid";
+                  const isPaid    = o.paymentStatus === "paid";
+                  const isPartial = o.paymentStatus === "partial";
                   return (
                     <tr key={o.id} style={{ background: i % 2 === 0 ? "white" : "#fafafa" }}
                       onMouseEnter={(e) => { e.currentTarget.style.background = "#f0f9ff"; }}
@@ -304,8 +305,14 @@ export function CustomerDetailClient({ customer }: Props) {
                         <span style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>{formatUSD(parseFloat(o.totalPrice))}</span>
                       </td>
                       <td style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9" }}>
-                        <span style={{ fontSize: "10px", fontWeight: 700, color: isPaid ? "#16a34a" : "#d97706", background: isPaid ? "#f0fdf4" : "#fffbeb", border: `1px solid ${isPaid ? "#86efac" : "#fcd34d"}`, padding: "3px 8px", borderRadius: "999px" }}>
-                          {isPaid ? "Paid" : "Unpaid"}
+                        <span style={{
+                          fontSize: "10px", fontWeight: 700,
+                          color:  isPaid ? "#16a34a" : isPartial ? "#b45309" : "#d97706",
+                          background: isPaid ? "#f0fdf4" : isPartial ? "#fffbeb" : "#fff7ed",
+                          border: `1px solid ${isPaid ? "#86efac" : isPartial ? "#fcd34d" : "#fed7aa"}`,
+                          padding: "3px 8px", borderRadius: "999px",
+                        }}>
+                          {isPaid ? "Paid" : isPartial ? "Partial" : "Unpaid"}
                         </span>
                       </td>
                       <td style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9" }}>

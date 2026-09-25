@@ -85,7 +85,9 @@ function buildEmailHtml(params: {
   const payBadge = (status: string) =>
     status === "paid"
       ? `<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">Paid</span>`
-      : `<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">Unpaid</span>`;
+      : status === "partial"
+        ? `<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">Partial (DP)</span>`
+        : `<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">Unpaid</span>`;
 
   const rows = orderList.map((o) => `
     <tr style="border-bottom:1px solid #f1f5f9;">

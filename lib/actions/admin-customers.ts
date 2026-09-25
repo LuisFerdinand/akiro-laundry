@@ -90,21 +90,30 @@ export async function getAdminCustomers(
     .select({
       customerId:    orders.customerId,
       totalPrice:    orders.totalPrice,
+      amountPaid:    orders.amountPaid,
       createdAt:     orders.createdAt,
       paymentStatus: orders.paymentStatus,
     })
     .from(orders);
 
+  // Money actually collected: full price for "paid" orders, amountPaid (the DP)
+  // for "partial" ones.
+  const collected = (o: { totalPrice: string; amountPaid: string | null; paymentStatus: string }) =>
+    o.paymentStatus === "paid"
+      ? parseFloat(o.totalPrice ?? "0")
+      : o.paymentStatus === "partial"
+        ? parseFloat(o.amountPaid ?? "0")
+        : 0;
+
   const withStats: CustomerWithStats[] = filtered.map((c) => {
     const customerOrders = allOrders.filter((o) => o.customerId === c.id);
-    const paid = customerOrders.filter((o) => o.paymentStatus === "paid");
     const sorted = [...customerOrders].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     return {
       ...c,
       totalOrders:   customerOrders.length,
-      totalSpent:    paid.reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0),
+      totalSpent:    customerOrders.reduce((s, o) => s + collected(o), 0),
       lastOrderDate: sorted[0]?.createdAt ?? null,
     };
   });
@@ -158,21 +167,30 @@ export async function getCustomerInsights(): Promise<CustomerInsights> {
     .select({
       customerId:    orders.customerId,
       totalPrice:    orders.totalPrice,
+      amountPaid:    orders.amountPaid,
       createdAt:     orders.createdAt,
       paymentStatus: orders.paymentStatus,
     })
     .from(orders);
 
+  // Money actually collected: full price for "paid" orders, amountPaid (the DP)
+  // for "partial" ones.
+  const collected = (o: { totalPrice: string; amountPaid: string | null; paymentStatus: string }) =>
+    o.paymentStatus === "paid"
+      ? parseFloat(o.totalPrice ?? "0")
+      : o.paymentStatus === "partial"
+        ? parseFloat(o.amountPaid ?? "0")
+        : 0;
+
   const withStats: CustomerWithStats[] = allCustomers.map((c) => {
     const customerOrders = allOrders.filter((o) => o.customerId === c.id);
-    const paid = customerOrders.filter((o) => o.paymentStatus === "paid");
     const sortedOrd = [...customerOrders].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     return {
       ...c,
       totalOrders:   customerOrders.length,
-      totalSpent:    paid.reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0),
+      totalSpent:    customerOrders.reduce((s, o) => s + collected(o), 0),
       lastOrderDate: sortedOrd[0]?.createdAt ?? null,
     };
   });
@@ -427,6 +445,7 @@ export async function getAdminCustomerById(id: number): Promise<CustomerDetail |
       id:            orders.id,
       orderNumber:   orders.orderNumber,
       totalPrice:    orders.totalPrice,
+      amountPaid:    orders.amountPaid,
       status:        orders.status,
       paymentStatus: orders.paymentStatus,
       createdAt:     orders.createdAt,
@@ -436,12 +455,19 @@ export async function getAdminCustomerById(id: number): Promise<CustomerDetail |
     .orderBy(desc(orders.createdAt))
     .limit(10);
 
-  const paid = customerOrders.filter((o) => o.paymentStatus === "paid");
+  // Money actually collected: full price for "paid" orders, amountPaid (the DP)
+  // for "partial" ones.
+  const collected = (o: { totalPrice: string; amountPaid: string | null; paymentStatus: string }) =>
+    o.paymentStatus === "paid"
+      ? parseFloat(o.totalPrice ?? "0")
+      : o.paymentStatus === "partial"
+        ? parseFloat(o.amountPaid ?? "0")
+        : 0;
 
   return {
     ...customer,
     totalOrders:   customerOrders.length,
-    totalSpent:    paid.reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0),
+    totalSpent:    customerOrders.reduce((s, o) => s + collected(o), 0),
     lastOrderDate: customerOrders[0]?.createdAt ?? null,
     recentOrders:  customerOrders.map((o) => ({ ...o, serviceName: "—" })),
   };

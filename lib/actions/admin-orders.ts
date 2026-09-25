@@ -253,7 +253,8 @@ export async function getRevenueStats(): Promise<RevenueStats> {
     .from(orders);
 
   const paid   = all.filter((o) => o.paymentStatus === "paid");
-  const unpaid = all.filter((o) => o.paymentStatus === "unpaid");
+  // Includes "partial" (DP) orders — they still have an outstanding balance.
+  const unpaid = all.filter((o) => o.paymentStatus !== "paid");
 
   // Revenue counted on paidAt date, falls back to createdAt for legacy rows
   const sum = (rows: typeof paid, from: Date) =>

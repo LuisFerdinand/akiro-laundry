@@ -71,11 +71,13 @@ const STATUSES: {
 interface OrderStatusUpdaterProps {
   orderId:        number;
   currentStatus:  Order["status"];
-  paymentStatus:  "unpaid" | "paid";
+  paymentStatus:  "unpaid" | "partial" | "paid";
   orderNumber:    string;
   customerName:   string;
   customerPhone:  string;
   totalPrice:     string | number;
+  /** Sum already paid so far (relevant when paymentStatus === "partial"). */
+  amountPaid?:    string | number | null;
   serviceName:    string;
   notes?:         string | null;
   templateData?:  WaTemplateData | null;
@@ -89,12 +91,18 @@ export function OrderStatusUpdater({
   customerName,
   customerPhone,
   totalPrice,
+  amountPaid: initialAmountPaid,
   serviceName,
   notes,
   templateData,
 }: OrderStatusUpdaterProps) {
   const [status,         setStatus]         = useState(currentStatus);
   const [paymentStatus,  setPaymentStatus]  = useState(initialPaymentStatus);
+  const [amountPaid,     setAmountPaid]     = useState(
+    initialAmountPaid
+      ? (typeof initialAmountPaid === "string" ? parseFloat(initialAmountPaid) : initialAmountPaid)
+      : 0,
+  );
   const [isPending,      startTransition]   = useTransition();
   const [error,          setError]          = useState<string | null>(null);
   const [saved,          setSaved]          = useState(false);
@@ -104,6 +112,8 @@ export function OrderStatusUpdater({
   const totalPriceNum = typeof totalPrice === "string" ? parseFloat(totalPrice) : totalPrice;
   const isDirty       = status !== currentStatus;
   const isPaid        = paymentStatus === "paid";
+  const isPartial     = paymentStatus === "partial";
+  const balanceDue    = parseFloat((totalPriceNum - amountPaid).toFixed(2));
 
   const handleSave = () => {
     setError(null);
@@ -121,9 +131,10 @@ export function OrderStatusUpdater({
     });
   };
 
-  const handlePaymentSuccess = (change: number) => {
-    setPaymentStatus("paid");
-    setChangeGiven(change);
+  const handlePaymentSuccess = (result: { change: number; paymentStatus: "partial" | "paid"; balanceDue: number }) => {
+    setPaymentStatus(result.paymentStatus);
+    setAmountPaid(parseFloat((totalPriceNum - result.balanceDue).toFixed(2)));
+    setChangeGiven(result.change);
     setShowPayModal(false);
     setError(null);
   };
@@ -136,6 +147,7 @@ export function OrderStatusUpdater({
           orderNumber={orderNumber}
           customerName={customerName}
           totalPrice={totalPriceNum}
+          amountPaid={amountPaid}
           onClose={() => setShowPayModal(false)}
           onSuccess={handlePaymentSuccess}
         />
@@ -163,19 +175,28 @@ export function OrderStatusUpdater({
             borderRadius: "8px",
             background: isPaid
               ? "linear-gradient(135deg,#f0fdf4,#dcfce7)"
-              : "linear-gradient(135deg,#fff7ed,#ffedd5)",
-            border: `1.5px solid ${isPaid ? "#86efac" : "#fed7aa"}`,
+              : isPartial
+                ? "linear-gradient(135deg,#fffbeb,#fef3c7)"
+                : "linear-gradient(135deg,#fff7ed,#ffedd5)",
+            border: `1.5px solid ${isPaid ? "#86efac" : isPartial ? "#fcd34d" : "#fed7aa"}`,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             {isPaid ? (
               <BadgeCheck size={15} style={{ color: "#16a34a" }} />
             ) : (
-              <AlertTriangle size={15} style={{ color: "#d97706" }} />
+              <AlertTriangle size={15} style={{ color: isPartial ? "#b45309" : "#d97706" }} />
             )}
-            <span style={{ fontSize: "12px", fontWeight: 800, color: isPaid ? "#14532d" : "#92400e" }}>
-              {isPaid ? "Pagamentu simu" : "Pagamentu pendente"}
-            </span>
+            <div>
+              <span style={{ fontSize: "12px", fontWeight: 800, color: isPaid ? "#14532d" : isPartial ? "#92400e" : "#92400e" }}>
+                {isPaid ? "Pagamentu simu" : isPartial ? "DP simu — balansu iha kobra" : "Pagamentu pendente"}
+              </span>
+              {isPartial && (
+                <p style={{ fontSize: "10px", fontWeight: 700, color: "#b45309", marginTop: "1px" }}>
+                  Balansu: {formatUSD(balanceDue)}
+                </p>
+              )}
+            </div>
           </div>
 
           {!isPaid && (
@@ -193,7 +214,7 @@ export function OrderStatusUpdater({
               }}
             >
               <CreditCard size={11} />
-              Selu agora
+              {isPartial ? "Selu balansu" : "Selu agora"}
             </button>
           )}
         </div>
@@ -344,6 +365,7 @@ export function OrderStatusUpdater({
             servicesSummary={serviceName}
             status={status}
             paymentStatus={paymentStatus}
+            balanceDue={balanceDue}
             totalPrice={totalPriceNum}
             notes={notes}
             templateData={templateData}

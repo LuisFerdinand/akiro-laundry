@@ -29,6 +29,10 @@ export interface ProcessPaymentInput {
 export interface ProcessPaymentResult {
   success: boolean;
   change?: number;
+  /** Final payment status after this payment was applied. */
+  paymentStatus?: "partial" | "paid";
+  /** Remaining balance still owed, if the order is now "partial". */
+  balanceDue?: number;
   error?: string;
 }
 
@@ -200,24 +204,38 @@ export async function processPayment(
     if (order.paymentStatus === "paid")
       return { success: false, error: "Order is already paid." };
 
-    const totalPrice = parseFloat(order.totalPrice);
-    if (amountTendered < totalPrice) {
+    const totalPrice     = parseFloat(order.totalPrice);
+    const alreadyPaid    = order.amountPaid ? parseFloat(order.amountPaid) : 0;
+    const balanceRemaining = parseFloat((totalPrice - alreadyPaid).toFixed(2));
+
+    if (amountTendered <= 0) {
+      return { success: false, error: "Amount must be greater than zero." };
+    }
+    // Non-cash methods (transfer/qris) have no "change" mechanism — the amount
+    // received must go straight to the balance, so it can't exceed what's owed.
+    if (paymentMethod !== "cash" && amountTendered > balanceRemaining) {
       return {
         success: false,
-        error: `Amount tendered (${amountTendered.toFixed(2)}) is less than total (${totalPrice.toFixed(2)}).`,
+        error: `Amount (${amountTendered.toFixed(2)}) exceeds the remaining balance (${balanceRemaining.toFixed(2)}).`,
       };
     }
 
-    const change = parseFloat((amountTendered - totalPrice).toFixed(2));
+    // Cash can overpay (change is returned); only the portion up to the
+    // remaining balance is applied to the order — the rest is handed back.
+    const appliedAmount = Math.min(amountTendered, balanceRemaining);
+    const change        = parseFloat((amountTendered - appliedAmount).toFixed(2));
+    const newAmountPaid = parseFloat((alreadyPaid + appliedAmount).toFixed(2));
+    const isFullyPaid   = newAmountPaid >= totalPrice;
+    const newStatus     = isFullyPaid ? "paid" : "partial";
 
     await db
       .update(orders)
       .set({
-        paymentStatus: "paid",
+        paymentStatus: newStatus,
         paymentMethod,
-        amountPaid:    amountTendered.toFixed(2),
+        amountPaid:    newAmountPaid.toFixed(2),
         changeGiven:   change.toFixed(2),
-        paidAt:        new Date(),
+        ...(isFullyPaid && { paidAt: new Date() }),
         updatedAt:     new Date(),
       })
       .where(eq(orders.id, orderId));
@@ -228,9 +246,9 @@ export async function processPayment(
 
       // Book the real cash movement in two rows: the full amount the customer
       // handed over (`payment_in`), then the change returned to them
-      // (`change_out`). Net drawer effect = amountTendered − change = totalPrice.
+      // (`change_out`). Net drawer effect = amountTendered − change = appliedAmount.
       // The finance pages (Buku Kecil / Buku Besar) net the pair back down to the
-      // revenue, so only `totalPrice` shows up there — see lib/actions/finance.ts.
+      // revenue, so only `appliedAmount` shows up there — see lib/actions/finance.ts.
       const balanceAfterTender = currentBalance + amountTendered;
       const balanceAfterChange = parseFloat((balanceAfterTender - change).toFixed(2));
 
@@ -244,7 +262,9 @@ export async function processPayment(
         amount:       amountTendered.toFixed(2),
         type:         "payment_in",
         orderId,
-        description:  `Payment received for order ${order.orderNumber}`,
+        description:  isFullyPaid
+          ? `Payment received for order ${order.orderNumber}`
+          : `Partial payment (DP) received for order ${order.orderNumber}`,
         balanceAfter: balanceAfterTender.toFixed(2),
       });
 
@@ -273,7 +293,12 @@ export async function processPayment(
       revalidatePath("/admin/buku-kecil");
       revalidatePath("/admin/buku-besar");
     }
-    return { success: true, change };
+    return {
+      success:       true,
+      change,
+      paymentStatus: newStatus,
+      balanceDue:    isFullyPaid ? 0 : parseFloat((totalPrice - newAmountPaid).toFixed(2)),
+    };
   } catch (err) {
     console.error("[processPayment]", err);
     return { success: false, error: "Payment processing failed. Please try again." };

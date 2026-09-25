@@ -209,20 +209,32 @@ export default async function OrderDetailPage({ params }: PageProps) {
           <SpecialRequestsPanel
             orderId={order.id}
             specialRequests={order.specialRequests}
-            isPaid={order.paymentStatus === "paid"}
+            isPaid={order.paymentStatus !== "unpaid"}
           />
         </div>
       </SectionCard>
 
       {/* Grand total */}
-      <div style={{ borderRadius: "7px", background: "linear-gradient(135deg,#1a7fba,#2496d6 55%,#0f5a85)", boxShadow: "0 4px 16px rgba(26,127,186,0.30)", padding: "13px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.6)" }}>Total</p>
-          <p className="text-[11px] font-medium mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
-            {order.items.length} service{order.items.length !== 1 ? "s" : ""} · incl. all add-ons
-          </p>
+      <div style={{ borderRadius: "7px", background: "linear-gradient(135deg,#1a7fba,#2496d6 55%,#0f5a85)", boxShadow: "0 4px 16px rgba(26,127,186,0.30)", padding: "13px 18px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.6)" }}>Total</p>
+            <p className="text-[11px] font-medium mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>
+              {order.items.length} service{order.items.length !== 1 ? "s" : ""} · incl. all add-ons
+            </p>
+          </div>
+          <span className="font-black text-2xl tracking-tight" style={{ color: "white" }}>{formatUSD(totalPrice)}</span>
         </div>
-        <span className="font-black text-2xl tracking-tight" style={{ color: "white" }}>{formatUSD(totalPrice)}</span>
+        {order.paymentStatus === "partial" && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px", paddingTop: "10px", borderTop: "1.5px solid rgba(255,255,255,0.2)" }}>
+            <span className="text-[11px] font-bold" style={{ color: "rgba(255,255,255,0.75)" }}>
+              DP paid: {formatUSD(safeFloat(order.amountPaid))}
+            </span>
+            <span className="text-sm font-black" style={{ color: "#fde68a" }}>
+              Due: {formatUSD(totalPrice - safeFloat(order.amountPaid))}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Print receipt button — receives DB settings so it prints with live config */}
@@ -236,6 +248,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
         customerName={order.customerName}
         customerPhone={order.customerPhone}
         totalPrice={order.totalPrice}
+        amountPaid={order.amountPaid}
         serviceName={firstServiceName}
         paymentStatus={order.paymentStatus}
         notes={order.notes}
@@ -243,7 +256,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
       />
 
       {/* Edit / Delete order */}
-      {order.paymentStatus !== "paid" && (
+      {order.paymentStatus === "unpaid" && (
         <Link href={`/employee/orders/${order.id}/edit`}
           className="flex items-center justify-center gap-2 w-full h-11 rounded-md font-black text-sm transition-all active:scale-[0.98]"
           style={{ background: "#edf7fd", border: "1.5px solid #b6def5", color: "#1a7fba" }}>

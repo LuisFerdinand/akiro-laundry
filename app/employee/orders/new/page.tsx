@@ -81,9 +81,10 @@ export default function NewOrderPage() {
   const [success, setSuccess] = useState<{
     orderId: number; orderNumber: string; total: number; customerName: string;
   } | null>(null);
-  const [showPayModal, setShowPayModal] = useState(false);
-  const [paymentDone,  setPaymentDone]  = useState(false);
-  const [changeGiven,  setChangeGiven]  = useState<number | null>(null);
+  const [showPayModal,   setShowPayModal]   = useState(false);
+  const [paymentStatus,  setPaymentStatus]  = useState<"unpaid" | "partial" | "paid">("unpaid");
+  const [amountPaid,     setAmountPaid]     = useState(0);
+  const [changeGiven,    setChangeGiven]    = useState<number | null>(null);
 
   const [services,        setServices]        = useState<ServicePricing[]>([]);
   const [soaps,           setSoaps]           = useState<Soap[]>([]);
@@ -170,9 +171,10 @@ export default function NewOrderPage() {
     });
   };
 
-  const handlePaymentSuccess = (change: number) => {
-    setPaymentDone(true);
-    setChangeGiven(change);
+  const handlePaymentSuccess = (result: { change: number; paymentStatus: "partial" | "paid"; balanceDue: number }) => {
+    if (success) setAmountPaid(parseFloat((success.total - result.balanceDue).toFixed(2)));
+    setPaymentStatus(result.paymentStatus);
+    setChangeGiven(result.change);
     setShowPayModal(false);
   };
 
@@ -180,7 +182,8 @@ export default function NewOrderPage() {
     setFormData(EMPTY_FORM);
     setStep(ORDER_FORM_STEPS[0].key);
     setSuccess(null);
-    setPaymentDone(false);
+    setPaymentStatus("unpaid");
+    setAmountPaid(0);
     setChangeGiven(null);
   };
 
@@ -196,17 +199,19 @@ export default function NewOrderPage() {
         soaps,
         pewangis,
         breakdown,
-        paymentMethod: paymentDone ? undefined : undefined,
-        amountPaid:    paymentDone && changeGiven != null
-          ? success.total + changeGiven
-          : undefined,
+        paymentMethod: paymentStatus !== "unpaid" ? undefined : undefined,
+        amountPaid:    paymentStatus === "paid" && changeGiven != null
+          ? amountPaid + changeGiven
+          : paymentStatus === "partial"
+            ? amountPaid
+            : undefined,
         changeGiven: changeGiven ?? undefined,
         // ← DB settings forwarded; PrintReceipt falls back to DEFAULTS if null
         settings: receiptSettings,
       });
     };
 
-    const waPaymentStatus = paymentDone ? "paid" : "unpaid";
+    const balanceDue = parseFloat((success.total - amountPaid).toFixed(2));
 
     return (
       <>
@@ -216,6 +221,7 @@ export default function NewOrderPage() {
             orderNumber={success.orderNumber}
             customerName={success.customerName}
             totalPrice={success.total}
+            amountPaid={amountPaid}
             onClose={() => setShowPayModal(false)}
             onSuccess={handlePaymentSuccess}
           />
@@ -251,7 +257,7 @@ export default function NewOrderPage() {
             </p>
 
             {/* Payment */}
-            {paymentDone ? (
+            {paymentStatus === "paid" ? (
               <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-md w-full"
                 style={{ background: "linear-gradient(135deg,#f0fdf4,#dcfce7)", border: "1.5px solid #86efac" }}>
                 <CheckCircle2 size={15} style={{ color: "#16a34a" }} />
@@ -261,6 +267,22 @@ export default function NewOrderPage() {
                     <> · Change: <span className="font-black">{formatUSD(changeGiven)}</span></>
                   )}
                 </span>
+              </div>
+            ) : paymentStatus === "partial" ? (
+              <div className="flex flex-col gap-2 w-full">
+                <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-md w-full"
+                  style={{ background: "linear-gradient(135deg,#fffbeb,#fef3c7)", border: "1.5px solid #fcd34d" }}>
+                  <CheckCircle2 size={15} style={{ color: "#d97706" }} />
+                  <span className="text-sm font-bold" style={{ color: "#92400e" }}>
+                    DP received ({formatUSD(amountPaid)}) · Balance {formatUSD(balanceDue)}
+                  </span>
+                </div>
+                <button type="button" onClick={() => setShowPayModal(true)}
+                  className="flex items-center justify-center gap-2 w-full h-11 rounded-md font-black text-sm transition-all active:scale-[0.98]"
+                  style={{ background: "linear-gradient(135deg,#16a34a,#22c55e,#15803d)", boxShadow: "0 4px 16px rgba(22,163,74,0.30)", color: "white", border: "none" }}>
+                  <CreditCard size={15} />
+                  Pay Remaining Balance
+                </button>
               </div>
             ) : (
               <button type="button" onClick={() => setShowPayModal(true)}
@@ -278,7 +300,8 @@ export default function NewOrderPage() {
               orderNumber={success.orderNumber}
               servicesSummary={servicesSummary}
               status="pending"
-              paymentStatus={waPaymentStatus}
+              paymentStatus={paymentStatus}
+              balanceDue={balanceDue}
               totalPrice={success.total}
               notes={formData.notes}
               templateData={waTemplateData}

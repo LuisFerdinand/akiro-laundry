@@ -451,8 +451,16 @@ export async function updateOrder(
 
     const [existing] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
     if (!existing) return { success: false, error: "Order not found." };
-    if (existing.paymentStatus === "paid") {
-      return { success: false, error: "This order has already been paid and can no longer be edited." };
+    if (existing.paymentStatus !== "unpaid") {
+      // Editing would change totalPrice out from under any DP already collected
+      // (amountPaid), so the order is locked once any payment — full or partial
+      // — has been applied.
+      return {
+        success: false,
+        error: existing.paymentStatus === "paid"
+          ? "This order has already been paid and can no longer be edited."
+          : "This order has a partial payment (DP) on file and can no longer be edited.",
+      };
     }
 
     // ── 1. Resolve customer — reassign to a picked existing customer, or

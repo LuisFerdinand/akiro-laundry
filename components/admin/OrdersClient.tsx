@@ -28,8 +28,9 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
 };
 
 const PAYMENT_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  paid:   { label: "Paid",   color: "#16a34a", bg: "#f0fdf4", border: "#86efac" },
-  unpaid: { label: "Unpaid", color: "#d97706", bg: "#fffbeb", border: "#fcd34d" },
+  paid:    { label: "Paid",    color: "#16a34a", bg: "#f0fdf4", border: "#86efac" },
+  partial: { label: "Partial", color: "#b45309", bg: "#fffbeb", border: "#fcd34d" },
+  unpaid:  { label: "Unpaid",  color: "#d97706", bg: "#fff7ed", border: "#fed7aa" },
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -233,7 +234,7 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
           </div>
 
           <div style={{ display: "flex", gap: "6px" }}>
-            {(["all", "paid", "unpaid"] as const).map((p) => {
+            {(["all", "paid", "partial", "unpaid"] as const).map((p) => {
               const active = payment === p;
               const cfg    = p !== "all" ? PAYMENT_CONFIG[p] : null;
               return (
@@ -387,6 +388,11 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
                           {order.paymentStatus === "paid" ? <CreditCard size={9} /> : <AlertCircle size={9} />}
                           {pc.label}
                         </span>
+                        {order.paymentStatus === "partial" && (
+                          <p style={{ fontSize: "9px", color: "#b45309", fontWeight: 700, marginTop: "2px" }}>
+                            Due {formatUSD(parseFloat(order.totalPrice) - (order.amountPaid ? parseFloat(order.amountPaid) : 0))}
+                          </p>
+                        )}
                       </td>
                       <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}>
                         <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", fontWeight: 700, color: sc.color, background: sc.bg, border: `1px solid ${sc.border}`, padding: "3px 8px", borderRadius: "999px", whiteSpace: "nowrap" }}>
@@ -404,7 +410,7 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
                           <Link href={`/admin/orders/${order.id}`} style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", fontWeight: 700, color: "#1a7fba", textDecoration: "none", background: "#edf7fd", padding: "4px 10px", borderRadius: "6px", border: "1px solid #b6def5", whiteSpace: "nowrap" }}>
                             View <ArrowUpRight size={10} />
                           </Link>
-                          {order.paymentStatus !== "paid" && (
+                          {order.paymentStatus === "unpaid" && (
                             <Link href={`/admin/orders/${order.id}/edit`} style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", fontWeight: 700, color: "#7c3aed", textDecoration: "none", background: "#f5f3ff", padding: "4px 10px", borderRadius: "6px", border: "1px solid #c4b5fd", whiteSpace: "nowrap" }}>
                               Edit
                             </Link>

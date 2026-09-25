@@ -27,8 +27,9 @@ const STATUS_CONFIG: Record<string, {
 const PAYMENT_CONFIG: Record<string, {
   label: string; color: string; bg: string; border: string;
 }> = {
-  paid:   { label: "Paid",   color: "#16a34a", bg: "#f0fdf4", border: "#86efac" },
-  unpaid: { label: "Unpaid", color: "#d97706", bg: "#fffbeb", border: "#fcd34d" },
+  paid:    { label: "Paid",    color: "#16a34a", bg: "#f0fdf4", border: "#86efac" },
+  partial: { label: "Partial", color: "#b45309", bg: "#fffbeb", border: "#fcd34d" },
+  unpaid:  { label: "Unpaid",  color: "#d97706", bg: "#fff7ed", border: "#fed7aa" },
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -187,7 +188,7 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
 
         {/* Payment pills */}
         <div style={{ display: "flex", gap: "6px" }}>
-          {(["all", "paid", "unpaid"] as const).map((p) => {
+          {(["all", "paid", "partial", "unpaid"] as const).map((p) => {
             const active = payment === p;
             const cfg    = p !== "all" ? PAYMENT_CONFIG[p] : null;
             return (

@@ -17,8 +17,10 @@ export interface WhatsAppNotifyProps {
   /** Comma-separated service names or a single name */
   servicesSummary: string;
   status:          Order["status"];
-  paymentStatus:   "paid" | "unpaid";
+  paymentStatus:   "paid" | "partial" | "unpaid";
   totalPrice:      number;
+  /** Remaining balance owed — required when paymentStatus === "partial" */
+  balanceDue?:     number;
   /** Optional: notes from the order */
   notes?:          string | null;
   /** Base URL of the site — used to build the review link */
@@ -65,6 +67,7 @@ function buildMessage({
   status,
   paymentStatus,
   totalPrice,
+  balanceDue,
   notes,
   reviewUrl,
   templateData,
@@ -74,8 +77,9 @@ function buildMessage({
   orderNumber:     string;
   servicesSummary: string;
   status:          Order["status"];
-  paymentStatus:   "paid" | "unpaid";
+  paymentStatus:   "paid" | "partial" | "unpaid";
   totalPrice:      number;
+  balanceDue?:     number;
   notes?:          string | null;
   reviewUrl:       string;
   templateData?:   WaTemplateData | null;
@@ -83,7 +87,6 @@ function buildMessage({
 }): string {
   const statusLabel    = ORDER_STATUS_LABELS[status] ?? status;
   const formattedPrice = formatUSD(isNaN(totalPrice) ? 0 : totalPrice);
-  const isPaid         = paymentStatus === "paid";
 
   // If we have DB templates, use them; otherwise fall back to hardcoded
   const settings = templateData?.settings;
@@ -111,13 +114,19 @@ function buildMessage({
 
   // {{paymentLine}} is available as a variable inside the status message, but is
   // never inserted on its own — the admin opts in by typing the token themselves.
-  vars.paymentLine = isPaid
-    ? interpolate(settings?.paymentPaidTemplate ?? "✅ *Pagamentu:* Kompletu ona", vars)
-    : interpolate(
-        settings?.paymentUnpaidTemplate ??
-          "⚠️ *Pagamentu:* Seidauk selu — favor prepara {{totalPrice}} bainhira mai foti",
-        vars,
-      );
+  // "partial" (DP received) has no dedicated admin-editable template yet, so it
+  // uses a hardcoded line that reports the remaining balance.
+  if (paymentStatus === "paid") {
+    vars.paymentLine = interpolate(settings?.paymentPaidTemplate ?? "✅ *Pagamentu:* Kompletu ona", vars);
+  } else if (paymentStatus === "partial") {
+    vars.paymentLine = `🟡 *Pagamentu:* DP simu ona — balansu ${formatUSD(balanceDue ?? totalPrice)} bainhira mai foti`;
+  } else {
+    vars.paymentLine = interpolate(
+      settings?.paymentUnpaidTemplate ??
+        "⚠️ *Pagamentu:* Seidauk selu — favor prepara {{totalPrice}} bainhira mai foti",
+      vars,
+    );
+  }
 
   // The status message IS the entire outgoing message, verbatim — nothing is
   // ever prepended or appended to it.
@@ -162,6 +171,7 @@ export function WhatsAppNotify({
   status,
   paymentStatus,
   totalPrice,
+  balanceDue,
   notes,
   siteUrl,
   templateData,
@@ -179,6 +189,7 @@ export function WhatsAppNotify({
       status,
       paymentStatus,
       totalPrice,
+      balanceDue,
       notes,
       reviewUrl,
       templateData,

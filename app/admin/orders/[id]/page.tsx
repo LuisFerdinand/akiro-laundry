@@ -257,9 +257,12 @@ export default async function AdminOrderDetailPage({
   ]);
   if (!order) notFound();
 
-  const sc     = STATUS_CONFIG[order.status];
-  const isPaid = order.paymentStatus === "paid";
-  const total  = parseFloat(order.totalPrice);
+  const sc        = STATUS_CONFIG[order.status];
+  const isPaid    = order.paymentStatus === "paid";
+  const isPartial = order.paymentStatus === "partial";
+  const total     = parseFloat(order.totalPrice);
+  const amountPaidNum = order.amountPaid ? parseFloat(order.amountPaid) : 0;
+  const balanceDue     = parseFloat((total - amountPaidNum).toFixed(2));
 
   const servicesSummary =
     order.items.length === 1
@@ -307,13 +310,13 @@ export default async function AdminOrderDetailPage({
             <span style={{
               display: "inline-flex", alignItems: "center", gap: "6px",
               padding: "6px 14px", borderRadius: "999px",
-              background: isPaid ? "#f0fdf4" : "#fffbeb",
-              border: `1.5px solid ${isPaid ? "#86efac" : "#fcd34d"}`,
+              background: isPaid ? "#f0fdf4" : isPartial ? "#fffbeb" : "#fff7ed",
+              border: `1.5px solid ${isPaid ? "#86efac" : isPartial ? "#fcd34d" : "#fed7aa"}`,
               fontSize: "12px", fontWeight: 700,
-              color: isPaid ? "#16a34a" : "#d97706",
+              color: isPaid ? "#16a34a" : isPartial ? "#b45309" : "#d97706",
             }}>
               {isPaid ? <BadgeCheck size={13} /> : <AlertTriangle size={13} />}
-              {isPaid ? "Selu ona" : "Seidauk selu"}
+              {isPaid ? "Selu ona" : isPartial ? `DP selu · Due ${formatUSD(balanceDue)}` : "Seidauk selu"}
             </span>
 
             <span style={{
@@ -333,13 +336,14 @@ export default async function AdminOrderDetailPage({
               orderNumber={order.orderNumber}
               servicesSummary={servicesSummary}
               status={order.status}
-              paymentStatus={order.paymentStatus as "paid" | "unpaid"}
+              paymentStatus={order.paymentStatus}
+              balanceDue={balanceDue}
               totalPrice={total}
               notes={order.notes}
               templateData={waTemplateData}
             />
 
-            {!isPaid && (
+            {order.paymentStatus === "unpaid" && (
               <Link href={`/admin/orders/${order.id}/edit`} style={{
                 display: "inline-flex", alignItems: "center", gap: "6px",
                 padding: "6px 14px", borderRadius: "999px",
@@ -393,7 +397,7 @@ export default async function AdminOrderDetailPage({
             <SpecialRequestsPanel
               orderId={order.id}
               specialRequests={order.specialRequests}
-              isPaid={order.paymentStatus === "paid"}
+              isPaid={order.paymentStatus !== "unpaid"}
             />
           </SectionCard>
 
@@ -414,8 +418,8 @@ export default async function AdminOrderDetailPage({
             )}
           </SectionCard>
 
-          {/* Payment details (only when paid) */}
-          {isPaid && (
+          {/* Payment details (once any payment — full or DP — is on file) */}
+          {(isPaid || isPartial) && (
             <SectionCard title="Detallu Pagamentu">
               <DetailRow
                 icon={CreditCard}
@@ -425,8 +429,15 @@ export default async function AdminOrderDetailPage({
               <DetailRow
                 icon={CreditCard}
                 label="Montante Selu"
-                value={formatUSD(parseFloat(order.amountPaid ?? "0"))}
+                value={formatUSD(amountPaidNum)}
               />
+              {isPartial && (
+                <DetailRow
+                  icon={AlertTriangle}
+                  label="Balansu Due"
+                  value={formatUSD(balanceDue)}
+                />
+              )}
               <DetailRow
                 icon={CreditCard}
                 label="Troku"
