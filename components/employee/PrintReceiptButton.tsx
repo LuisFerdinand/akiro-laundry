@@ -3,6 +3,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { Printer, Bluetooth, BluetoothConnected } from "lucide-react";
 import { printReceipt } from "@/components/employee/PrintReceipt";
 import { printer, isBluetoothSupported } from "@/lib/utils/bluetooth-printer";
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export function PrintReceiptButton({ order, receiptSettings }: Props) {
+  const { data: session } = useSession();
   // SSR-safe defaults; real values (Bluetooth state) only exist client-side, so
   // they're read post-mount below rather than in the initializer (avoids a
   // hydration mismatch — navigator doesn't exist on the server).
@@ -105,6 +107,7 @@ export function PrintReceiptButton({ order, receiptSettings }: Props) {
       paymentMethod: order.paymentMethod  ?? undefined,
       amountPaid:    order.amountPaid     ? parseFloat(order.amountPaid)  : undefined,
       changeGiven:   order.changeGiven    ? parseFloat(order.changeGiven) : undefined,
+      cashierName:   session?.user?.name ?? undefined,
       // ← DB settings forwarded; PrintReceipt falls back to DEFAULTS if null
       settings: receiptSettings,
     });

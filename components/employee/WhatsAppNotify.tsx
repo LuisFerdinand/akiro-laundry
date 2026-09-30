@@ -1,6 +1,7 @@
 // components/employee/WhatsAppNotify.tsx
 "use client";
 
+import { useSession } from "next-auth/react";
 import { MessageCircle } from "lucide-react";
 import { ORDER_STATUS_LABELS, formatUSD } from "@/lib/utils/order-form";
 import { parseE164 } from "@/lib/utils/phone";
@@ -69,6 +70,7 @@ function buildMessage({
   totalPrice,
   balanceDue,
   notes,
+  cashierName,
   reviewUrl,
   templateData,
   sendHour,
@@ -81,6 +83,7 @@ function buildMessage({
   totalPrice:      number;
   balanceDue?:     number;
   notes?:          string | null;
+  cashierName?:    string | null;
   reviewUrl:       string;
   templateData?:   WaTemplateData | null;
   sendHour:        number;
@@ -106,6 +109,7 @@ function buildMessage({
     totalPrice:    formattedPrice,
     reviewUrl,
     notes:         notes?.trim() ?? "",
+    cashierName:   cashierName?.trim() ?? "",
     businessName:  orDefault(settings?.businessName,  "Akiro Laundry"),
     businessPhone: orDefault(settings?.businessPhone, "+670 7675 8 7380"),
     businessUrl:   orDefault(settings?.businessUrl,   "akirolaundry.com"),
@@ -178,6 +182,8 @@ export function WhatsAppNotify({
   compact = false,
   className,
 }: WhatsAppNotifyProps) {
+  const { data: session } = useSession();
+
   const handleSend = () => {
     const origin    = siteUrl ?? (typeof window !== "undefined" ? window.location.origin : "https://akirolaundry.com");
     const reviewUrl = `${origin}${REVIEW_PATH}`;
@@ -191,6 +197,7 @@ export function WhatsAppNotify({
       totalPrice,
       balanceDue,
       notes,
+      cashierName: session?.user?.name,
       reviewUrl,
       templateData,
       sendHour: new Date().getHours(),

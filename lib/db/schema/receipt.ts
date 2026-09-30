@@ -10,7 +10,7 @@
 // Available placeholders: {{shopName}} {{shopTagline}} {{orderNumber}} {{date}}
 // {{customerName}} {{customerPhone}} {{customerAddress}} {{items}} {{totalPrice}}
 // {{paymentMethod}} {{amountPaid}} {{change}} {{paymentLine}} {{notes}}
-// {{footerContact}} {{divider}}
+// {{cashierName}} {{footerContact}} {{divider}}
 //
 // The columns below fontFamily/logoUrl/accentColor/etc. predate this template
 // model and are no longer read by any code path — kept only so existing rows

@@ -13,6 +13,7 @@
 //   {{paymentLine}}     — auto-generated payment status line
 //   {{reviewUrl}}       — link to the review page
 //   {{notes}}           — order notes (only rendered if present)
+//   {{cashierName}}     — name of the logged-in employee sending the message
 //   {{businessName}}    — from settings
 //   {{businessPhone}}   — from settings
 //   {{businessUrl}}     — from settings

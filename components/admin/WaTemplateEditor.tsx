@@ -40,6 +40,7 @@ const VARIABLES: { token: string; label: string; sample: string }[] = [
   { token: "{{totalPrice}}",      label: "Total Price",     sample: "$12.50"             },
   { token: "{{paymentLine}}",     label: "Payment Line",    sample: "✅ *Pagamentu:* Kompletu ona" },
   { token: "{{notes}}",           label: "Order Notes",     sample: "Handle ropa ne'e ho kuidadu." },
+  { token: "{{cashierName}}",     label: "Cashier (logged-in employee)", sample: "Ana Pereira" },
   { token: "{{reviewUrl}}",       label: "Review URL",      sample: "https://akirolaundry.com/review" },
   { token: "{{businessName}}",    label: "Business Name",   sample: "Akiro Laundry"      },
   { token: "{{businessPhone}}",   label: "Business Phone",  sample: "+670 7675 8 7380"   },

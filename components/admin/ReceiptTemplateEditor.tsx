@@ -47,6 +47,7 @@ const MAIN_VARIABLES: { token: string; label: string }[] = [
   { token: "{{amountPaid}}",      label: "Amount Paid" },
   { token: "{{change}}",          label: "Change" },
   { token: "{{notes}}",           label: "Order Notes" },
+  { token: "{{cashierName}}",     label: "Cashier (logged-in employee)" },
   { token: "{{footerContact}}",   label: "Footer Contact" },
   { token: "{{divider}}",         label: "Divider Line" },
 ];
@@ -96,6 +97,7 @@ const SAMPLE_RECEIPT_DATA: Omit<ReceiptData, "settings"> = {
   paymentMethod: "cash",
   amountPaid:    25.00,
   changeGiven:   4.75,
+  cashierName:   "Ana Pereira",
 };
 
 function buildPreviewLines(s: ReceiptSettings): ReceiptLine[] {

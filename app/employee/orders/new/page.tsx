@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
   ChevronRight, ChevronLeft, Loader2, CheckCircle2,
   Sparkles, User, ShoppingBag, ClipboardList, CreditCard, Printer,
@@ -72,6 +73,7 @@ const STEP_TITLES: Record<OrderFormStep, {
 
 export default function NewOrderPage() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [isPending, startTransition] = useTransition();
 
   const [step,        setStep]        = useState<OrderFormStep>(ORDER_FORM_STEPS[0].key);
@@ -206,6 +208,7 @@ export default function NewOrderPage() {
             ? amountPaid
             : undefined,
         changeGiven: changeGiven ?? undefined,
+        cashierName: session?.user?.name ?? undefined,
         // ← DB settings forwarded; PrintReceipt falls back to DEFAULTS if null
         settings: receiptSettings,
       });

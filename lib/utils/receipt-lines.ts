@@ -25,6 +25,8 @@ export interface ReceiptData {
   paymentMethod?: string;
   amountPaid?:    number;
   changeGiven?:   number;
+  /** Name of the logged-in employee printing the receipt — fills {{cashierName}}. */
+  cashierName?:   string;
   settings?:      ReceiptSettings | null;
 }
 
@@ -180,6 +182,7 @@ export function buildReceiptContent(data: ReceiptData, charsPerLine: number): Re
     amountPaid:      data.amountPaid != null ? formatUSD(data.amountPaid) : "",
     change:          data.changeGiven && data.changeGiven > 0 ? formatUSD(data.changeGiven) : "",
     notes:           data.formData.notes?.trim() ?? "",
+    cashierName:     data.cashierName?.trim() ?? "",
     footerContact:   s.footerContact,
     divider:         (s.dividerChar || "-").repeat(charsPerLine),
   };
