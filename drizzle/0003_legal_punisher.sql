@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ADD COLUMN "created_by_name" text;

@@ -1,6 +1,7 @@
 // lib/actions/orders.ts
 "use server";
 
+import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import {
   customers,
@@ -372,6 +373,9 @@ export async function createOrder(formData: OrderFormData): Promise<CreateOrderR
 
     // ── 4. Insert order header ────────────────────────────────────────────────
     const orderNumber = generateOrderNumber();
+    // Creator comes from the server session, not the form payload, so it
+    // can't be spoofed by the client.
+    const session = await auth();
 
     const [newOrder] = await db
       .insert(orders)
@@ -382,6 +386,7 @@ export async function createOrder(formData: OrderFormData): Promise<CreateOrderR
         notes:         notes.trim() || null,
         status:        "pending",
         paymentStatus: "unpaid",
+        createdByName: session?.user?.name?.trim() || null,
       })
       .returning({ id: orders.id, orderNumber: orders.orderNumber });
 

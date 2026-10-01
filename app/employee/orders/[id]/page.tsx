@@ -11,7 +11,7 @@ import { SpecialRequestsPanel } from "@/components/shared/SpecialRequestsPanel";
 import { EditedBadge }         from "@/components/shared/EditedBadge";
 import {
   ArrowLeft, User, Phone, Layers, Weight, Calendar,
-  Clock, FileText, Droplets, Wind, Hash, Pencil,
+  Clock, FileText, Droplets, Wind, Hash, Pencil, UserCheck,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -125,6 +125,9 @@ export default async function OrderDetailPage({ params }: PageProps) {
           <DetailRow icon={User}     label="Customer" value={order.customerName}                          theme="brand"  />
           <DetailRow icon={Phone}    label="Phone"    value={order.customerPhone}                         theme="green"  />
           <DetailRow icon={Calendar} label="Date"     value={new Date(order.createdAt).toLocaleString()}  theme="violet" />
+          {order.createdByName && (
+            <DetailRow icon={UserCheck} label="Created By" value={order.createdByName} theme="amber" />
+          )}
           {order.estimatedDoneAt && (
             <DetailRow icon={Clock} label="Est. Done" value={new Date(order.estimatedDoneAt).toLocaleString()} theme="rose" />
           )}

@@ -8,7 +8,7 @@ import {
   ArrowLeft, User, Phone, FileText, CreditCard, Calendar,
   Hash, BadgeCheck, AlertTriangle, Clock, Waves,
   PackageCheck, ShoppingBag, Tag, Weight, Hash as PcsIcon,
-  Droplets, Wind, Pencil,
+  Droplets, Wind, Pencil, UserCheck,
 } from "lucide-react";
 import type { AdminOrderItem } from "@/lib/actions/admin-orders";
 import { WhatsAppNotify } from "@/components/employee/WhatsAppNotify";
@@ -404,6 +404,9 @@ export default async function AdminOrderDetailPage({
           {/* Order meta */}
           <SectionCard title="Info Pedidu">
             <DetailRow icon={Hash}     label="Nú. Pedidu"   value={order.orderNumber} mono />
+            {order.createdByName && (
+              <DetailRow icon={UserCheck} label="Kria husi" value={order.createdByName} />
+            )}
             {order.notes && (
               <DetailRow icon={FileText} label="Nota" value={order.notes} />
             )}

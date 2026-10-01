@@ -136,6 +136,13 @@ export const orders = pgTable("orders", {
   // Bumped only by updateOrder() (correcting customer/items/notes) — status
   // changes and payment do NOT increment this. Drives the "Edited ×N" badge.
   editCount: integer("edit_count").default(0).notNull(),
+
+  // ── Created by ──
+  // Name of the logged-in staff member who created the order, read from the
+  // session in createOrder(). A plain-text snapshot rather than a users FK, so
+  // deleting the account later doesn't erase who took the order. Null for
+  // orders that predate this column.
+  createdByName: text("created_by_name"),
 });
 
 // ─── Order Items ──────────────────────────────────────────────────────────────
