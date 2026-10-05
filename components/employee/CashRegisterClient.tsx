@@ -117,7 +117,7 @@ export function CashRegisterClient({ initialState }: Props) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                       <p style={{ fontSize: "12px", fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "240px" }}>
-                        {tx.description}
+                        {tx.displayDescription}
                       </p>
                       {catName && (
                         <span style={{

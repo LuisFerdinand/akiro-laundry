@@ -5,6 +5,7 @@
 import { db } from "@/lib/db";
 import {
   orders,
+  customers,
   cashRegister,
   cashRegisterTransactions,
   expenseCategories,
@@ -39,7 +40,22 @@ export interface ProcessPaymentResult {
 export interface CashRegisterState {
   balance: number;
   lastUpdatedAt: Date;
-  recentTransactions: (CashRegisterTransaction & { categoryName?: string | null })[];
+  recentTransactions: (CashRegisterTransaction & {
+    categoryName?: string | null;
+    /** Description with the order number swapped for the customer's name (cash register pages only). */
+    displayDescription: string;
+  })[];
+}
+
+/**
+ * The stored description references the order number (Buku Kecil keeps showing
+ * that). The cash register pages show the customer name instead.
+ */
+function describeWithCustomer(description: string, customerName: string | null): string {
+  if (!customerName) return description;
+  return description
+    .replace(/received for order \S+/, `received from ${customerName}`)
+    .replace(/given for order \S+/, `given to ${customerName}`);
 }
 
 // ─── NEW: Manual transaction input ───────────────────────────────────────────
@@ -79,12 +95,15 @@ export async function getCashRegisterState(): Promise<CashRegisterState> {
     .select({
       tx:           cashRegisterTransactions,
       categoryName: expenseCategories.name,
+      customerName: customers.name,
     })
     .from(cashRegisterTransactions)
     .leftJoin(
       expenseCategories,
       eq(cashRegisterTransactions.categoryId, expenseCategories.id),
     )
+    .leftJoin(orders, eq(cashRegisterTransactions.orderId, orders.id))
+    .leftJoin(customers, eq(orders.customerId, customers.id))
     .orderBy(desc(cashRegisterTransactions.createdAt))
     .limit(30);
 
@@ -94,6 +113,7 @@ export async function getCashRegisterState(): Promise<CashRegisterState> {
     recentTransactions: recentTransactions.map((r) => ({
       ...r.tx,
       categoryName: r.categoryName ?? null,
+      displayDescription: describeWithCustomer(r.tx.description, r.customerName),
     })),
   };
 }
