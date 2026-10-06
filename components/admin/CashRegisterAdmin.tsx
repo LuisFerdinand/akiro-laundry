@@ -704,7 +704,7 @@ export function CashRegisterAdmin({ initialState, revenue, initialCategories }: 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                         <p style={{ fontSize: "13px", fontWeight: 600, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "220px" }}>
-                          {tx.description}
+                          {tx.displayDescription}
                         </p>
                         {catName && <Badge color={catColor} label={catName} />}
                       </div>
