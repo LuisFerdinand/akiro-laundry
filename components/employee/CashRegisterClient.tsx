@@ -98,12 +98,12 @@ export function CashRegisterClient({ initialState }: Props) {
 
               return (
                 <div key={tx.id} style={{
-                  display: "flex", alignItems: "center", gap: "12px",
+                  display: "flex", alignItems: "flex-start", gap: "12px",
                   padding: "12px 16px",
                   borderBottom: "1px solid #f1f5f9",
                 }}>
                   <div style={{
-                    width: 30, height: 30, flexShrink: 0,
+                    width: 30, height: 30, flexShrink: 0, marginTop: 1,
                     borderRadius: "6px",
                     background: color.iconBg,
                     border: `1.5px solid ${color.iconBorder}`,
@@ -115,21 +115,20 @@ export function CashRegisterClient({ initialState }: Props) {
                   </div>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                      <p style={{ fontSize: "12px", fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "240px" }}>
-                        {tx.displayDescription}
-                      </p>
-                      {catName && (
-                        <span style={{
-                          fontSize: "10px", fontWeight: 700,
-                          padding: "1px 7px", borderRadius: "20px",
-                          background: "#f1f5f9", color: "#64748b",
-                          border: "1px solid #e2e8f0",
-                        }}>
-                          {catName}
-                        </span>
-                      )}
-                    </div>
+                    <p style={{ fontSize: "13px", fontWeight: 700, lineHeight: 1.4, color: "#1e293b", whiteSpace: "normal", overflowWrap: "anywhere" }}>
+                      {tx.displayDescription}
+                    </p>
+                    {catName && (
+                      <span style={{
+                        display: "inline-block", marginTop: "4px",
+                        fontSize: "10px", fontWeight: 700,
+                        padding: "1px 7px", borderRadius: "20px",
+                        background: "#f1f5f9", color: "#64748b",
+                        border: "1px solid #e2e8f0",
+                      }}>
+                        {catName}
+                      </span>
+                    )}
                     <p style={{ fontSize: "10px", color: "#94a3b8", marginTop: "2px" }}>
                       {new Date(tx.createdAt).toLocaleString()} · bal: {formatUSD(parseFloat(tx.balanceAfter))}
                     </p>
@@ -138,7 +137,7 @@ export function CashRegisterClient({ initialState }: Props) {
                   <span style={{
                     fontSize: "13px", fontWeight: 800,
                     color: color.amount,
-                    whiteSpace: "nowrap",
+                    whiteSpace: "nowrap", flexShrink: 0,
                   }}>
                     {isIncome ? "+" : "−"}{formatUSD(parseFloat(tx.amount))}
                   </span>
