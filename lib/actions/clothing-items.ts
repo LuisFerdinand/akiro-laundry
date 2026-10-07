@@ -7,7 +7,7 @@
 import { db } from "@/lib/db";
 import { clothingItems, serviceClothingItems, orders } from "@/lib/db/schema";
 import type { ClothingItem } from "@/lib/db/schema";
-import { asc, eq, gt, lt, desc, sql } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { writeOrderClothesCounts } from "@/lib/db/clothes-counts";
 import type { ClothesCountLine, ClothingSetup } from "@/lib/utils/clothes-count";
@@ -111,28 +111,20 @@ export async function deleteClothingItem(id: number): Promise<ClothingActionResu
   }
 }
 
-/** Swaps the item with its neighbour in the display order. */
-export async function moveClothingItem(id: number, direction: "up" | "down"): Promise<ClothingActionResult> {
+/** Saves a drag-and-drop ordering: `ids` is the full list in its new display order. */
+export async function reorderClothingItems(ids: number[]): Promise<ClothingActionResult> {
+  const unique = [...new Set(ids.filter((id) => Number.isInteger(id)))];
+  if (unique.length === 0) return { success: true };
   try {
-    const [item] = await db.select().from(clothingItems).where(eq(clothingItems.id, id)).limit(1);
-    if (!item) return { success: false, error: "Item not found." };
-
-    const [neighbour] = await db
-      .select()
-      .from(clothingItems)
-      .where(direction === "up"
-        ? lt(clothingItems.sortOrder, item.sortOrder)
-        : gt(clothingItems.sortOrder, item.sortOrder))
-      .orderBy(direction === "up" ? desc(clothingItems.sortOrder) : asc(clothingItems.sortOrder))
-      .limit(1);
-    if (!neighbour) return { success: true };
-
-    await db.update(clothingItems).set({ sortOrder: neighbour.sortOrder }).where(eq(clothingItems.id, item.id));
-    await db.update(clothingItems).set({ sortOrder: item.sortOrder }).where(eq(clothingItems.id, neighbour.id));
+    const cases = sql.join(unique.map((id, i) => sql`when ${id} then ${i + 1}`), sql` `);
+    await db
+      .update(clothingItems)
+      .set({ sortOrder: sql`case ${clothingItems.id} ${cases} else ${clothingItems.sortOrder} end` })
+      .where(inArray(clothingItems.id, unique));
     revalidateClothingPages();
     return { success: true };
   } catch (e) {
-    return { success: false, error: errorMessage(e, "Failed to reorder.") };
+    return { success: false, error: errorMessage(e, "Failed to save the new order.") };
   }
 }
 

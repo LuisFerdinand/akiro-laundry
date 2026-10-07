@@ -7,7 +7,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import {
   Plus, X, Save, Loader2, Trash2, Edit2, CheckCircle2,
   Sparkles, ToggleLeft, ToggleRight, AlertTriangle,
-  Search, TrendingUp, ShoppingBag, Flame, Crown, PenLine, Check,
+  Search, TrendingUp, ShoppingBag, Flame, Crown, PenLine, Check, Shirt,
 } from "lucide-react";
 import {
   createService, updateService, deleteService,
@@ -15,7 +15,7 @@ import {
 import { setServiceClothingItems, type ClothingItemWithUsage } from "@/lib/actions/clothing-items";
 import { formatUSD } from "@/lib/utils/order-form";
 import type { ServiceWithStats } from "@/lib/actions/admin-services";
-import { ClothingItemsCard } from "@/components/admin/ClothingItemsCard";
+import { ClothingItemsModal } from "@/components/admin/ClothingItemsModal";
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 const inputStyle: React.CSSProperties = {
@@ -285,8 +285,9 @@ export function ServicesClient({ services, clothingItems, initialSearch }: Props
   const searchParams = useSearchParams();
 
   const [modal,        setModal]        = useState<{ open: boolean; existing?: ServiceWithStats }>({ open: false });
+  const [itemsOpen,    setItemsOpen]    = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ServiceWithStats | null>(null);
-  const [toast,        setToast]        = useState<string | null>(null);
+  const [toast,       setToast]        = useState<string | null>(null);
   const [isPending,    start]           = useTransition();
   const [search,       setSearch]       = useState(initialSearch);
 
@@ -347,6 +348,7 @@ export function ServicesClient({ services, clothingItems, initialSearch }: Props
           onSuccess={() => handleSuccess(modal.existing ? "Service updated." : "Service created.")}
         />
       )}
+      {itemsOpen && <ClothingItemsModal items={clothingItems} onClose={() => setItemsOpen(false)} />}
       {deleteTarget && (
         <ConfirmDeleteModal
           label={deleteTarget.name}
@@ -374,9 +376,15 @@ export function ServicesClient({ services, clothingItems, initialSearch }: Props
               {services.length} service{services.length !== 1 ? "s" : ""} · {totalOrders} total orders · {formatUSD(totalRevenue)} revenue
             </p>
           </div>
-          <button onClick={() => setModal({ open: true })} style={{ display: "flex", alignItems: "center", gap: "7px", padding: "10px 18px", borderRadius: "9px", border: "none", background: "linear-gradient(135deg,#1a7fba,#2496d6 55%,#0f5a85)", boxShadow: "0 4px 14px rgba(26,127,186,0.3)", color: "white", fontSize: "13px", fontWeight: 800, cursor: "pointer" }}>
-            <Plus size={15} /> Add Service
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button onClick={() => setItemsOpen(true)} style={{ display: "flex", alignItems: "center", gap: "7px", padding: "10px 16px", borderRadius: "9px", border: "1.5px solid #b6def5", background: "white", color: "#1a7fba", fontSize: "13px", fontWeight: 800, cursor: "pointer" }}>
+              <Shirt size={15} /> Clothes Items
+              <span style={{ fontSize: "11px", fontWeight: 800, background: "#edf7fd", color: "#1a7fba", padding: "1px 7px", borderRadius: "20px" }}>{clothingItems.length}</span>
+            </button>
+            <button onClick={() => setModal({ open: true })} style={{ display: "flex", alignItems: "center", gap: "7px", padding: "10px 18px", borderRadius: "9px", border: "none", background: "linear-gradient(135deg,#1a7fba,#2496d6 55%,#0f5a85)", boxShadow: "0 4px 14px rgba(26,127,186,0.3)", color: "white", fontSize: "13px", fontWeight: 800, cursor: "pointer" }}>
+              <Plus size={15} /> Add Service
+            </button>
+          </div>
         </div>
 
         {/* ── Popular Services ── */}
@@ -549,9 +557,6 @@ export function ServicesClient({ services, clothingItems, initialSearch }: Props
             </div>
           )}
         </div>
-
-        {/* ── Clothes count items ── */}
-        <ClothingItemsCard items={clothingItems} />
       </div>
     </>
   );
