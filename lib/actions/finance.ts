@@ -2,9 +2,12 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { cashRegisterTransactions, expenseCategories, financePieConfigs } from "@/lib/db/schema";
-import { and, asc, eq, gte, lte } from "drizzle-orm";
+import {
+  cashRegisterTransactions, expenseCategories, financePieConfigs, orders, customers,
+} from "@/lib/db/schema";
+import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { addDaysISO, bizDayEnd, bizDayStart, isoDayBiz } from "@/lib/utils/business-time";
 
 // ─── Category-key model ───────────────────────────────────────────────────────
 // Every ledger transaction resolves to a stable string key. Keys are used by the
@@ -44,6 +47,10 @@ interface RawTx {
   createdAt: Date;
   categoryName: string | null;
   categoryColor: string | null;
+  orderNumber: string | null;
+  customerName: string | null;
+  /** Change subtracted from this payment_in by netChangeOut(), if any. */
+  changeNetted?: number;
 }
 
 function classify(tx: RawTx): { key: string; label: string; color: string } {
@@ -84,8 +91,10 @@ function classify(tx: RawTx): { key: string; label: string; color: string } {
 // ─── Base query ───────────────────────────────────────────────────────────────
 
 async function fetchTransactions(fromISO: string, toISO: string): Promise<RawTx[]> {
-  const start = new Date(fromISO + "T00:00:00");
-  const end   = new Date(toISO   + "T23:59:59");
+  // Pinned to the shop's timezone (Asia/Dili, UTC+9) — a bare "T00:00:00" would
+  // use the server's zone (UTC on Vercel) and shift the day boundary by 9 hours.
+  const start = bizDayStart(fromISO);
+  const end   = bizDayEnd(toISO);
 
   const rows = await db
     .select({
@@ -100,14 +109,18 @@ async function fetchTransactions(fromISO: string, toISO: string): Promise<RawTx[
       createdAt:     cashRegisterTransactions.createdAt,
       categoryName:  expenseCategories.name,
       categoryColor: expenseCategories.color,
+      orderNumber:   orders.orderNumber,
+      customerName:  customers.name,
     })
     .from(cashRegisterTransactions)
     .leftJoin(expenseCategories, eq(cashRegisterTransactions.categoryId, expenseCategories.id))
+    .leftJoin(orders, eq(cashRegisterTransactions.orderId, orders.id))
+    .leftJoin(customers, eq(orders.customerId, customers.id))
     .where(and(
       gte(cashRegisterTransactions.createdAt, start),
       lte(cashRegisterTransactions.createdAt, end),
     ))
-    .orderBy(asc(cashRegisterTransactions.createdAt));
+    .orderBy(asc(cashRegisterTransactions.createdAt), asc(cashRegisterTransactions.id));
 
   return rows as RawTx[];
 }
@@ -117,30 +130,57 @@ async function fetchTransactions(fromISO: string, toISO: string): Promise<RawTx[
 // `change_out` for the change returned. The drawer/cash-register menu shows both
 // (the real cash movement), but the finance books should only ever see the
 // revenue. This collapses each pair: the `change_out` row is dropped and its
-// amount is subtracted from the sibling `payment_in` (matched by orderId), both
+// amount is subtracted from the sibling `payment_in` that precedes it, both
 // from the amount and from the running balance.
 //
+// An order paid in instalments (DP, then the balance) has several `payment_in`
+// rows but only the one that overpaid has a `change_out`. Each `change_out` is
+// written right after the `payment_in` it belongs to, so it is paired with the
+// closest preceding `payment_in` of the same order — NOT every payment of that
+// order. (Matching by orderId alone subtracted the final payment's change from
+// the DP row as well, making part of the DP vanish from the books.)
+//
 // Legacy rows still work: an order with a lone `payment_in` (already equal to the
-// revenue, no `change_out`) is left untouched.
+// revenue, no `change_out`) is left untouched. A `change_out` whose `payment_in`
+// falls outside the fetched period stays as a real "Change Given" outflow.
+//
+// Deleting an order detaches its ledger rows (orderId → null), so rows are paired
+// by order id when present and otherwise by the order number in the description.
+function orderKey(t: RawTx): string | null {
+  if (t.orderId != null) return `id:${t.orderId}`;
+  const no = t.description.match(/for order (\S+)/)?.[1];
+  return no ? `no:${no}` : null;
+}
+
 function netChangeOut(txs: RawTx[]): RawTx[] {
-  const changeByOrder = new Map<number, number>();
+  const lastPaymentByOrder = new Map<string, number>(); // order key → payment_in tx id
+  const changeByPayment    = new Map<number, number>(); // payment_in tx id → change
+  const absorbed           = new Set<number>();         // change_out tx ids netted away
+
   for (const t of txs) {
-    if (t.type === "change_out" && t.orderId != null) {
-      changeByOrder.set(t.orderId, (changeByOrder.get(t.orderId) ?? 0) + parseFloat(t.amount));
+    const key = orderKey(t);
+    if (key == null) continue;
+    if (t.type === "payment_in") {
+      lastPaymentByOrder.set(key, t.id);
+    } else if (t.type === "change_out") {
+      const payId = lastPaymentByOrder.get(key);
+      if (payId == null) continue;
+      changeByPayment.set(payId, (changeByPayment.get(payId) ?? 0) + parseFloat(t.amount));
+      absorbed.add(t.id);
     }
   }
-  if (changeByOrder.size === 0) return txs;
+  if (absorbed.size === 0) return txs;
 
   return txs
-    .filter((t) => t.type !== "change_out")
+    .filter((t) => !absorbed.has(t.id))
     .map((t) => {
-      if (t.type !== "payment_in" || t.orderId == null) return t;
-      const chg = changeByOrder.get(t.orderId);
+      const chg = t.type === "payment_in" ? changeByPayment.get(t.id) : undefined;
       if (!chg) return t;
       return {
         ...t,
         amount:       (parseFloat(t.amount) - chg).toFixed(2),
         balanceAfter: (parseFloat(t.balanceAfter) - chg).toFixed(2),
+        changeNetted: chg,
       };
     });
 }
@@ -180,6 +220,223 @@ export async function getLedger(fromISO: string, toISO: string): Promise<LedgerE
       type:          tx.type,
     };
   });
+}
+
+// ─── Cash book (Daily Cash page) ──────────────────────────────────────────────
+// Every movement of the cash drawer in a period, split into income and outcome,
+// with order payments resolved to their order number and customer. Cash sales
+// are shown net of the change handed back (tendered / change kept for display),
+// the same way the finance books show them. Balances are re-derived from the
+// movements — opening (last recorded balance before the period) + in − out — so
+// "expected in drawer" always adds up; `drift` flags it when the recorded
+// balances don't.
+
+export type CashBookKind = "payment" | "change" | "manual" | "adjustment" | "opening";
+
+export interface CashBookEntry {
+  id:            number;
+  createdAt:     Date;
+  /** Business-local calendar day, YYYY-MM-DD. */
+  day:           string;
+  direction:     "income" | "outcome";
+  kind:          CashBookKind;
+  /** Order payments only: paid in one go, a DP, or the final payment after an earlier one. */
+  paymentType:   "full" | "dp" | "balance" | null;
+  /** Net effect on the drawer (a payment minus the change given back). */
+  amount:        number;
+  /** Cash the customer handed over — set only when change was given back. */
+  tendered:      number | null;
+  change:        number | null;
+  orderId:       number | null;
+  orderNumber:   string | null;
+  customerName:  string | null;
+  description:   string;
+  categoryLabel: string;
+  categoryColor: string;
+}
+
+export interface CashBookDay {
+  day:      string;
+  opening:  number;
+  cashIn:   number;
+  cashOut:  number;
+  closing:  number;
+  /** Order payments received that day. */
+  payments: number;
+  /** All movements that day. */
+  entries:  number;
+}
+
+export interface CashBook {
+  openingBalance: number;
+  closingBalance: number;
+  cashIn:         number;
+  cashOut:        number;
+  /** Part of `cashIn` that came from order payments. */
+  orderIncome:    number;
+  paymentCount:   number;
+  dpCount:        number;
+  outCount:       number;
+  /**
+   * Recorded register balance at the end of the period minus what the movements
+   * add up to. Zero unless the ledger itself doesn't add up.
+   */
+  drift:          number;
+  entries:        CashBookEntry[];
+  days:           CashBookDay[];
+}
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Spans up to this many days list every day, including days without movement. */
+const FILL_DAYS_MAX = 62;
+
+function cashBookKind(type: string): CashBookKind {
+  switch (type) {
+    case "payment_in":        return "payment";
+    case "change_out":        return "change";
+    case "manual_adjustment": return "adjustment";
+    case "initial":           return "opening";
+    default:                  return "manual";
+  }
+}
+
+export async function getCashBook(fromISO: string, toISO: string): Promise<CashBook> {
+  const [raw, [prev]] = await Promise.all([
+    fetchTransactions(fromISO, toISO),
+    db
+      .select({ balanceAfter: cashRegisterTransactions.balanceAfter })
+      .from(cashRegisterTransactions)
+      .where(lt(cashRegisterTransactions.createdAt, bizDayStart(fromISO)))
+      .orderBy(desc(cashRegisterTransactions.createdAt), desc(cashRegisterTransactions.id))
+      .limit(1),
+  ]);
+  const openingBalance = prev ? parseFloat(prev.balanceAfter) : 0;
+
+  // A payment that completes an order which already had an earlier payment (a
+  // DP, or a balance reopened by an edit) is the "final" one. Look up each
+  // order's first payment across all history — the order total can't tell,
+  // since paid orders can be edited.
+  const paidOrderIds = [...new Set(
+    raw.filter((t) => t.type === "payment_in" && t.orderId != null).map((t) => t.orderId!),
+  )];
+  const firstPayments = paidOrderIds.length === 0 ? [] : await db
+    .select({
+      orderId: cashRegisterTransactions.orderId,
+      firstId: sql<number>`min(${cashRegisterTransactions.id})`,
+    })
+    .from(cashRegisterTransactions)
+    .where(and(
+      eq(cashRegisterTransactions.type, "payment_in"),
+      inArray(cashRegisterTransactions.orderId, paidOrderIds),
+    ))
+    .groupBy(cashRegisterTransactions.orderId);
+  const firstPaymentId = new Map(firstPayments.map((r) => [r.orderId!, Number(r.firstId)]));
+  // Rows detached from a deleted order can only be matched within the period.
+  const seenDetached = new Set<string>();
+
+  const entries: CashBookEntry[] = netChangeOut(raw).map((t) => {
+    const meta   = classify(t);
+    const amount = parseFloat(t.amount);
+    const kind   = cashBookKind(t.type);
+
+    let paymentType: CashBookEntry["paymentType"] = null;
+    if (kind === "payment") {
+      let hadEarlierPayment: boolean;
+      if (t.orderId != null) {
+        hadEarlierPayment = (firstPaymentId.get(t.orderId) ?? t.id) < t.id;
+      } else {
+        const key = orderKey(t);
+        hadEarlierPayment = key != null && seenDetached.has(key);
+        if (key != null) seenDetached.add(key);
+      }
+      paymentType = t.description.startsWith("Partial payment") ? "dp"
+        : hadEarlierPayment ? "balance"
+        : "full";
+    }
+
+    return {
+      id:            t.id,
+      createdAt:     t.createdAt,
+      day:           isoDayBiz(t.createdAt),
+      direction:     t.direction,
+      kind,
+      paymentType,
+      amount,
+      tendered:      t.changeNetted ? r2(amount + t.changeNetted) : null,
+      change:        t.changeNetted ? r2(t.changeNetted) : null,
+      orderId:       t.orderId,
+      // Deleting an order detaches its ledger rows — fall back to the order
+      // number written into the description.
+      orderNumber:   t.orderNumber ?? t.description.match(/for order (\S+)/)?.[1] ?? null,
+      customerName:  t.customerName,
+      description:   t.description,
+      categoryLabel: meta.label,
+      categoryColor: meta.color,
+    };
+  });
+
+  // ── Roll up totals and per-day figures from the movements ──
+  const byDay = new Map<string, CashBookDay>();
+  let running = openingBalance;
+  let cashIn = 0, cashOut = 0, orderIncome = 0;
+  let paymentCount = 0, dpCount = 0, outCount = 0;
+
+  for (const e of entries) {
+    let d = byDay.get(e.day);
+    if (!d) {
+      d = { day: e.day, opening: r2(running), cashIn: 0, cashOut: 0, closing: r2(running), payments: 0, entries: 0 };
+      byDay.set(e.day, d);
+    }
+    if (e.direction === "income") {
+      d.cashIn += e.amount; cashIn += e.amount; running += e.amount;
+    } else {
+      d.cashOut += e.amount; cashOut += e.amount; running -= e.amount; outCount++;
+    }
+    d.closing = r2(running);
+    d.entries++;
+    if (e.kind === "payment") {
+      d.payments++; paymentCount++; orderIncome += e.amount;
+      if (e.paymentType === "dp") dpCount++;
+    }
+  }
+
+  // List every day of the period (up to today) when the span is short enough,
+  // so quiet days show up too; long custom ranges only list active days.
+  const today = isoDayBiz(new Date());
+  const last  = toISO < today ? toISO : today;
+  const span  = (Date.parse(`${last}T00:00:00Z`) - Date.parse(`${fromISO}T00:00:00Z`)) / 86_400_000 + 1;
+  let days: CashBookDay[];
+  if (span <= FILL_DAYS_MAX) {
+    days = [];
+    let carry = r2(openingBalance);
+    for (let day = fromISO; day <= last; day = addDaysISO(day, 1)) {
+      const d = byDay.get(day)
+        ?? { day, opening: carry, cashIn: 0, cashOut: 0, closing: carry, payments: 0, entries: 0 };
+      days.push(d);
+      carry = d.closing;
+    }
+  } else {
+    days = [...byDay.values()];
+  }
+  for (const d of days) { d.cashIn = r2(d.cashIn); d.cashOut = r2(d.cashOut); }
+
+  const closingBalance = r2(running);
+  const recordedEnd    = raw.length > 0 ? parseFloat(raw[raw.length - 1].balanceAfter) : openingBalance;
+
+  return {
+    openingBalance: r2(openingBalance),
+    closingBalance,
+    cashIn:         r2(cashIn),
+    cashOut:        r2(cashOut),
+    orderIncome:    r2(orderIncome),
+    paymentCount,
+    dpCount,
+    outCount,
+    drift:          r2(recordedEnd - closingBalance),
+    entries,
+    days,
+  };
 }
 
 // ─── Recap (Buku Besar) ───────────────────────────────────────────────────────

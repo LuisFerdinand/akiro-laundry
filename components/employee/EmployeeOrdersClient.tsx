@@ -15,6 +15,7 @@ import { updateOrderStatus, type OrderWithDetails, type EmployeeOrderFilters } f
 import { DeleteOrderButton } from "@/components/shared/DeleteOrderButton";
 import { EditedBadge } from "@/components/shared/EditedBadge";
 import { WhatsAppNotify } from "@/components/employee/WhatsAppNotify";
+import { formatDateBiz } from "@/lib/utils/business-time";
 import type { Order } from "@/lib/db/schema";
 import type { WaTemplateData } from "@/lib/actions/wa-templates";
 
@@ -116,7 +117,7 @@ function OrderRow({
             </p>
             <div className="flex items-center gap-1.5">
               <p className="text-[10px] text-muted-foreground font-mono truncate">{order.orderNumber}</p>
-              <EditedBadge editCount={order.editCount} compact />
+              <EditedBadge editCount={order.editCount} editedAfterPaymentAt={order.editedAfterPaymentAt} compact />
             </div>
           </div>
         </Link>
@@ -138,7 +139,7 @@ function OrderRow({
       </td>
 
       <td className={`${cell} whitespace-nowrap`}>
-        <span className="text-[11px] text-muted-foreground">{new Date(order.createdAt).toLocaleDateString()}</span>
+        <span className="text-[11px] text-muted-foreground">{formatDateBiz(order.createdAt)}</span>
       </td>
 
       <td className={cell}>

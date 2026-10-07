@@ -136,6 +136,12 @@ export const orders = pgTable("orders", {
   // Bumped only by updateOrder() (correcting customer/items/notes) — status
   // changes and payment do NOT increment this. Drives the "Edited ×N" badge.
   editCount: integer("edit_count").default(0).notNull(),
+  // Last time the order was changed (items, customer, notes or special
+  // requests) while a payment — full or DP — was already on file. Such edits
+  // never touch the cash register. Once set, `amountPaid` holds exactly the
+  // money applied to the order (see lib/utils/order-payment.ts); null means the
+  // order hasn't been edited since it was paid.
+  editedAfterPaymentAt: timestamp("edited_after_payment_at"),
 
   // ── Created by ──
   // Name of the logged-in staff member who created the order, read from the

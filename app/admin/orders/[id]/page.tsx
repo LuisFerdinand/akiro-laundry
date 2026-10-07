@@ -4,6 +4,8 @@ import { getWaTemplateData }               from "@/lib/actions/wa-templates";
 import { notFound }                        from "next/navigation";
 import { formatUSD, ORDER_STATUS_LABELS }  from "@/lib/utils/order-form";
 import Link                                from "next/link";
+import { BUSINESS_TIMEZONE }               from "@/lib/utils/business-time";
+import { paymentBalance }                  from "@/lib/utils/order-payment";
 import {
   ArrowLeft, User, Phone, FileText, CreditCard, Calendar,
   Hash, BadgeCheck, AlertTriangle, Clock, Waves,
@@ -263,6 +265,9 @@ export default async function AdminOrderDetailPage({
   const total     = parseFloat(order.totalPrice);
   const amountPaidNum = order.amountPaid ? parseFloat(order.amountPaid) : 0;
   const balanceDue     = parseFloat((total - amountPaidNum).toFixed(2));
+  // Paid orders edited down after payment keep the cash that came in — the
+  // excess is shown so staff can refund it by hand.
+  const { overpaid }   = paymentBalance(order);
 
   const servicesSummary =
     order.items.length === 1
@@ -294,13 +299,14 @@ export default async function AdminOrderDetailPage({
               }}>
                 {order.orderNumber}
               </h1>
-              <EditedBadge editCount={order.editCount} />
+              <EditedBadge editCount={order.editCount} editedAfterPaymentAt={order.editedAfterPaymentAt} />
             </div>
             <p style={{ fontSize: "13px", color: "#94a3b8" }}>
               Kria iha{" "}
               {new Date(order.createdAt).toLocaleString("pt-TL", {
                 dateStyle: "long",
                 timeStyle: "short",
+                timeZone: BUSINESS_TIMEZONE,
               })}
             </p>
           </div>
@@ -316,7 +322,9 @@ export default async function AdminOrderDetailPage({
               color: isPaid ? "#16a34a" : isPartial ? "#b45309" : "#d97706",
             }}>
               {isPaid ? <BadgeCheck size={13} /> : <AlertTriangle size={13} />}
-              {isPaid ? "Selu ona" : isPartial ? `DP selu · Due ${formatUSD(balanceDue)}` : "Seidauk selu"}
+              {isPaid
+                ? overpaid > 0 ? `Selu ona · Overpaid ${formatUSD(overpaid)}` : "Selu ona"
+                : isPartial ? `DP selu · Due ${formatUSD(balanceDue)}` : "Seidauk selu"}
             </span>
 
             <span style={{
@@ -343,16 +351,14 @@ export default async function AdminOrderDetailPage({
               templateData={waTemplateData}
             />
 
-            {order.paymentStatus === "unpaid" && (
-              <Link href={`/admin/orders/${order.id}/edit`} style={{
-                display: "inline-flex", alignItems: "center", gap: "6px",
-                padding: "6px 14px", borderRadius: "999px",
-                background: "#edf7fd", border: "1.5px solid #b6def5",
-                fontSize: "12px", fontWeight: 700, color: "#1a7fba", textDecoration: "none",
-              }}>
-                <Pencil size={13} /> Edit
-              </Link>
-            )}
+            <Link href={`/admin/orders/${order.id}/edit`} style={{
+              display: "inline-flex", alignItems: "center", gap: "6px",
+              padding: "6px 14px", borderRadius: "999px",
+              background: "#edf7fd", border: "1.5px solid #b6def5",
+              fontSize: "12px", fontWeight: 700, color: "#1a7fba", textDecoration: "none",
+            }}>
+              <Pencil size={13} /> Edit
+            </Link>
 
             <DeleteOrderButton
               orderId={order.id}
@@ -397,7 +403,7 @@ export default async function AdminOrderDetailPage({
             <SpecialRequestsPanel
               orderId={order.id}
               specialRequests={order.specialRequests}
-              isPaid={order.paymentStatus !== "unpaid"}
+              hasPayment={order.paymentStatus !== "unpaid"}
             />
           </SectionCard>
 
@@ -416,6 +422,7 @@ export default async function AdminOrderDetailPage({
                 label="Est. Remata"
                 value={new Date(order.estimatedDoneAt).toLocaleDateString("pt-TL", {
                   dateStyle: "medium",
+                  timeZone: BUSINESS_TIMEZONE,
                 })}
               />
             )}
@@ -441,6 +448,13 @@ export default async function AdminOrderDetailPage({
                   value={formatUSD(balanceDue)}
                 />
               )}
+              {overpaid > 0 && (
+                <DetailRow
+                  icon={AlertTriangle}
+                  label="Overpaid — refund"
+                  value={formatUSD(overpaid)}
+                />
+              )}
               <DetailRow
                 icon={CreditCard}
                 label="Troku"
@@ -454,6 +468,7 @@ export default async function AdminOrderDetailPage({
                     ? new Date(order.paidAt).toLocaleString("pt-TL", {
                         dateStyle: "medium",
                         timeStyle: "short",
+                        timeZone: BUSINESS_TIMEZONE,
                       })
                     : "—"
                 }
@@ -582,6 +597,7 @@ export default async function AdminOrderDetailPage({
                   {new Date(date).toLocaleString("pt-TL", {
                     month: "short", day: "numeric",
                     hour: "2-digit", minute: "2-digit",
+                    timeZone: BUSINESS_TIMEZONE,
                   })}
                 </span>
               </div>

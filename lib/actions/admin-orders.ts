@@ -17,6 +17,7 @@ import type { Order, OrderItem, OrderSpecialRequest } from "@/lib/db/schema";
 import { eq, ilike, and, desc, or, count, gt, gte, lte, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { startOfDayBiz, subDaysBiz, startOfMonthBiz } from "@/lib/utils/business-time";
+import { sumRevenue } from "@/lib/utils/revenue";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -247,6 +248,7 @@ export async function getRevenueStats(): Promise<RevenueStats> {
     .select({
       totalPrice:    orders.totalPrice,
       paymentStatus: orders.paymentStatus,
+      amountPaid:    orders.amountPaid,
       paidAt:        orders.paidAt,
       createdAt:     orders.createdAt,
     })
@@ -256,16 +258,12 @@ export async function getRevenueStats(): Promise<RevenueStats> {
   // Includes "partial" (DP) orders — they still have an outstanding balance.
   const unpaid = all.filter((o) => o.paymentStatus !== "paid");
 
-  // Revenue counted on paidAt date, falls back to createdAt for legacy rows
-  const sum = (rows: typeof paid, from: Date) =>
-    rows
-      .filter((o) => new Date(o.paidAt ?? o.createdAt) >= from)
-      .reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0);
-
+  // Paid orders: full price on paidAt (createdAt for legacy rows). Partial (DP)
+  // orders: the amount received so far — that cash is already in the drawer.
   return {
-    todayRevenue:    sum(paid, today),
-    weekRevenue:     sum(paid, week),
-    monthRevenue:    sum(paid, month),
+    todayRevenue:    sumRevenue(all, today),
+    weekRevenue:     sumRevenue(all, week),
+    monthRevenue:    sumRevenue(all, month),
     totalPaidOrders: paid.length,
     totalUnpaid:     unpaid.length,
   };
@@ -303,6 +301,7 @@ export async function deleteOrder(id: number): Promise<OrderActionResult> {
     // The order's cash-register rows are kept (just detached) — refresh the
     // finance / register views that read them.
     revalidatePath("/admin/cash-register");
+    revalidatePath("/admin/daily-cash");
     revalidatePath("/admin/buku-kecil");
     revalidatePath("/admin/buku-besar");
     return { success: true };

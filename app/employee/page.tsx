@@ -3,6 +3,7 @@ import { getDashboardStats, getOrders } from "@/lib/actions/orders";
 import { formatUSD, ORDER_STATUS_COLORS, ORDER_STATUS_LABELS } from "@/lib/utils/order-form";
 import { Badge }   from "@/components/ui/badge";
 import Link        from "next/link";
+import { hourBiz, formatBiz } from "@/lib/utils/business-time";
 import {
   ShoppingBag, Clock, CheckCircle2, TrendingUp, ChevronRight, Sparkles, AlertCircle,
 } from "lucide-react";
@@ -45,7 +46,7 @@ export default async function EmployeeDashboard() {
   ];
 
   const now = new Date();
-  const hour = now.getHours();
+  const hour = hourBiz(now);
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   return (
@@ -57,7 +58,7 @@ export default async function EmployeeDashboard() {
         <div className="akiro-greeting-orb akiro-greeting-orb--2" />
         <div className="relative z-10">
           <p className="text-white/70 text-xs font-semibold tracking-wide uppercase mb-0.5">
-            {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+            {formatBiz(now, { weekday: "long", month: "long", day: "numeric" })}
           </p>
           <h1 className="text-white font-extrabold text-2xl leading-tight" style={{ fontFamily: "Sora, sans-serif" }}>
             {greeting} 👋

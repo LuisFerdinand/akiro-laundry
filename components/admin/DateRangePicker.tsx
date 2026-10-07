@@ -18,6 +18,8 @@ export interface DateRangePickerProps {
   align?: "left" | "right";
   /** Compact trigger styling for tight toolbars. */
   size?: "sm" | "md";
+  /** Fires whenever the popover opens or closes. */
+  onOpenChange?: (open: boolean) => void;
 }
 
 const fmt = (d?: Date) => (d ? format(d, "MMM d, yyyy") : "");
@@ -48,14 +50,27 @@ export function DateRangePicker({
   minDate,
   align = "left",
   size = "md",
+  onOpenChange,
 }: DateRangePickerProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  // Latest callback, so the outside-click listener never calls a stale one.
+  const onOpenChangeRef = useRef(onOpenChange);
+  useEffect(() => { onOpenChangeRef.current = onOpenChange; });
+
+  const setOpen = (next: boolean) => {
+    setOpenState(next);
+    onOpenChangeRef.current?.(next);
+  };
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpenState(false);
+        onOpenChangeRef.current?.(false);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -125,7 +140,7 @@ export function DateRangePicker({
     <div ref={ref} style={{ position: "relative" }}>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen(!open)}
         style={{
           display: "flex",
           alignItems: "center",

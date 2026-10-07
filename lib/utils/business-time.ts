@@ -60,6 +60,43 @@ export function formatBiz(date: Date, opts: Intl.DateTimeFormatOptions): string 
   return new Intl.DateTimeFormat("en-US", { ...opts, timeZone: BUSINESS_TIMEZONE }).format(date);
 }
 
+// ─── Calendar-day helpers (YYYY-MM-DD, business-local) ────────────────────────
+
+/** Business-local calendar date of `date`, as YYYY-MM-DD. */
+export function isoDayBiz(date: Date): string {
+  return shiftToBusinessTz(date).toISOString().slice(0, 10);
+}
+
+/** First instant (00:00 business-local) of the calendar day `iso`. */
+export function bizDayStart(iso: string): Date {
+  return new Date(Date.parse(`${iso}T00:00:00.000Z`) - OFFSET_MS);
+}
+
+/** Last instant (23:59:59.999 business-local) of the calendar day `iso`. */
+export function bizDayEnd(iso: string): Date {
+  return new Date(bizDayStart(iso).getTime() + 86_400_000 - 1);
+}
+
+/** Pure calendar arithmetic on a YYYY-MM-DD string (no timezone involved). */
+export function addDaysISO(iso: string, n: number): string {
+  const d = new Date(`${iso}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/** "Oct 7, 2026, 3:42 PM" in Timor-Leste time. Accepts Date | string | number. */
+export function formatDateTimeBiz(value: Date | string | number): string {
+  return formatBiz(new Date(value), {
+    year: "numeric", month: "short", day: "numeric",
+    hour: "numeric", minute: "2-digit",
+  });
+}
+
+/** "10/7/2026" in Timor-Leste time. Accepts Date | string | number. */
+export function formatDateBiz(value: Date | string | number): string {
+  return formatBiz(new Date(value), { year: "numeric", month: "numeric", day: "numeric" });
+}
+
 // ─── Finance period presets ──────────────────────────────────────────────────
 // Pure helper (no "use server") shared by the Buku Besar / Buku Kecil pages and
 // their clients. Boundaries follow the same plain-Date convention as

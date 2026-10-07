@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ADD COLUMN "edited_after_payment_at" timestamp;

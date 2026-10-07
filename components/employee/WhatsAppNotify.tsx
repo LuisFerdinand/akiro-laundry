@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { MessageCircle } from "lucide-react";
 import { ORDER_STATUS_LABELS, formatUSD } from "@/lib/utils/order-form";
 import { parseE164 } from "@/lib/utils/phone";
+import { hourBiz } from "@/lib/utils/business-time";
 import { interpolate } from "@/lib/utils/wa-message";
 import type { Order } from "@/lib/db/schema";
 import type { WaTemplateData } from "@/lib/actions/wa-templates";
@@ -200,7 +201,7 @@ export function WhatsAppNotify({
       cashierName: session?.user?.name,
       reviewUrl,
       templateData,
-      sendHour: new Date().getHours(),
+      sendHour: hourBiz(new Date()),
     });
 
     const parsed     = parseE164(customerPhone);

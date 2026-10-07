@@ -3,15 +3,17 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Loader2, Lock, MessageSquarePlus, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Trash2, Loader2, Info, MessageSquarePlus, ArrowUp, ArrowDown } from "lucide-react";
 import { addSpecialRequest, removeSpecialRequest } from "@/lib/actions/special-requests";
 import { formatUSD } from "@/lib/utils/order-form";
+import { formatDateTimeBiz } from "@/lib/utils/business-time";
 import type { OrderSpecialRequest } from "@/lib/db/schema";
 
 interface Props {
   orderId:         number;
   specialRequests: OrderSpecialRequest[];
-  isPaid:          boolean;
+  /** A payment (full or DP) is on file — changes still work but never touch the cash. */
+  hasPayment:      boolean;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -22,7 +24,7 @@ const inputStyle: React.CSSProperties = {
   background: "#f8fafc", fontFamily: "inherit",
 };
 
-export function SpecialRequestsPanel({ orderId, specialRequests, isPaid }: Props) {
+export function SpecialRequestsPanel({ orderId, specialRequests, hasPayment }: Props) {
   const router = useRouter();
   const [adding,      setAdding]      = useState(false);
   const [description, setDescription] = useState("");
@@ -85,44 +87,48 @@ export function SpecialRequestsPanel({ orderId, specialRequests, isPaid }: Props
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ fontSize: "13px", fontWeight: 600, color: "#1e293b" }}>{r.description}</p>
               <p style={{ fontSize: "10px", color: "#94a3b8", marginTop: "1px" }}>
-                {new Date(r.createdAt).toLocaleString()}
+                {formatDateTimeBiz(r.createdAt)}
               </p>
             </div>
             <span style={{ fontSize: "13px", fontWeight: 800, color: isPositive ? "#16a34a" : "#e11d48", flexShrink: 0 }}>
               {isPositive ? "+" : "−"}{formatUSD(Math.abs(value))}
             </span>
-            {!isPaid && (
-              <button
-                onClick={() => handleDelete(r.id)}
-                disabled={isPending && deletingId === r.id}
-                style={{
-                  flexShrink: 0, background: "#fff1f2", border: "1px solid #fda4af",
-                  borderRadius: "6px", width: 26, height: 26,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: "pointer",
-                }}
-              >
-                {isPending && deletingId === r.id
-                  ? <Loader2 size={11} className="animate-spin" style={{ color: "#be123c" }} />
-                  : <Trash2 size={11} style={{ color: "#be123c" }} />}
-              </button>
-            )}
+            <button
+              onClick={() => handleDelete(r.id)}
+              disabled={isPending && deletingId === r.id}
+              aria-label="Remove special request"
+              style={{
+                flexShrink: 0, background: "#fff1f2", border: "1px solid #fda4af",
+                borderRadius: "6px", width: 26, height: 26,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              {isPending && deletingId === r.id
+                ? <Loader2 size={11} className="animate-spin" style={{ color: "#be123c" }} />
+                : <Trash2 size={11} style={{ color: "#be123c" }} />}
+            </button>
           </div>
         );
       })}
 
-      {isPaid ? (
+      {hasPayment && (
         <div style={{
-          display: "flex", alignItems: "center", gap: "8px",
+          display: "flex", alignItems: "flex-start", gap: "8px",
           padding: "9px 12px", borderRadius: "8px",
-          background: "#f8fafc", border: "1.5px solid #e2e8f0",
+          background: "#fffbeb", border: "1.5px solid #fde68a",
         }}>
-          <Lock size={12} style={{ color: "#94a3b8", flexShrink: 0 }} />
-          <p style={{ fontSize: "11px", color: "#94a3b8" }}>
-            This order has a payment on file — special requests are locked to keep the total consistent with what was collected.
+          <Info size={12} style={{ color: "#b45309", flexShrink: 0, marginTop: "1px" }} />
+          <p style={{ fontSize: "11px", color: "#92400e", lineHeight: 1.45 }}>
+            This order already has a payment. Changes here update the total only — the cash register isn&apos;t touched.
+            A higher total shows as a balance due; a lower one as overpaid. The order is marked as edited.
           </p>
         </div>
-      ) : adding ? (
+      )}
+
+      {error && !adding && <p style={{ fontSize: "11px", fontWeight: 600, color: "#be123c" }}>{error}</p>}
+
+      {adding ? (
         <div style={{
           padding: "12px", borderRadius: "10px",
           border: "1.5px solid #b6def5", background: "#edf7fd",

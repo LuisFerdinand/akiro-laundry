@@ -14,6 +14,8 @@ import {
   Clock, FileText, Droplets, Wind, Hash, Pencil, UserCheck,
 } from "lucide-react";
 import Link from "next/link";
+import { formatDateTimeBiz } from "@/lib/utils/business-time";
+import { paymentBalance } from "@/lib/utils/order-payment";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -87,6 +89,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
   if (!order) notFound();
 
   const totalPrice       = safeFloat(order.totalPrice);
+  const balance          = paymentBalance(order);
   const statusStyle      = STATUS_STYLES[order.status] ?? STATUS_STYLES.pending;
   const firstServiceName = order.items[0]?.serviceName ?? "—";
 
@@ -110,7 +113,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
           <h1 className="font-black text-lg leading-tight tracking-tight" style={{ color: "#1e293b" }}>{order.customerName}</h1>
           <div className="flex items-center gap-2 mt-0.5">
             <p className="font-mono text-xs" style={{ color: "#94a3b8" }}>{order.orderNumber}</p>
-            <EditedBadge editCount={order.editCount} />
+            <EditedBadge editCount={order.editCount} editedAfterPaymentAt={order.editedAfterPaymentAt} />
           </div>
         </div>
         <span className="shrink-0 text-[10px] font-black uppercase tracking-wide"
@@ -124,12 +127,12 @@ export default async function OrderDetailPage({ params }: PageProps) {
         <div style={{ padding: "0 16px" }}>
           <DetailRow icon={User}     label="Customer" value={order.customerName}                          theme="brand"  />
           <DetailRow icon={Phone}    label="Phone"    value={order.customerPhone}                         theme="green"  />
-          <DetailRow icon={Calendar} label="Date"     value={new Date(order.createdAt).toLocaleString()}  theme="violet" />
+          <DetailRow icon={Calendar} label="Date"     value={formatDateTimeBiz(order.createdAt)} theme="violet" />
           {order.createdByName && (
             <DetailRow icon={UserCheck} label="Created By" value={order.createdByName} theme="amber" />
           )}
           {order.estimatedDoneAt && (
-            <DetailRow icon={Clock} label="Est. Done" value={new Date(order.estimatedDoneAt).toLocaleString()} theme="rose" />
+            <DetailRow icon={Clock} label="Est. Done" value={formatDateTimeBiz(order.estimatedDoneAt)} theme="rose" />
           )}
           {order.notes && (
             <DetailRow icon={FileText} label="Notes" value={order.notes} theme="slate" />
@@ -212,7 +215,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
           <SpecialRequestsPanel
             orderId={order.id}
             specialRequests={order.specialRequests}
-            isPaid={order.paymentStatus !== "unpaid"}
+            hasPayment={order.paymentStatus !== "unpaid"}
           />
         </div>
       </SectionCard>
@@ -231,10 +234,20 @@ export default async function OrderDetailPage({ params }: PageProps) {
         {order.paymentStatus === "partial" && (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px", paddingTop: "10px", borderTop: "1.5px solid rgba(255,255,255,0.2)" }}>
             <span className="text-[11px] font-bold" style={{ color: "rgba(255,255,255,0.75)" }}>
-              DP paid: {formatUSD(safeFloat(order.amountPaid))}
+              {order.editedAfterPaymentAt ? "Paid so far" : "DP paid"}: {formatUSD(balance.received)}
             </span>
             <span className="text-sm font-black" style={{ color: "#fde68a" }}>
-              Due: {formatUSD(totalPrice - safeFloat(order.amountPaid))}
+              Due: {formatUSD(balance.balanceDue)}
+            </span>
+          </div>
+        )}
+        {balance.overpaid > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginTop: "10px", paddingTop: "10px", borderTop: "1.5px solid rgba(255,255,255,0.2)" }}>
+            <span className="text-[11px] font-bold" style={{ color: "rgba(255,255,255,0.75)" }}>
+              Paid: {formatUSD(balance.received)} · refund the difference from the drawer
+            </span>
+            <span className="text-sm font-black shrink-0" style={{ color: "#fecdd3" }}>
+              Overpaid: {formatUSD(balance.overpaid)}
             </span>
           </div>
         )}
@@ -258,14 +271,12 @@ export default async function OrderDetailPage({ params }: PageProps) {
         templateData={waTemplateData}
       />
 
-      {/* Edit / Delete order */}
-      {order.paymentStatus === "unpaid" && (
-        <Link href={`/employee/orders/${order.id}/edit`}
-          className="flex items-center justify-center gap-2 w-full h-11 rounded-md font-black text-sm transition-all active:scale-[0.98]"
-          style={{ background: "#edf7fd", border: "1.5px solid #b6def5", color: "#1a7fba" }}>
-          <Pencil size={14} /> Edit Order
-        </Link>
-      )}
+      {/* Edit / Delete order — paid orders stay editable; edits never touch the cash */}
+      <Link href={`/employee/orders/${order.id}/edit`}
+        className="flex items-center justify-center gap-2 w-full h-11 rounded-md font-black text-sm transition-all active:scale-[0.98]"
+        style={{ background: "#edf7fd", border: "1.5px solid #b6def5", color: "#1a7fba" }}>
+        <Pencil size={14} /> Edit Order
+      </Link>
       <DeleteOrderButton
         orderId={order.id}
         orderNumber={order.orderNumber}

@@ -144,6 +144,7 @@ export async function setCashRegisterBalance(
 
     revalidatePath("/employee/orders");
     revalidatePath("/admin/cash-register");
+    revalidatePath("/admin/daily-cash");
     revalidatePath("/employee/cash-register");
     revalidatePath("/admin");
     revalidatePath("/admin/buku-kecil");
@@ -198,6 +199,7 @@ export async function recordManualTransaction(
     revalidatePath("/admin/buku-besar");
 
     revalidatePath("/admin/cash-register");
+    revalidatePath("/admin/daily-cash");
     revalidatePath("/employee/cash-register");
     revalidatePath("/admin");
     return { success: true, newBalance };
@@ -305,6 +307,7 @@ export async function processPayment(
     if (paymentMethod === "cash") {
       revalidatePath("/employee/cash-register");
       revalidatePath("/admin/cash-register");
+      revalidatePath("/admin/daily-cash");
       revalidatePath("/admin");
       // A cash payment writes a payment_in ledger row — the finance pages read
       // that same table, so they must be revalidated too (recordManualTransaction

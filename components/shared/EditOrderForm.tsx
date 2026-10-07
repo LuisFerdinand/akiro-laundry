@@ -4,7 +4,7 @@
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronRight, ChevronLeft, Loader2, Save, User, ShoppingBag, ClipboardList } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Save, User, ShoppingBag, ClipboardList, Wallet } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button }       from "@/components/ui/button";
 import { StepProgress } from "@/components/employee/StepProgress";
@@ -48,6 +48,15 @@ export interface EditableOrder {
     soapId:           number | null;
     pewangiId:        number | null;
   }[];
+  /** Kept as-is by the edit (managed on the order page) but part of the total. */
+  specialRequests: { description: string; priceAdjustment: string }[];
+  /** Set when a payment (full or DP) is already on file. */
+  payment: {
+    status:   "partial" | "paid";
+    /** Money already applied to the order (lib/utils/order-payment.ts). */
+    received: number;
+    method:   string | null;
+  } | null;
 }
 
 interface Props {
@@ -74,6 +83,47 @@ const STEP_TITLES: Record<OrderFormStep, {
   },
 };
 
+// ─── Payment notice ───────────────────────────────────────────────────────────
+// Shown while editing an order that already has a payment: the edit never
+// touches the cash register, so it spells out what the new total means.
+
+function PaymentNotice({ payment, newTotal }: {
+  payment:  NonNullable<EditableOrder["payment"]>;
+  newTotal: number;
+}) {
+  const diff = Math.round((newTotal - payment.received) * 100) / 100;
+  const tone =
+    diff > 0 ? {
+      color: "#92400e", bg: "#fffbeb", border: "#fde68a",
+      text: `New total ${formatUSD(newTotal)} — ${formatUSD(diff)} will be due. Collect it with the Pay button after saving.`,
+    }
+    : diff < 0 ? {
+      color: "#9f1239", bg: "#fff1f2", border: "#fecdd3",
+      text: `New total ${formatUSD(newTotal)} — the customer overpaid ${formatUSD(-diff)}. If you refund it from the drawer, record the cash out in Buku Kecil so the count stays right.`,
+    }
+    : {
+      color: "#166534", bg: "#f0fdf4", border: "#bbf7d0",
+      text: payment.status === "paid"
+        ? "The new total matches what was received — the order stays paid."
+        : "The new total matches what was received — the order will be marked paid.",
+    };
+
+  return (
+    <div style={{ display: "flex", gap: 10, padding: "10px 12px", borderRadius: "8px", background: tone.bg, border: `1.5px solid ${tone.border}` }}>
+      <Wallet size={15} style={{ color: tone.color, flexShrink: 0, marginTop: 1 }} />
+      <div className="min-w-0">
+        <p className="text-xs font-black" style={{ color: tone.color }}>
+          {payment.status === "paid" ? "Already paid" : "DP on file"} — {formatUSD(payment.received)} received
+          {payment.method ? ` (${payment.method.toUpperCase()})` : ""}
+        </p>
+        <p className="text-[11px] font-medium mt-0.5 leading-snug" style={{ color: tone.color, opacity: 0.85 }}>
+          Saving won&apos;t touch the cash register. {tone.text}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function EditOrderForm({ order, backHref }: Props) {
@@ -94,7 +144,12 @@ export function EditOrderForm({ order, backHref }: Props) {
       pewangiId:         it.pewangiId,
     })),
     notes: order.notes ?? "",
-    specialRequests: [],
+    // Shown in the review and counted in the total; the server keeps the
+    // order's special requests as they are.
+    specialRequests: order.specialRequests.map((r) => ({
+      description:     r.description,
+      priceAdjustment: parseFloat(r.priceAdjustment),
+    })),
   };
 
   const [step,        setStep]        = useState<OrderFormStep>("service");
@@ -122,6 +177,7 @@ export function EditOrderForm({ order, backHref }: Props) {
     formData.items.map((it) => services.find((s) => s.id === it.servicePricingId) ?? null),
     formData.items.map((it) => soaps.find((s) => s.id === it.soapId) ?? null),
     formData.items.map((it) => pewangis.find((p) => p.id === it.pewangiId) ?? null),
+    formData.specialRequests,
   );
 
   const handleNext = () => {
@@ -150,7 +206,14 @@ export function EditOrderForm({ order, backHref }: Props) {
     startTransition(async () => {
       const result = await updateOrder(order.id, formData);
       if (result.success) {
-        toast.success(`Order ${order.orderNumber} updated`);
+        const p = result.payment;
+        if (p && p.balanceDue > 0) {
+          toast.warning(`Order ${order.orderNumber} updated — ${formatUSD(p.balanceDue)} is now due`);
+        } else if (p && p.overpaid > 0) {
+          toast.warning(`Order ${order.orderNumber} updated — customer overpaid ${formatUSD(p.overpaid)}`);
+        } else {
+          toast.success(`Order ${order.orderNumber} updated`);
+        }
         router.push(backHref);
         router.refresh();
       } else {
@@ -177,6 +240,10 @@ export function EditOrderForm({ order, backHref }: Props) {
             <p className="text-xs text-slate-400 font-medium mt-0.5">{subtitle}</p>
           </div>
         </div>
+
+        {order.payment && !loading && (
+          <PaymentNotice payment={order.payment} newTotal={breakdown.totalPrice} />
+        )}
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">

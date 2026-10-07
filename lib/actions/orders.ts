@@ -21,9 +21,11 @@ import type {
   OrderItem,
   OrderSpecialRequest,
 } from "@/lib/db/schema";
-import { eq, ilike, desc, and, or } from "drizzle-orm";
+import { eq, ilike, desc, and, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { startOfDayBiz } from "@/lib/utils/business-time";
+import { sumRevenue } from "@/lib/utils/revenue";
+import { paymentAfterTotalChange, paymentBalance } from "@/lib/utils/order-payment";
 import {
   generateOrderNumber,
   calculateItemPrice,
@@ -435,12 +437,19 @@ export async function createOrder(formData: OrderFormData): Promise<CreateOrderR
 // ─── Update Order ─────────────────────────────────────────────────────────────
 // Corrects customer/service/notes data on an existing order (typo fixes, wrong
 // weight, wrong service picked, etc). Each successful edit bumps `editCount` so
-// staff can see an order was changed after creation. Paid orders are locked —
-// edit the total after payment and the receipt no longer matches what was collected.
+// staff can see an order was changed after creation.
+//
+// Paid and DP orders can be edited too. That never touches the cash register —
+// the money already received stays as recorded — but the payment status follows
+// the new total (lib/utils/order-payment.ts): a higher total reopens a balance
+// due, a lower one leaves the order paid with an overpayment to refund by hand.
+// Such edits also stamp `editedAfterPaymentAt` for the "Edited after payment" flag.
 
 export interface UpdateOrderResult {
   success: boolean;
   error?:  string;
+  /** Payment outcome of the edit — only for orders that already had a payment. */
+  payment?: { status: "partial" | "paid"; balanceDue: number; overpaid: number };
 }
 
 export async function updateOrder(
@@ -456,17 +465,6 @@ export async function updateOrder(
 
     const [existing] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
     if (!existing) return { success: false, error: "Order not found." };
-    if (existing.paymentStatus !== "unpaid") {
-      // Editing would change totalPrice out from under any DP already collected
-      // (amountPaid), so the order is locked once any payment — full or partial
-      // — has been applied.
-      return {
-        success: false,
-        error: existing.paymentStatus === "paid"
-          ? "This order has already been paid and can no longer be edited."
-          : "This order has a partial payment (DP) on file and can no longer be edited.",
-      };
-    }
 
     // ── 1. Resolve customer — reassign to a picked existing customer, or
     //        update the current one in place so typos get fixed rather than
@@ -520,8 +518,16 @@ export async function updateOrder(
       }),
     );
 
-    // ── 3. Sum totals ─────────────────────────────────────────────────────────
-    const totalPrice = resolvedItems.reduce((sum, r) => sum + r.breakdown.subtotal, 0);
+    // ── 3. Sum totals — items + the special requests already on the order
+    //        (managed separately on the order page, so they're kept as-is) ───
+    const [requestsSum] = await db
+      .select({ total: sql<string>`coalesce(sum(${orderSpecialRequests.priceAdjustment}), 0)` })
+      .from(orderSpecialRequests)
+      .where(eq(orderSpecialRequests.orderId, orderId));
+    const totalPrice = Math.round((
+      resolvedItems.reduce((sum, r) => sum + r.breakdown.subtotal, 0) +
+      parseFloat(requestsSum?.total ?? "0")
+    ) * 100) / 100;
 
     // ── 4. Replace order items wholesale — simplest way to keep them in sync
     //        with whatever the staffer edited in the form ─────────────────────
@@ -547,15 +553,20 @@ export async function updateOrder(
       })),
     );
 
-    // ── 5. Update order header + bump the edit counter ─────────────────────────
+    // ── 5. Update order header + bump the edit counter. A payment on file
+    //        stays as received — only its status follows the new total. ──────
+    const now     = new Date();
+    const hasPaid = existing.paymentStatus !== "unpaid";
+    const payment = paymentAfterTotalChange(existing, totalPrice, now);
     await db
       .update(orders)
       .set({
         customerId,
-        totalPrice: totalPrice.toString(),
+        totalPrice: totalPrice.toFixed(2),
         notes:      notes.trim() || null,
         editCount:  existing.editCount + 1,
-        updatedAt:  new Date(),
+        updatedAt:  now,
+        ...(hasPaid && payment),
       })
       .where(eq(orders.id, orderId));
 
@@ -563,7 +574,18 @@ export async function updateOrder(
     revalidatePath(`/employee/orders/${orderId}`);
     revalidatePath("/admin/orders");
     revalidatePath(`/admin/orders/${orderId}`);
-    return { success: true };
+    revalidatePath("/admin");
+
+    if (!hasPaid) return { success: true };
+    const balance = paymentBalance({ ...existing, ...payment, totalPrice: totalPrice.toFixed(2) });
+    return {
+      success: true,
+      payment: {
+        status:     payment.paymentStatus as "partial" | "paid",
+        balanceDue: balance.balanceDue,
+        overpaid:   balance.overpaid,
+      },
+    };
   } catch (err) {
     console.error("[updateOrder]", err);
     const code = (err as { code?: string } | null)?.code;
@@ -608,9 +630,8 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const activeOrders = allOrders.filter((o) => o.status === "pending" || o.status === "processing");
   const doneOrders   = allOrders.filter((o) => o.status === "done");
 
-  const todayRevenue = allOrders
-    .filter((o) => o.paymentStatus === "paid" && o.paidAt && new Date(o.paidAt) >= todayStart)
-    .reduce((sum, o) => sum + parseFloat(o.totalPrice ?? "0"), 0);
+  // Includes partial (DP) payments, not just fully paid orders.
+  const todayRevenue = sumRevenue(allOrders, todayStart);
 
   const pendingRevenue = allOrders
     .filter((o) => o.paymentStatus === "unpaid")

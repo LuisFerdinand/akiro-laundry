@@ -4,6 +4,7 @@
 
 import { TrendingUp, TrendingDown, Wallet, Lock } from "lucide-react";
 import { formatUSD } from "@/lib/utils/order-form";
+import { formatDateTimeBiz } from "@/lib/utils/business-time";
 import type { CashRegisterState } from "@/lib/actions/payments";
 
 interface Props {
@@ -39,7 +40,7 @@ export function CashRegisterClient({ initialState }: Props) {
             {formatUSD(balance)}
           </p>
           <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.55)", marginTop: "4px" }}>
-            Last updated: {new Date(lastUpdatedAt).toLocaleString()}
+            Last updated: {formatDateTimeBiz(lastUpdatedAt)}
           </p>
         </div>
 
@@ -130,7 +131,7 @@ export function CashRegisterClient({ initialState }: Props) {
                       </span>
                     )}
                     <p style={{ fontSize: "10px", color: "#94a3b8", marginTop: "2px" }}>
-                      {new Date(tx.createdAt).toLocaleString()} · bal: {formatUSD(parseFloat(tx.balanceAfter))}
+                      {formatDateTimeBiz(tx.createdAt)} · bal: {formatUSD(parseFloat(tx.balanceAfter))}
                     </p>
                   </div>
 

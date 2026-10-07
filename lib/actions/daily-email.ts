@@ -54,6 +54,7 @@ function buildEmailHtml(params: {
     status: string;
     paymentStatus: string;
     totalPrice: string;
+    amountPaid?: string | null;
     items: { serviceName: string; quantity: string }[];
     createdAt: string;
   }[];
@@ -184,6 +185,17 @@ function buildEmailHtml(params: {
 </html>`;
 }
 
+/** Money actually collected: full price for paid orders, the DP for partial ones. */
+function collectedAmount(
+  list: { paymentStatus: string; totalPrice: string; amountPaid?: string | null }[],
+): number {
+  return list.reduce((s, o) => {
+    if (o.paymentStatus === "paid")    return s + parseFloat(o.totalPrice ?? "0");
+    if (o.paymentStatus === "partial") return s + parseFloat(o.amountPaid ?? "0");
+    return s;
+  }, 0);
+}
+
 // ─── Core: Fetch today's orders ───────────────────────────────────────────────
 
 async function fetchTodayOrders(targetDate?: Date) {
@@ -231,6 +243,7 @@ async function fetchTodayOrders(targetDate?: Date) {
     status:        r.order.status,
     paymentStatus: r.order.paymentStatus,
     totalPrice:    r.order.totalPrice,
+    amountPaid:    r.order.amountPaid,
     createdAt:     r.order.createdAt.toISOString(),
     items:         itemsByOrder.get(r.order.id) ?? [],
   }));
@@ -329,7 +342,7 @@ export async function sendDailySummaryEmail(
     });
 
     const totalRevenue  = orderList.reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0);
-    const paidRevenue   = orderList.filter((o) => o.paymentStatus === "paid").reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0);
+    const paidRevenue   = collectedAmount(orderList);
     const unpaidRevenue = totalRevenue - paidRevenue;
 
     const html = buildEmailHtml({ date: dateStr, orders: orderList, totalRevenue, paidRevenue, unpaidRevenue });
@@ -372,7 +385,7 @@ export async function sendTestEmail(
     });
 
     const totalRevenue  = orderList.reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0);
-    const paidRevenue   = orderList.filter((o) => o.paymentStatus === "paid").reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0);
+    const paidRevenue   = collectedAmount(orderList);
     const unpaidRevenue = totalRevenue - paidRevenue;
 
     const html = buildEmailHtml({

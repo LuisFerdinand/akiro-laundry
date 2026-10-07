@@ -19,6 +19,7 @@ import {
   hourBiz,
   formatBiz,
 } from "@/lib/utils/business-time";
+import { revenueEvent, sumRevenue } from "@/lib/utils/revenue";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -190,27 +191,21 @@ export async function getRevenueTrendSeries(
     .select({
       totalPrice:    orders.totalPrice,
       paymentStatus: orders.paymentStatus,
+      amountPaid:    orders.amountPaid,
       paidAt:        orders.paidAt,
       createdAt:     orders.createdAt,
     })
     .from(orders)
     .where(or(gte(orders.createdAt, windowStart), gte(orders.paidAt, windowStart)));
 
-  const price    = (o: { totalPrice: string }) => parseFloat(o.totalPrice ?? "0");
-  const paidDate = (o: { paidAt: Date | null; createdAt: Date }) => new Date(o.paidAt ?? o.createdAt);
-
   return buckets.map((b) => {
-    let revenue = 0;
     let orderCount = 0;
     for (const o of rows) {
       const created = new Date(o.createdAt);
       if (created >= b.start && created <= b.end) orderCount++;
-      if (o.paymentStatus === "paid") {
-        const pd = paidDate(o);
-        if (pd >= b.start && pd <= b.end) revenue += price(o);
-      }
     }
-    return { label: b.label, revenue, orders: orderCount };
+    // Fully paid → full price on paid date; partial (DP) → amount received.
+    return { label: b.label, revenue: sumRevenue(rows, b.start, b.end), orders: orderCount };
   });
 }
 
@@ -257,11 +252,9 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
   // "Unpaid" bucket = anything not fully paid yet — plain unpaid + partial (DP).
   const unpaidOrders = allOrders.filter((o) => o.paymentStatus !== "paid");
 
-  // Revenue (counted on paid date)
-  const revenueIn = (from: Date, to?: Date) =>
-    paidOrders
-      .filter((o) => inRange(paidDate(o), from, to))
-      .reduce((s, o) => s + price(o), 0);
+  // Revenue: paid orders count in full on their paid date; partial (DP) orders
+  // count the amount received so far (see lib/utils/revenue.ts).
+  const revenueIn = (from: Date, to?: Date) => sumRevenue(allOrders, from, to);
 
   // Order counts (counted on createdAt)
   const ordersIn = (from: Date, to?: Date) =>
@@ -285,7 +278,7 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
     paid:        paidOrders.length,
     unpaid:      unpaidOrders.length,
     partial:     unpaidOrders.filter((o) => o.paymentStatus === "partial").length,
-    paidRevenue: paidOrders.reduce((s, o) => s + price(o), 0),
+    paidRevenue: allOrders.reduce((s, o) => s + (revenueEvent(o)?.amount ?? 0), 0),
     unpaidValue: unpaidOrders.reduce((s, o) => s + outstanding(o), 0),
   };
 
@@ -298,7 +291,7 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
       paid:        paidIn.length,
       unpaid:      unpaidIn.length,
       partial:     unpaidIn.filter((o) => o.paymentStatus === "partial").length,
-      paidRevenue: paidIn.reduce((s, o) => s + price(o), 0),
+      paidRevenue: sumRevenue(allOrders, from, to),
       unpaidValue: unpaidIn.reduce((s, o) => s + outstanding(o), 0),
     };
   };
