@@ -27,6 +27,11 @@ export interface ReceiptData {
   changeGiven?:   number;
   /** Name of the logged-in employee printing the receipt — fills {{cashierName}}. */
   cashierName?:   string;
+  /**
+   * Pieces counted together with the customer — fills {{clothesCount}}. Pass it
+   * ONLY for orders counted with the customer: a staff count is never printed.
+   */
+  clothesCount?:  { name: string; quantity: number }[] | null;
   settings?:      ReceiptSettings | null;
 }
 
@@ -154,6 +159,38 @@ function buildItemsBlock(data: ReceiptData, charsPerLine: number): string {
   return lines.join("\n");
 }
 
+// ─── {{clothesCount}} block ───────────────────────────────────────────────────
+
+function buildClothesCountBlock(data: ReceiptData, charsPerLine: number): string {
+  const lines = (data.clothesCount ?? []).filter((l) => l.quantity > 0);
+  if (lines.length === 0) return "";
+  const total = lines.reduce((s, l) => s + l.quantity, 0);
+  return [
+    "*Clothes count (with customer)*",
+    ...lines.map((l) => padLine(l.name, `${l.quantity} pcs`, charsPerLine)),
+    `*${padLine("Total pieces", `${total} pcs`, charsPerLine)}*`,
+  ].join("\n");
+}
+
+/**
+ * Where the clothes count goes: at {{clothesCount}} if the admin placed it in
+ * the template, otherwise right after the {{items}} line so it prints without
+ * anyone editing the template. With no count, the placeholder's line is
+ * dropped so it doesn't leave a gap.
+ */
+function placeClothesCount(template: string, block: string): string {
+  const TOKEN = "{{clothesCount}}";
+  if (template.includes(TOKEN)) {
+    return block ? template : template.replace(/^[ \t]*\{\{clothesCount\}\}[ \t]*(\r?\n|$)/m, "");
+  }
+  if (!block) return template;
+  const lines = template.split("\n");
+  const at = lines.findIndex((l) => l.includes("{{items}}"));
+  if (at === -1) return `${template}\n{{divider}}\n${TOKEN}`;
+  lines.splice(at + 1, 0, "{{divider}}", TOKEN);
+  return lines.join("\n");
+}
+
 // ─── Main entry point ──────────────────────────────────────────────────────────
 
 /**
@@ -183,6 +220,7 @@ export function buildReceiptContent(data: ReceiptData, charsPerLine: number): Re
     change:          data.changeGiven && data.changeGiven > 0 ? formatUSD(data.changeGiven) : "",
     notes:           data.formData.notes?.trim() ?? "",
     cashierName:     data.cashierName?.trim() ?? "",
+    clothesCount:    buildClothesCountBlock(data, charsPerLine),
     footerContact:   s.footerContact,
     divider:         (s.dividerChar || "-").repeat(charsPerLine),
   };
@@ -191,6 +229,7 @@ export function buildReceiptContent(data: ReceiptData, charsPerLine: number): Re
     ? interpolate(s.paymentPaidTemplate, vars)
     : interpolate(s.unpaidMessageTemplate, vars);
 
-  const fullText = interpolate(s.receiptTemplate, vars);
+  const template = placeClothesCount(s.receiptTemplate, vars.clothesCount);
+  const fullText = interpolate(template, vars);
   return fullText.split("\n").map(parseBoldLine);
 }

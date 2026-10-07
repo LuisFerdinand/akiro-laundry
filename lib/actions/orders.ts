@@ -11,6 +11,7 @@ import {
   pewangi,
   servicePricing,
   orderSpecialRequests,
+  orderClothingCounts,
 } from "@/lib/db/schema";
 import type {
   Customer,
@@ -20,12 +21,15 @@ import type {
   Order,
   OrderItem,
   OrderSpecialRequest,
+  OrderClothingCount,
 } from "@/lib/db/schema";
-import { eq, ilike, desc, and, or, sql } from "drizzle-orm";
+import { eq, ilike, desc, asc, and, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { startOfDayBiz } from "@/lib/utils/business-time";
 import { sumRevenue } from "@/lib/utils/revenue";
 import { paymentAfterTotalChange, paymentBalance } from "@/lib/utils/order-payment";
+import { isClothesCountMode } from "@/lib/utils/clothes-count";
+import { cleanCountLines, writeOrderClothesCounts } from "@/lib/db/clothes-counts";
 import {
   generateOrderNumber,
   calculateItemPrice,
@@ -99,6 +103,8 @@ export interface OrderWithDetails extends Order {
   customerAddress: string | null;
   items:           OrderItemWithDetails[];
   specialRequests: OrderSpecialRequest[];
+  /** Clothes count lines — loaded by getOrderById only (not the list query). */
+  clothesCounts?:  OrderClothingCount[];
 }
 
 // ── Shared item select shape ───────────────────────────────────────────────────
@@ -239,6 +245,12 @@ export async function getOrderById(id: number): Promise<OrderWithDetails | null>
     .where(eq(orderSpecialRequests.orderId, id))
     .orderBy(desc(orderSpecialRequests.createdAt));
 
+  const clothesCounts = await db
+    .select()
+    .from(orderClothingCounts)
+    .where(eq(orderClothingCounts.orderId, id))
+    .orderBy(asc(orderClothingCounts.id));
+
   return {
     ...rows[0].order,
     customerName:    rows[0].customerName    ?? "Unknown",
@@ -252,6 +264,7 @@ export async function getOrderById(id: number): Promise<OrderWithDetails | null>
       pewangiName: r.pewangiName ?? null,
     })),
     specialRequests,
+    clothesCounts,
   };
 }
 
@@ -302,10 +315,21 @@ export interface CreateOrderResult {
 
 export async function createOrder(formData: OrderFormData): Promise<CreateOrderResult> {
   try {
-    const { customer, items, notes, specialRequests } = formData;
+    const { customer, items, notes, specialRequests, clothesCount } = formData;
 
     if (!items || items.length === 0) {
       return { success: false, error: "At least one service item is required." };
+    }
+
+    // Clothes count — counted with the customer (printed on the receipt) or left
+    // for staff to count later. Only a with-customer count is saved at creation.
+    const countMode   = isClothesCountMode(clothesCount?.mode) ? clothesCount!.mode : null;
+    const countLines  = countMode === "customer" ? cleanCountLines(clothesCount?.lines) : [];
+    if (!countMode) {
+      return { success: false, error: "Choose how the clothes are counted." };
+    }
+    if (countMode === "customer" && countLines.length === 0) {
+      return { success: false, error: "Count at least one piece with the customer." };
     }
 
     // ── 1. Resolve or create customer ─────────────────────────────────────────
@@ -389,6 +413,7 @@ export async function createOrder(formData: OrderFormData): Promise<CreateOrderR
         status:        "pending",
         paymentStatus: "unpaid",
         createdByName: session?.user?.name?.trim() || null,
+        clothesCountMode: countMode,
       })
       .returning({ id: orders.id, orderNumber: orders.orderNumber });
 
@@ -423,6 +448,11 @@ export async function createOrder(formData: OrderFormData): Promise<CreateOrderR
           priceAdjustment: r.priceAdjustment.toFixed(2),
         })),
       );
+    }
+
+    // ── 7. Clothes counted with the customer ──────────────────────────────────
+    if (countLines.length > 0) {
+      await writeOrderClothesCounts(newOrder.id, countLines);
     }
 
     revalidatePath("/employee/orders");

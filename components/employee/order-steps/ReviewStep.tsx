@@ -1,6 +1,7 @@
 // components/employee/order-steps/ReviewStep.tsx
-import { User, Phone, MapPin, Layers, Weight, Droplets, Wind, FileText, Hash, ArrowUp, ArrowDown } from "lucide-react";
+import { User, Phone, MapPin, Layers, Weight, Droplets, Wind, FileText, Hash, ArrowUp, ArrowDown, Printer, EyeOff } from "lucide-react";
 import { OrderFormData, OrderPriceBreakdown, formatUSD } from "@/lib/utils/order-form";
+import { countedLines, totalPieces } from "@/lib/utils/clothes-count";
 import type { ServicePricing, Soap, Pewangi } from "@/lib/db/schema";
 
 interface ReviewStepProps {
@@ -9,6 +10,46 @@ interface ReviewStepProps {
   soaps:     Soap[];
   pewangis:  Pewangi[];
   breakdown: OrderPriceBreakdown;
+}
+
+/** Clothes count summary — only in the new-order flow (formData.clothesCount set). */
+function ClothesCountReview({ formData }: { formData: OrderFormData }) {
+  const cc = formData.clothesCount;
+  if (!cc?.mode) return null;
+  const lines = countedLines(cc.lines);
+  const withCustomer = cc.mode === "customer";
+
+  return (
+    <SectionCard title="Clothes Count">
+      <div style={{ padding: "10px 14px" }}>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-black" style={{ color: withCustomer ? "#047857" : "#1a7fba" }}>
+            {withCustomer ? "Counted with customer" : "Staff count later"}
+          </p>
+          <span className="flex items-center gap-1 text-[10px] font-bold" style={{ color: withCustomer ? "#047857" : "#64748b" }}>
+            {withCustomer ? <Printer size={11} /> : <EyeOff size={11} />}
+            {withCustomer ? "On receipt" : "Not on receipt"}
+          </span>
+        </div>
+        {withCustomer && (
+          <div style={{ marginTop: 8, borderRadius: 6, background: "#f8fafc", border: "1.5px solid #e8edf2", overflow: "hidden" }}>
+            {lines.map((l, i) => (
+              <div key={`${l.clothingItemId ?? l.name}`} className="flex justify-between items-center px-3 py-2"
+                style={{ borderTop: i === 0 ? "none" : "1px solid #f1f5f9" }}>
+                <span className="text-xs font-bold" style={{ color: "#334155" }}>{l.name}</span>
+                <span className="text-sm font-black" style={{ color: "#1e293b" }}>{l.quantity}</span>
+              </div>
+            ))}
+            <div className="flex justify-between items-center px-3 py-2"
+              style={{ background: "linear-gradient(135deg,#ecfdf5,#d1fae5)", borderTop: "1.5px solid #6ee7b7" }}>
+              <span className="text-[10px] font-black uppercase tracking-wide" style={{ color: "#047857" }}>Total pieces</span>
+              <span className="text-sm font-black" style={{ color: "#047857" }}>{totalPieces(lines)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  );
 }
 
 type IconTheme = "brand" | "green" | "rose" | "amber" | "purple" | "slate";
@@ -157,6 +198,9 @@ export function ReviewStep({ formData, services, soaps, pewangis, breakdown }: R
           </div>
         </SectionCard>
       )}
+
+      {/* ── Clothes count (new orders) ─────────────────────── */}
+      <ClothesCountReview formData={formData} />
 
       {/* ── Notes ──────────────────────────────────────────── */}
       {formData.notes && (

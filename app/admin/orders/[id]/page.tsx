@@ -16,6 +16,8 @@ import type { AdminOrderItem } from "@/lib/actions/admin-orders";
 import { WhatsAppNotify } from "@/components/employee/WhatsAppNotify";
 import { DeleteOrderButton } from "@/components/shared/DeleteOrderButton";
 import { SpecialRequestsPanel } from "@/components/shared/SpecialRequestsPanel";
+import { ClothesCountPanel } from "@/components/shared/ClothesCountPanel";
+import { getClothingSetup } from "@/lib/actions/clothing-items";
 import { EditedBadge } from "@/components/shared/EditedBadge";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -253,9 +255,10 @@ export default async function AdminOrderDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [order, waTemplateData] = await Promise.all([
+  const [order, waTemplateData, clothingSetup] = await Promise.all([
     getAdminOrderById(parseInt(id)),
     getWaTemplateData(),
+    getClothingSetup(),
   ]);
   if (!order) notFound();
 
@@ -396,6 +399,17 @@ export default async function AdminOrderDetailPage({
                 ))
               )}
             </div>
+          </SectionCard>
+
+          {/* Clothes count */}
+          <SectionCard title="Clothes Count">
+            <ClothesCountPanel
+              orderId={order.id}
+              mode={order.clothesCountMode}
+              counts={order.clothesCounts ?? []}
+              setup={clothingSetup}
+              serviceIds={order.items.map((it) => it.servicePricingId)}
+            />
           </SectionCard>
 
           {/* Special requests */}

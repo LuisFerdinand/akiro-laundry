@@ -7,13 +7,15 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import {
   Plus, X, Save, Loader2, Trash2, Edit2, CheckCircle2,
   Sparkles, ToggleLeft, ToggleRight, AlertTriangle,
-  Search, TrendingUp, ShoppingBag, Flame, Crown, PenLine,
+  Search, TrendingUp, ShoppingBag, Flame, Crown, PenLine, Check,
 } from "lucide-react";
 import {
   createService, updateService, deleteService,
 } from "@/lib/actions/admin-services";
+import { setServiceClothingItems, type ClothingItemWithUsage } from "@/lib/actions/clothing-items";
 import { formatUSD } from "@/lib/utils/order-form";
 import type { ServiceWithStats } from "@/lib/actions/admin-services";
+import { ClothingItemsCard } from "@/components/admin/ClothingItemsCard";
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 const inputStyle: React.CSSProperties = {
@@ -60,8 +62,17 @@ function ConfirmDeleteModal({
 }
 
 // ─── Service Modal ────────────────────────────────────────────────────────────
-function ServiceModal({ existing, onClose, onSuccess }: { existing?: ServiceWithStats; onClose: () => void; onSuccess: () => void }) {
+function ServiceModal({ existing, clothingItems, onClose, onSuccess }: {
+  existing?: ServiceWithStats; clothingItems: ClothingItemWithUsage[]; onClose: () => void; onSuccess: () => void;
+}) {
   const isEdit = !!existing;
+  // Clothing items staff count for this service. Hidden (inactive) items stay
+  // linked if they already were — they're just not offered here.
+  const [countIds, setCountIds] = useState<number[]>(existing?.clothingItemIds ?? []);
+  const activeItems  = clothingItems.filter((c) => c.isActive);
+  const hiddenLinked = countIds.filter((id) => !activeItems.some((c) => c.id === id));
+  const toggleCount  = (id: number) =>
+    setCountIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
   const [name,        setName]        = useState(existing?.name           ?? "");
   const [price,       setPrice]       = useState(existing?.basePricePerKg ?? "");
   const [category,    setCategory]    = useState(existing?.category       ?? "package");
@@ -78,8 +89,14 @@ function ServiceModal({ existing, onClose, onSuccess }: { existing?: ServiceWith
     start(async () => {
       const data = { name, basePricePerKg: price, category, pricingUnit, minimumKg, duration, notes, isActive };
       const result = isEdit ? await updateService(existing!.id, data) : await createService(data);
-      if (result.success) onSuccess();
-      else setError(result.error ?? "Failed.");
+      if (!result.success) { setError(result.error ?? "Failed."); return; }
+
+      const serviceId = isEdit ? existing!.id : result.id;
+      if (serviceId != null) {
+        const counted = await setServiceClothingItems(serviceId, countIds);
+        if (!counted.success) { setError(counted.error ?? "Saved, but the items to count failed to save."); return; }
+      }
+      onSuccess();
     });
   };
 
@@ -135,6 +152,40 @@ function ServiceModal({ existing, onClose, onSuccess }: { existing?: ServiceWith
           <div>
             <label style={labelStyle}>Notes</label>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Optional notes…" style={{ ...inputStyle, resize: "vertical" }} onFocus={onFocus} onBlur={onBlur} />
+          </div>
+          <div>
+            <label style={labelStyle}>Items to count at drop-off</label>
+            {activeItems.length === 0 ? (
+              <p style={{ fontSize: "12px", color: "#94a3b8" }}>No clothing items yet — add them in “Clothes Count Items” on this page.</p>
+            ) : (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {activeItems.map((c) => {
+                  const on = countIds.includes(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => toggleCount(c.id)}
+                      aria-pressed={on}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: "5px",
+                        padding: "6px 11px", borderRadius: "999px", cursor: "pointer", fontFamily: "inherit",
+                        fontSize: "12px", fontWeight: 700,
+                        border: `1.5px solid ${on ? "#34d399" : "#e2e8f0"}`,
+                        background: on ? "#ecfdf5" : "white",
+                        color: on ? "#047857" : "#64748b",
+                      }}
+                    >
+                      {on && <Check size={11} strokeWidth={3} />} {c.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "6px" }}>
+              Staff see these first when counting clothes for this service; the rest stay under “More items”.
+              {hiddenLinked.length > 0 && ` ${hiddenLinked.length} hidden item${hiddenLinked.length === 1 ? " stays" : "s stay"} linked.`}
+            </p>
           </div>
           {isEdit && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: "#f8fafc", borderRadius: "8px", border: "1.5px solid #e2e8f0" }}>
@@ -225,9 +276,10 @@ function PopularServiceCard({
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-interface Props { services: ServiceWithStats[]; initialSearch: string }
+interface Props { services: ServiceWithStats[]; clothingItems: ClothingItemWithUsage[]; initialSearch: string }
 
-export function ServicesClient({ services, initialSearch }: Props) {
+export function ServicesClient({ services, clothingItems, initialSearch }: Props) {
+  const clothingById = new Map(clothingItems.map((c) => [c.id, c]));
   const router       = useRouter();
   const pathname     = usePathname();
   const searchParams = useSearchParams();
@@ -290,6 +342,7 @@ export function ServicesClient({ services, initialSearch }: Props) {
       {modal.open && (
         <ServiceModal
           existing={modal.existing}
+          clothingItems={clothingItems}
           onClose={() => setModal({ open: false })}
           onSuccess={() => handleSuccess(modal.existing ? "Service updated." : "Service created.")}
         />
@@ -393,7 +446,7 @@ export function ServicesClient({ services, initialSearch }: Props) {
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: "#f8fafc" }}>
-                    {["Name", "Category", "Price", "Unit", "Min KG", "Duration", "Orders", "Revenue", "Status", ""].map((h) => (
+                    {["Name", "Category", "Price", "Unit", "Min KG", "Duration", "Counts", "Orders", "Revenue", "Status", ""].map((h) => (
                       <th key={h} style={{ padding: "11px 16px", textAlign: "left", fontSize: "10px", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                   </tr>
@@ -441,6 +494,27 @@ export function ServicesClient({ services, initialSearch }: Props) {
                       <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}>
                         <span style={{ fontSize: "11px", color: "#64748b" }}>{s.duration ?? "—"}</span>
                       </td>
+                      <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9", maxWidth: "220px" }}>
+                        {(() => {
+                          const names = s.clothingItemIds
+                            .map((id) => clothingById.get(id))
+                            .filter((c): c is ClothingItemWithUsage => !!c && c.isActive)
+                            .sort((a, b) => a.sortOrder - b.sortOrder)
+                            .map((c) => c.name);
+                          if (names.length === 0) return <span style={{ fontSize: "11px", color: "#cbd5e1" }}>—</span>;
+                          const shown = names.slice(0, 3);
+                          return (
+                            <div title={names.join(", ")} style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                              {shown.map((n) => (
+                                <span key={n} style={{ fontSize: "10px", fontWeight: 700, padding: "2px 7px", borderRadius: "999px", background: "#ecfdf5", border: "1px solid #a7f3d0", color: "#047857", whiteSpace: "nowrap" }}>{n}</span>
+                              ))}
+                              {names.length > shown.length && (
+                                <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 7px", borderRadius: "999px", background: "#f8fafc", border: "1px solid #e2e8f0", color: "#64748b" }}>+{names.length - shown.length}</span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
                           <ShoppingBag size={11} style={{ color: "#1a7fba" }} />
@@ -475,6 +549,9 @@ export function ServicesClient({ services, initialSearch }: Props) {
             </div>
           )}
         </div>
+
+        {/* ── Clothes count items ── */}
+        <ClothingItemsCard items={clothingItems} />
       </div>
     </>
   );

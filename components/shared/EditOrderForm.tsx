@@ -15,6 +15,7 @@ import {
   OrderFormStep,
   OrderFormData,
   OrderPriceBreakdown,
+  EDIT_ORDER_FORM_STEPS,
   getNextStep,
   getPrevStep,
   getStepIndex,
@@ -80,6 +81,11 @@ const STEP_TITLES: Record<OrderFormStep, {
   review: {
     title: "Confirm Changes",    subtitle: "Review before saving",
     Icon: ClipboardList,         iconBg: "bg-amber-50 border-amber-100",  iconColor: "text-amber-500",
+  },
+  // Not part of the edit flow (EDIT_ORDER_FORM_STEPS) — counts are recorded on the order page.
+  count: {
+    title: "Clothes Count",      subtitle: "Recorded on the order page",
+    Icon: ClipboardList,         iconBg: "bg-emerald-50 border-emerald-100", iconColor: "text-emerald-500",
   },
 };
 
@@ -192,12 +198,12 @@ export function EditOrderForm({ order, backHref }: Props) {
 
     if (!validation.valid) { setErrors(validation.errors); return; }
     setErrors({});
-    const next = getNextStep(step);
+    const next = getNextStep(step, EDIT_ORDER_FORM_STEPS);
     if (next) setStep(next);
   };
 
   const handleBack = () => {
-    const prev = getPrevStep(step);
+    const prev = getPrevStep(step, EDIT_ORDER_FORM_STEPS);
     if (prev) { setStep(prev); setErrors({}); }
   };
 
@@ -226,7 +232,7 @@ export function EditOrderForm({ order, backHref }: Props) {
 
   return (
     <div>
-      <StepProgress current={step} />
+      <StepProgress current={step} steps={EDIT_ORDER_FORM_STEPS} />
 
       <div className="px-2 pb-36 space-y-5">
 
@@ -303,7 +309,7 @@ export function EditOrderForm({ order, backHref }: Props) {
         )}
 
         <div className="flex gap-2.5">
-          {getStepIndex(step) > 0 ? (
+          {getStepIndex(step, EDIT_ORDER_FORM_STEPS) > 0 ? (
             <Button variant="outline" size="icon" className="shrink-0 rounded-md border-2" style={{ width: 46, height: 46 }} onClick={handleBack}>
               <ChevronLeft size={18} />
             </Button>

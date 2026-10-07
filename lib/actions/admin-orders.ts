@@ -12,9 +12,10 @@ import {
   pewangi,
   cashRegisterTransactions,
   orderSpecialRequests,
+  orderClothingCounts,
 } from "@/lib/db/schema";
-import type { Order, OrderItem, OrderSpecialRequest } from "@/lib/db/schema";
-import { eq, ilike, and, desc, or, count, gt, gte, lte, inArray } from "drizzle-orm";
+import type { Order, OrderItem, OrderSpecialRequest, OrderClothingCount } from "@/lib/db/schema";
+import { eq, ilike, and, asc, desc, or, count, gt, gte, lte, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { startOfDayBiz, subDaysBiz, startOfMonthBiz } from "@/lib/utils/business-time";
 import { sumRevenue } from "@/lib/utils/revenue";
@@ -35,6 +36,8 @@ export interface AdminOrderWithDetails extends Order {
   customerAddress: string | null;
   items: AdminOrderItem[];
   specialRequests: OrderSpecialRequest[];
+  /** Clothes count lines — loaded by getAdminOrderById only (not the list query). */
+  clothesCounts?: OrderClothingCount[];
 }
 
 /** Shape returned by paginated list query */
@@ -217,6 +220,11 @@ export async function getAdminOrderById(
 
   const itemsMap    = await fetchItemsByOrderIds([id]);
   const requestsMap = await fetchSpecialRequestsByOrderIds([id]);
+  const clothesCounts = await db
+    .select()
+    .from(orderClothingCounts)
+    .where(eq(orderClothingCounts.orderId, id))
+    .orderBy(asc(orderClothingCounts.id));
 
   return {
     ...rows[0].order,
@@ -225,6 +233,7 @@ export async function getAdminOrderById(
     customerAddress: rows[0].customerAddress ?? null,
     items:           itemsMap.get(id) ?? [],
     specialRequests: requestsMap.get(id) ?? [],
+    clothesCounts,
   };
 }
 // ─── Revenue stats for cash register page ────────────────────────────────────
@@ -293,6 +302,7 @@ export async function deleteOrder(id: number): Promise<OrderActionResult> {
     // (neon-http has no interactive transactions; child-first ordering means a
     // mid-failure can only leave harmless orphan children, never a live order.)
     await db.delete(orderSpecialRequests).where(eq(orderSpecialRequests.orderId, id));
+    await db.delete(orderClothingCounts).where(eq(orderClothingCounts.orderId, id));
     await db.delete(orderItems).where(eq(orderItems.orderId, id));
     await db.delete(orders).where(eq(orders.id, id));
 

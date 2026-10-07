@@ -9,6 +9,7 @@ import {
   timestamp,
   boolean,
   pgEnum,
+  unique,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -143,6 +144,13 @@ export const orders = pgTable("orders", {
   // order hasn't been edited since it was paid.
   editedAfterPaymentAt: timestamp("edited_after_payment_at"),
 
+  // ── Clothes count ──
+  // How the pieces were counted at drop-off: "customer" = counted together
+  // with the customer (printed on the receipt), "staff" = the customer left
+  // them with us and staff count afterwards (never printed). Null for orders
+  // created before this existed. Counts live in `order_clothing_counts`.
+  clothesCountMode: text("clothes_count_mode"),
+
   // ── Created by ──
   // Name of the logged-in staff member who created the order, read from the
   // session in createOrder(). A plain-text snapshot rather than a users FK, so
@@ -187,6 +195,36 @@ export const orderSpecialRequests = pgTable("order_special_requests", {
   description:     text("description").notNull(),
   priceAdjustment: numeric("price_adjustment", { precision: 10, scale: 2 }).notNull(),
   createdAt:       timestamp("created_at").defaultNow().notNull(),
+});
+
+// ─── Clothing Items (clothes count) ───────────────────────────────────────────
+// The kinds of pieces staff count at drop-off (Baju, Celana, Sepatu, …).
+// Admin-editable on the Services page.
+export const clothingItems = pgTable("clothing_items", {
+  id:        serial("id").primaryKey(),
+  name:      text("name").notNull().unique(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  // Inactive items are hidden from new counts but stay readable on old orders.
+  isActive:  boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Which clothing items to count for each service (many-to-many).
+export const serviceClothingItems = pgTable("service_clothing_items", {
+  id:             serial("id").primaryKey(),
+  serviceId:      integer("service_id").references(() => servicePricing.id, { onDelete: "cascade" }).notNull(),
+  clothingItemId: integer("clothing_item_id").references(() => clothingItems.id, { onDelete: "cascade" }).notNull(),
+}, (t) => [unique("service_clothing_items_pair").on(t.serviceId, t.clothingItemId)]);
+
+// Pieces counted for an order. `name` is a snapshot so renaming or deleting a
+// clothing item never changes what an old order (or its receipt) says.
+export const orderClothingCounts = pgTable("order_clothing_counts", {
+  id:             serial("id").primaryKey(),
+  orderId:        integer("order_id").references(() => orders.id, { onDelete: "cascade" }).notNull(),
+  clothingItemId: integer("clothing_item_id").references(() => clothingItems.id, { onDelete: "set null" }),
+  name:           text("name").notNull(),
+  quantity:       integer("quantity").notNull(),
+  createdAt:      timestamp("created_at").defaultNow().notNull(),
 });
 
 // ─── Cash Register ────────────────────────────────────────────────────────────
@@ -353,6 +391,8 @@ export type NewFinancePieConfig = typeof financePieConfigs.$inferInsert;
 export type CashRegisterTransaction = typeof cashRegisterTransactions.$inferSelect;
 export type MarketingCampaign    = typeof marketingCampaigns.$inferSelect;
 export type NewMarketingCampaign = typeof marketingCampaigns.$inferInsert;
+export type ClothingItem         = typeof clothingItems.$inferSelect;
+export type OrderClothingCount   = typeof orderClothingCounts.$inferSelect;
 
 export * from "./cms";
 export * from "./whatsapp";

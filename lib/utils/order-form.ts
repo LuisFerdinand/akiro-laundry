@@ -1,9 +1,10 @@
 // lib/utils/order-form.ts
 import { Soap, Pewangi, ServicePricing } from "@/lib/db/schema";
+import type { ClothesCountFormData } from "./clothes-count";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type OrderFormStep = "customer" | "service" | "review";
+export type OrderFormStep = "customer" | "service" | "count" | "review";
 
 export interface CustomerFormData {
   existingCustomerId?: number;
@@ -46,6 +47,8 @@ export interface OrderFormData {
   items:           OrderItemFormData[];   // ≥ 1 item required
   notes:           string;
   specialRequests: SpecialRequestFormData[];
+  /** New-order flow only — how the clothes were counted at drop-off. */
+  clothesCount?:   ClothesCountFormData;
 }
 
 // ─── Per-item price breakdown ─────────────────────────────────────────────────
@@ -67,11 +70,18 @@ export interface OrderPriceBreakdown {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-export const ORDER_FORM_STEPS: { key: OrderFormStep; label: string }[] = [
+export type OrderFormSteps = { key: OrderFormStep; label: string }[];
+
+/** New order: the clothes are counted (with the customer or by staff) before review. */
+export const ORDER_FORM_STEPS: OrderFormSteps = [
   { key: "service",  label: "Services" },
   { key: "customer", label: "Customer" },
+  { key: "count",    label: "Count"    },
   { key: "review",   label: "Review"   },
 ];
+
+/** Editing an order skips the count — counts are recorded on the order page. */
+export const EDIT_ORDER_FORM_STEPS: OrderFormSteps = ORDER_FORM_STEPS.filter((s) => s.key !== "count");
 
 export const ORDER_STATUS_LABELS: Record<string, string> = {
   pending:    "Pending",
@@ -98,18 +108,18 @@ export const EMPTY_ORDER_ITEM: OrderItemFormData = {
 
 // ─── Step helpers ─────────────────────────────────────────────────────────────
 
-export function getStepIndex(step: OrderFormStep): number {
-  return ORDER_FORM_STEPS.findIndex((s) => s.key === step);
+export function getStepIndex(step: OrderFormStep, steps: OrderFormSteps = ORDER_FORM_STEPS): number {
+  return steps.findIndex((s) => s.key === step);
 }
 
-export function getNextStep(current: OrderFormStep): OrderFormStep | null {
-  const idx = getStepIndex(current);
-  return idx < ORDER_FORM_STEPS.length - 1 ? ORDER_FORM_STEPS[idx + 1].key : null;
+export function getNextStep(current: OrderFormStep, steps: OrderFormSteps = ORDER_FORM_STEPS): OrderFormStep | null {
+  const idx = getStepIndex(current, steps);
+  return idx < steps.length - 1 ? steps[idx + 1].key : null;
 }
 
-export function getPrevStep(current: OrderFormStep): OrderFormStep | null {
-  const idx = getStepIndex(current);
-  return idx > 0 ? ORDER_FORM_STEPS[idx - 1].key : null;
+export function getPrevStep(current: OrderFormStep, steps: OrderFormSteps = ORDER_FORM_STEPS): OrderFormStep | null {
+  const idx = getStepIndex(current, steps);
+  return idx > 0 ? steps[idx - 1].key : null;
 }
 
 // ─── Generator ───────────────────────────────────────────────────────────────

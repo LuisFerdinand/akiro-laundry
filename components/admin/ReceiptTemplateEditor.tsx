@@ -48,6 +48,7 @@ const MAIN_VARIABLES: { token: string; label: string }[] = [
   { token: "{{change}}",          label: "Change" },
   { token: "{{notes}}",           label: "Order Notes" },
   { token: "{{cashierName}}",     label: "Cashier (logged-in employee)" },
+  { token: "{{clothesCount}}",    label: "Clothes count (only when counted with customer; auto-added after items if missing)" },
   { token: "{{footerContact}}",   label: "Footer Contact" },
   { token: "{{divider}}",         label: "Divider Line" },
 ];
@@ -98,6 +99,12 @@ const SAMPLE_RECEIPT_DATA: Omit<ReceiptData, "settings"> = {
   amountPaid:    25.00,
   changeGiven:   4.75,
   cashierName:   "Ana Pereira",
+  clothesCount:  [
+    { name: "Baju",      quantity: 6 },
+    { name: "Celana",    quantity: 3 },
+    { name: "Kaos Kaki", quantity: 4 },
+    { name: "Sepatu",    quantity: 2 },
+  ],
 };
 
 function buildPreviewLines(s: ReceiptSettings): ReceiptLine[] {

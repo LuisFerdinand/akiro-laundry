@@ -1,18 +1,20 @@
 // components/employee/StepProgress.tsx
 import { Check } from "lucide-react";
-import { ORDER_FORM_STEPS, OrderFormStep, getStepIndex } from "@/lib/utils/order-form";
+import { ORDER_FORM_STEPS, OrderFormStep, OrderFormSteps, getStepIndex } from "@/lib/utils/order-form";
 import { cn } from "@/lib/utils";
 
 interface StepProgressProps {
   current: OrderFormStep;
+  /** Defaults to the new-order steps; the edit flow passes its own shorter list. */
+  steps?:  OrderFormSteps;
 }
 
-export function StepProgress({ current }: StepProgressProps) {
-  const currentIdx = getStepIndex(current);
+export function StepProgress({ current, steps = ORDER_FORM_STEPS }: StepProgressProps) {
+  const currentIdx = getStepIndex(current, steps);
 
   return (
     <div className="flex items-center px-2 pt-4 pb-2">
-      {ORDER_FORM_STEPS.map((step, i) => {
+      {steps.map((step, i) => {
         const done   = i < currentIdx;
         const active = i === currentIdx;
 
@@ -42,7 +44,7 @@ export function StepProgress({ current }: StepProgressProps) {
             </div>
 
             {/* Connector */}
-            {i < ORDER_FORM_STEPS.length - 1 && (
+            {i < steps.length - 1 && (
               <div
                 className={cn(
                   "flex-1 h-0.5 mx-2 mb-5 rounded-full transition-all duration-300",

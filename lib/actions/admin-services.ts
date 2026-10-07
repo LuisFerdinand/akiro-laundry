@@ -3,7 +3,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { servicePricing, orders, orderItems } from "@/lib/db/schema";
+import { servicePricing, orders, orderItems, serviceClothingItems } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -24,11 +24,15 @@ export interface ServicePricing {
 export interface ServiceWithStats extends ServicePricing {
   totalOrders:   number;
   totalRevenue:  number;
+  /** Clothing items staff count for this service (clothes count). */
+  clothingItemIds: number[];
 }
 
 export interface ServiceActionResult {
   success: boolean;
   error?:  string;
+  /** Set by createService — the new service's id. */
+  id?:     number;
 }
 
 export async function getAdminServices(search?: string): Promise<ServiceWithStats[]> {
@@ -43,6 +47,12 @@ export async function getAdminServices(search?: string): Promise<ServiceWithStat
     })
     .from(orderItems)
     .innerJoin(orders, eq(orders.id, orderItems.orderId));
+
+  const links = await db
+    .select({ serviceId: serviceClothingItems.serviceId, clothingItemId: serviceClothingItems.clothingItemId })
+    .from(serviceClothingItems);
+  const itemsByService = new Map<number, number[]>();
+  for (const l of links) itemsByService.set(l.serviceId, [...(itemsByService.get(l.serviceId) ?? []), l.clothingItemId]);
 
   const filtered = search
     ? rows.filter((r) => r.name.toLowerCase().includes(search.toLowerCase()) || r.category.toLowerCase().includes(search.toLowerCase()))
@@ -65,6 +75,7 @@ export async function getAdminServices(search?: string): Promise<ServiceWithStat
       updatedAt:      r.updatedAt ?? null,
       totalOrders:    serviceItems.length,
       totalRevenue:   paidItems.reduce((s, i) => s + parseFloat(i.subtotal ?? "0"), 0),
+      clothingItemIds: itemsByService.get(r.id) ?? [],
     };
   });
 }
@@ -78,7 +89,7 @@ export async function createService(data: {
     if (!data.basePricePerKg || isNaN(parseFloat(data.basePricePerKg)))
       return { success: false, error: "Valid price is required." };
 
-    await db.insert(servicePricing).values({
+    const [created] = await db.insert(servicePricing).values({
       name:           data.name.trim(),
       basePricePerKg: data.basePricePerKg,
       category:       data.category   || "package",
@@ -87,9 +98,9 @@ export async function createService(data: {
       duration:       data.duration?.trim()  || null,
       notes:          data.notes?.trim()     || null,
       isActive:       true,
-    });
+    }).returning({ id: servicePricing.id });
     revalidatePath("/admin/services");
-    return { success: true };
+    return { success: true, id: created.id };
   } catch (e: any) {
     return { success: false, error: e.message ?? "Failed to create service." };
   }

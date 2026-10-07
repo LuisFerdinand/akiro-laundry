@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   ChevronRight, ChevronLeft, Loader2, CheckCircle2,
-  Sparkles, User, ShoppingBag, ClipboardList, CreditCard, Printer,
+  Sparkles, User, ShoppingBag, ClipboardList, CreditCard, Printer, Shirt,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button }         from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { StepProgress }   from "@/components/employee/StepProgress";
 import { CustomerStep }   from "@/components/employee/order-steps/CustomerStep";
 import { ServiceStep }    from "@/components/employee/order-steps/ServiceStep";
 import { ReviewStep }     from "@/components/employee/order-steps/ReviewStep";
+import { ClothesCountStep } from "@/components/employee/order-steps/ClothesCountStep";
 import { PaymentModal }   from "@/components/employee/PaymentModal";
 import { WhatsAppNotify } from "@/components/employee/WhatsAppNotify";
 import {
@@ -37,6 +38,11 @@ import {
 } from "@/lib/actions/orders";
 import { getReceiptSettings } from "@/lib/actions/receipt-settings";
 import { getWaTemplateData } from "@/lib/actions/wa-templates";
+import { getClothingSetup } from "@/lib/actions/clothing-items";
+import {
+  EMPTY_CLOTHES_COUNT, countedLines, totalPieces, validateClothesCount,
+  type ClothingSetup,
+} from "@/lib/utils/clothes-count";
 import type { ServicePricing, Soap, Pewangi } from "@/lib/db/schema";
 import type { ReceiptSettings } from "@/lib/db/schema/receipt";
 import type { WaTemplateData } from "@/lib/actions/wa-templates";
@@ -49,6 +55,7 @@ const EMPTY_FORM: OrderFormData = {
   items:           [],
   notes:           "",
   specialRequests: [],
+  clothesCount:    EMPTY_CLOTHES_COUNT,
 };
 
 const STEP_TITLES: Record<OrderFormStep, {
@@ -62,6 +69,10 @@ const STEP_TITLES: Record<OrderFormStep, {
   service: {
     title: "Services & Add-ons", subtitle: "Choose services, quantities and extras",
     Icon: ShoppingBag,           iconBg: "bg-violet-50 border-violet-100", iconColor: "text-violet-500",
+  },
+  count: {
+    title: "Clothes Count",      subtitle: "Count with the customer, or let staff count later",
+    Icon: Shirt,                 iconBg: "bg-emerald-50 border-emerald-100", iconColor: "text-emerald-500",
   },
   review: {
     title: "Confirm Order",      subtitle: "Review everything before submitting",
@@ -93,6 +104,7 @@ export default function NewOrderPage() {
   const [pewangis,        setPewangis]        = useState<Pewangi[]>([]);
   const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings | null>(null);
   const [waTemplateData,  setWaTemplateData]  = useState<WaTemplateData | null>(null);
+  const [clothingSetup,   setClothingSetup]   = useState<ClothingSetup>({ items: [], byService: {} });
   const [loading,         setLoading]         = useState(true);
 
   useEffect(() => {
@@ -102,13 +114,15 @@ export default function NewOrderPage() {
       getActivePewangi(),
       getReceiptSettings(),          // ← fetch settings alongside other data
       getWaTemplateData(),           // ← fetch WA template so the notify button uses it
+      getClothingSetup(),            // ← clothing items + which ones each service counts
     ])
-      .then(([s, so, p, rs, wd]) => {
+      .then(([s, so, p, rs, wd, cs]) => {
         setServices(s);
         setSoaps(so);
         setPewangis(p);
         setReceiptSettings(rs);      // ← store in state
         setWaTemplateData(wd);
+        setClothingSetup(cs);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -141,6 +155,8 @@ export default function NewOrderPage() {
     } else if (step === "service") {
       const resolvedServices = formData.items.map((it) => services.find((s) => s.id === it.servicePricingId) ?? null);
       validation = validateServiceItems(formData.items, resolvedServices);
+    } else if (step === "count") {
+      validation = validateClothesCount(formData.clothesCount ?? EMPTY_CLOTHES_COUNT);
     }
 
     if (!validation.valid) { setErrors(validation.errors); return; }
@@ -209,12 +225,18 @@ export default function NewOrderPage() {
             : undefined,
         changeGiven: changeGiven ?? undefined,
         cashierName: session?.user?.name ?? undefined,
+        // Printed only when the clothes were counted together with the customer.
+        clothesCount: formData.clothesCount?.mode === "customer"
+          ? countedLines(formData.clothesCount.lines).map((l) => ({ name: l.name, quantity: l.quantity }))
+          : undefined,
         // ← DB settings forwarded; PrintReceipt falls back to DEFAULTS if null
         settings: receiptSettings,
       });
     };
 
     const balanceDue = parseFloat((success.total - amountPaid).toFixed(2));
+    const countedWithCustomer = formData.clothesCount?.mode === "customer";
+    const piecesCounted = totalPieces(countedLines(formData.clothesCount?.lines ?? []));
 
     return (
       <>
@@ -257,6 +279,13 @@ export default function NewOrderPage() {
           <div className="w-full max-w-xs space-y-2">
             <p className="text-sm text-slate-400 font-medium">
               Total: <span className="font-black text-slate-800 text-base">{formatUSD(success.total)}</span>
+            </p>
+            <p className="flex items-center justify-center gap-1.5 text-xs font-bold"
+              style={{ color: countedWithCustomer ? "#047857" : "#64748b" }}>
+              <Shirt size={13} />
+              {countedWithCustomer
+                ? `${piecesCounted} piece${piecesCounted === 1 ? "" : "s"} counted with the customer · on the receipt`
+                : "Staff will count the clothes — record it on the order page"}
             </p>
 
             {/* Payment */}
@@ -397,6 +426,18 @@ export default function NewOrderPage() {
                 errors={errors}
                 specialRequests={formData.specialRequests}
                 onSpecialRequestsChange={(specialRequests) => setFormData((f) => ({ ...f, specialRequests }))}
+              />
+            )}
+            {step === "count" && (
+              <ClothesCountStep
+                setup={clothingSetup}
+                serviceIds={formData.items.map((it) => it.servicePricingId)}
+                value={formData.clothesCount ?? EMPTY_CLOTHES_COUNT}
+                onChange={(clothesCount) => {
+                  setFormData((f) => ({ ...f, clothesCount }));
+                  setErrors({});
+                }}
+                errors={errors}
               />
             )}
             {step === "review" && (

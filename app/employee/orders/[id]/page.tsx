@@ -8,6 +8,8 @@ import { OrderStatusUpdater }  from "@/components/employee/OrderStatusUpdater";
 import { PrintReceiptButton }  from "@/components/employee/PrintReceiptButton";
 import { DeleteOrderButton }   from "@/components/shared/DeleteOrderButton";
 import { SpecialRequestsPanel } from "@/components/shared/SpecialRequestsPanel";
+import { ClothesCountPanel }    from "@/components/shared/ClothesCountPanel";
+import { getClothingSetup }     from "@/lib/actions/clothing-items";
 import { EditedBadge }         from "@/components/shared/EditedBadge";
 import {
   ArrowLeft, User, Phone, Layers, Weight, Calendar,
@@ -80,10 +82,11 @@ export default async function OrderDetailPage({ params }: PageProps) {
   const { id: rawId } = await params;
   const id = parseInt(rawId);
 
-  const [order, waTemplateData, receiptSettings] = await Promise.all([
+  const [order, waTemplateData, receiptSettings, clothingSetup] = await Promise.all([
     getOrderById(id),
     getWaTemplateData(),
     getReceiptSettings(),
+    getClothingSetup(),
   ]);
 
   if (!order) notFound();
@@ -208,6 +211,19 @@ export default async function OrderDetailPage({ params }: PageProps) {
           </SectionCard>
         );
       })}
+
+      {/* Clothes count */}
+      <SectionCard title="Clothes Count">
+        <div style={{ padding: "0 16px" }}>
+          <ClothesCountPanel
+            orderId={order.id}
+            mode={order.clothesCountMode}
+            counts={order.clothesCounts ?? []}
+            setup={clothingSetup}
+            serviceIds={order.items.map((it) => it.servicePricingId)}
+          />
+        </div>
+      </SectionCard>
 
       {/* Special requests */}
       <SectionCard title="Special Requests">
