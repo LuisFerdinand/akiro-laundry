@@ -6,7 +6,10 @@ import { MessageCircle } from "lucide-react";
 import { ORDER_STATUS_LABELS, formatUSD } from "@/lib/utils/order-form";
 import { parseE164 } from "@/lib/utils/phone";
 import { hourBiz } from "@/lib/utils/business-time";
-import { interpolate } from "@/lib/utils/wa-message";
+import {
+  interpolate, formatWaClothesCount, formatWaClothesTotal, dropEmptyClothesLines,
+  type WaClothesCountLine,
+} from "@/lib/utils/wa-message";
 import type { Order } from "@/lib/db/schema";
 import type { WaTemplateData } from "@/lib/actions/wa-templates";
 import type { WaTemplateSettings } from "@/lib/db/schema/whatsapp";
@@ -25,6 +28,8 @@ export interface WhatsAppNotifyProps {
   balanceDue?:     number;
   /** Optional: notes from the order */
   notes?:          string | null;
+  /** Recorded clothes count (with customer or by staff) — fills {{clothesCount}} / {{clothesTotal}}. */
+  clothesCounts?:  WaClothesCountLine[] | null;
   /** Base URL of the site — used to build the review link */
   siteUrl?:        string;
   /** Pre-fetched template data from the server (avoids client-side fetch) */
@@ -71,6 +76,7 @@ function buildMessage({
   totalPrice,
   balanceDue,
   notes,
+  clothesCounts,
   cashierName,
   reviewUrl,
   templateData,
@@ -84,6 +90,7 @@ function buildMessage({
   totalPrice:      number;
   balanceDue?:     number;
   notes?:          string | null;
+  clothesCounts?:  WaClothesCountLine[] | null;
   cashierName?:    string | null;
   reviewUrl:       string;
   templateData?:   WaTemplateData | null;
@@ -110,6 +117,8 @@ function buildMessage({
     totalPrice:    formattedPrice,
     reviewUrl,
     notes:         notes?.trim() ?? "",
+    clothesCount:  formatWaClothesCount(clothesCounts),
+    clothesTotal:  formatWaClothesTotal(clothesCounts),
     cashierName:   cashierName?.trim() ?? "",
     businessName:  orDefault(settings?.businessName,  "Akiro Laundry"),
     businessPhone: orDefault(settings?.businessPhone, "+670 7675 8 7380"),
@@ -140,7 +149,8 @@ function buildMessage({
     FALLBACK_STATUS_BODY[status] ??
     `📦 *Status:* ${statusLabel}`;
 
-  return interpolate(bodyRaw, vars);
+  // No count recorded → lines using {{clothesCount}} / {{clothesTotal}} are dropped.
+  return interpolate(dropEmptyClothesLines(bodyRaw, vars.clothesTotal !== ""), vars);
 }
 
 // ── Shared button styles ──────────────────────────────────────────────────────
@@ -178,6 +188,7 @@ export function WhatsAppNotify({
   totalPrice,
   balanceDue,
   notes,
+  clothesCounts,
   siteUrl,
   templateData,
   compact = false,
@@ -198,6 +209,7 @@ export function WhatsAppNotify({
       totalPrice,
       balanceDue,
       notes,
+      clothesCounts,
       cashierName: session?.user?.name,
       reviewUrl,
       templateData,

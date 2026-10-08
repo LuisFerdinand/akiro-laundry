@@ -122,6 +122,7 @@ export function OrderQueue({ ready, readyTotal, latest, now, templateData }: Pro
                     totalPrice={total}
                     balanceDue={balance.balanceDue}
                     notes={o.notes}
+                    clothesCounts={o.clothesCounts}
                     templateData={templateData}
                     compact
                   />

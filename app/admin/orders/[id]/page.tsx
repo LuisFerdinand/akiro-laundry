@@ -351,6 +351,7 @@ export default async function AdminOrderDetailPage({
               balanceDue={balanceDue}
               totalPrice={total}
               notes={order.notes}
+              clothesCounts={order.clothesCounts}
               templateData={waTemplateData}
             />
 

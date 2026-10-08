@@ -4,7 +4,8 @@
 // The order page's clothes count: how it was counted at drop-off, the pieces,
 // and an editor so staff can record a count they did after drop-off (or fix
 // one). Changing a count made with the customer flags the order as edited —
-// that count is on the customer's receipt.
+// that count is on the customer's receipt. A staff count isn't on the first
+// receipt, but any recorded count prints when the receipt is reprinted.
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -69,8 +70,10 @@ export function ClothesCountPanel({ orderId, mode, counts, setup, serviceIds }: 
         </span>
         {mode && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: withCustomer ? "#047857" : "#94a3b8" }}>
-            {withCustomer ? <Printer size={11} /> : <EyeOff size={11} />}
-            {withCustomer ? "Printed on the receipt" : "Not printed on the receipt"}
+            {withCustomer || counts.length > 0 ? <Printer size={11} /> : <EyeOff size={11} />}
+            {withCustomer ? "Printed on the receipt"
+              : counts.length > 0 ? "Printed when the receipt is reprinted"
+              : "Prints on a reprint once counted"}
           </span>
         )}
       </div>

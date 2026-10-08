@@ -3,7 +3,8 @@
 //
 // New-order step: does the customer want to count the clothes together now?
 //   • With customer → count every piece; it's printed on the receipt.
-//   • Staff later   → nothing to count now; not printed on the receipt.
+//   • Staff later   → nothing to count now; not on the first receipt, but the
+//                     count prints once recorded and the receipt is reprinted.
 
 import { Users, ClipboardCheck, Printer, EyeOff, Info } from "lucide-react";
 import { ClothesCountEditor } from "@/components/shared/ClothesCountEditor";
@@ -31,7 +32,7 @@ const MODES: {
   {
     mode: "staff", title: "Staff count later",
     text: "The customer leaves the clothes with us — staff count them afterwards.",
-    Icon: ClipboardCheck, ReceiptIcon: EyeOff, receipt: "Not printed on the receipt",
+    Icon: ClipboardCheck, ReceiptIcon: EyeOff, receipt: "Not on the first receipt — prints on a reprint",
     color: "#1a7fba", bg: "linear-gradient(135deg,#edf7fd,#dbeefa)", border: "#7cc4ec",
   },
 ];
@@ -113,7 +114,7 @@ export function ClothesCountStep({ setup, serviceIds, value, onChange, errors }:
           <Info size={15} style={{ color: "#64748b", flexShrink: 0, marginTop: 1 }} />
           <p style={{ fontSize: 12, color: "#475569", lineHeight: 1.5 }}>
             Nothing to count now. Once the clothes are counted, record the count on the order page
-            (<b>Clothes Count</b>). It won&apos;t appear on the receipt.
+            (<b>Clothes Count</b>). It isn&apos;t on this first receipt, but it prints when the receipt is reprinted.
           </p>
         </div>
       )}

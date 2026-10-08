@@ -119,7 +119,7 @@ export interface OrderWithDetails extends Order {
   customerAddress: string | null;
   items:           OrderItemWithDetails[];
   specialRequests: OrderSpecialRequest[];
-  /** Clothes count lines — loaded by getOrderById only (not the list query). */
+  /** Clothes count lines — loaded by getOrders and getOrderById. */
   clothesCounts?:  OrderClothingCount[];
 }
 
@@ -140,6 +140,8 @@ export interface OrderListRow extends Order {
   customerName:  string;
   customerPhone: string;
   items:         OrderListItem[];
+  /** Recorded clothes count (customer or staff) — fills the WhatsApp message's {{clothesCount}}. */
+  clothesCounts: { name: string; quantity: number }[];
 }
 
 export interface OrderListResult {
@@ -268,11 +270,30 @@ async function loadOrderListRows(
     itemsByOrder.set(it.orderId, list);
   }
 
+  // For the WA notify button's {{clothesCount}} / {{clothesTotal}}.
+  const counts = await db
+    .select({
+      orderId:  orderClothingCounts.orderId,
+      name:     orderClothingCounts.name,
+      quantity: orderClothingCounts.quantity,
+    })
+    .from(orderClothingCounts)
+    .where(inArray(orderClothingCounts.orderId, rows.map((r) => r.order.id)))
+    .orderBy(asc(orderClothingCounts.id));
+
+  const countsByOrder = new Map<number, { name: string; quantity: number }[]>();
+  for (const c of counts) {
+    const list = countsByOrder.get(c.orderId) ?? [];
+    list.push({ name: c.name, quantity: c.quantity });
+    countsByOrder.set(c.orderId, list);
+  }
+
   return rows.map((r) => ({
     ...r.order,
     customerName:  r.customerName  ?? "Unknown",
     customerPhone: r.customerPhone ?? "—",
     items:         itemsByOrder.get(r.order.id) ?? [],
+    clothesCounts: countsByOrder.get(r.order.id) ?? [],
   }));
 }
 

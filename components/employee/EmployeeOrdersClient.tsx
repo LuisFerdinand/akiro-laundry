@@ -568,6 +568,7 @@ function OrderRow({ order, now, templateData, onPay }: RowProps) {
             totalPrice={total}
             balanceDue={balance.balanceDue}
             notes={order.notes}
+            clothesCounts={order.clothesCounts}
             templateData={templateData}
             compact
           />
@@ -621,6 +622,7 @@ function OrderCard({ order, now, templateData, onPay }: RowProps) {
             totalPrice={total}
             balanceDue={balance.balanceDue}
             notes={order.notes}
+            clothesCounts={order.clothesCounts}
             templateData={templateData}
             compact
           />

@@ -1,7 +1,7 @@
 // components/admin/WaTemplateEditor.tsx
 "use client";
 
-import { useState, useTransition, useRef, useEffect } from "react";
+import { useState, useTransition, useRef, useCallback } from "react";
 import {
   Save, CheckCircle2, Loader2,
   Bold, Italic, Strikethrough, Code, Variable,
@@ -17,12 +17,20 @@ import type {
   WaStatusTemplate,
 } from "@/lib/db/schema/whatsapp";
 import type { Order } from "@/lib/db/schema";
+import { formatWaClothesCount, formatWaClothesTotal } from "@/lib/utils/wa-message";
+import { VariableMenu, type TemplateVariable } from "./VariableMenu";
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    TYPES & CONSTANTS
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 type StatusValue = Order["status"];
+
+const SAMPLE_CLOTHES_COUNT = [
+  { name: "Baju",      quantity: 6 },
+  { name: "Celana",    quantity: 3 },
+  { name: "Kaos Kaki", quantity: 4 },
+];
 
 const STATUS_TABS: { value: StatusValue; label: string; emoji: string }[] = [
   { value: "pending",    label: "Pending",    emoji: "📋" },
@@ -31,16 +39,20 @@ const STATUS_TABS: { value: StatusValue; label: string; emoji: string }[] = [
   { value: "picked_up",  label: "Picked Up",  emoji: "🎉" },
 ];
 
-const VARIABLES: { token: string; label: string; sample: string }[] = [
+const VARIABLES: (TemplateVariable & { sample: string })[] = [
   { token: "{{greeting}}",        label: "Time-of-day Greeting", sample: "Bondia"        },
   { token: "{{customerName}}",    label: "Customer Name",   sample: "Maria Silva"        },
   { token: "{{orderNumber}}",     label: "Order Number",    sample: "AK-20260329-001"    },
   { token: "{{servicesSummary}}", label: "Services",        sample: "Wash & Dry, Shoes"  },
+  { token: "{{clothesCount}}",    label: "Clothes Count",   hint: "Pieces per item + total · line removed if not counted",
+    sample: formatWaClothesCount(SAMPLE_CLOTHES_COUNT) },
+  { token: "{{clothesTotal}}",    label: "Clothes Total",   hint: "Total pieces only · line removed if not counted",
+    sample: formatWaClothesTotal(SAMPLE_CLOTHES_COUNT) },
   { token: "{{statusLabel}}",     label: "Status Label",    sample: "Remata ona"         },
   { token: "{{totalPrice}}",      label: "Total Price",     sample: "$12.50"             },
   { token: "{{paymentLine}}",     label: "Payment Line",    sample: "✅ *Pagamentu:* Kompletu ona" },
   { token: "{{notes}}",           label: "Order Notes",     sample: "Handle ropa ne'e ho kuidadu." },
-  { token: "{{cashierName}}",     label: "Cashier (logged-in employee)", sample: "Ana Pereira" },
+  { token: "{{cashierName}}",     label: "Cashier",         hint: "Logged-in employee sending the message", sample: "Ana Pereira" },
   { token: "{{reviewUrl}}",       label: "Review URL",      sample: "https://akirolaundry.com/review" },
   { token: "{{businessName}}",    label: "Business Name",   sample: "Akiro Laundry"      },
   { token: "{{businessPhone}}",   label: "Business Phone",  sample: "+670 7675 8 7380"   },
@@ -154,16 +166,7 @@ function FormattableField({
   const ref = useRef<HTMLTextAreaElement>(null);
   const [showVarMenu, setShowVarMenu] = useState(false);
   const varMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (varMenuRef.current && !varMenuRef.current.contains(e.target as Node)) {
-        setShowVarMenu(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  const closeVarMenu = useCallback(() => setShowVarMenu(false), []);
 
   const wrapSelection = (before: string, after: string) => {
     const ta = ref.current;
@@ -231,41 +234,16 @@ function FormattableField({
           <ToolBtn icon={Italic}        label="Italic (_text_) — Ctrl+I" onClick={() => wrapSelection("_", "_")} />
           <ToolBtn icon={Strikethrough} label="Strikethrough (~text~)"   onClick={() => wrapSelection("~", "~")} />
           <ToolBtn icon={Code}          label="Monospace (`text`)"       onClick={() => wrapSelection("`", "`")} />
-          <div style={{ position: "relative" }} ref={varMenuRef}>
+          <div ref={varMenuRef}>
             <ToolBtn icon={Variable} label="Insert variable" active={showVarMenu} onClick={() => setShowVarMenu((v) => !v)} />
-            {showVarMenu && (
-              <div
-                style={{
-                  position: "absolute", top: "100%", right: 0, zIndex: 50,
-                  marginTop: 4, minWidth: 230,
-                  background: "white", borderRadius: "8px", border: "1.5px solid #e2e8f0",
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden",
-                  maxHeight: 300, overflowY: "auto",
-                }}
-              >
-                {VARIABLES.map((v) => (
-                  <button
-                    key={v.token}
-                    type="button"
-                    onClick={() => { insertAtCursor(v.token); setShowVarMenu(false); }}
-                    style={{
-                      width: "100%", padding: "7px 10px",
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      border: "none", background: "white", cursor: "pointer",
-                      borderBottom: "1px solid #f1f5f9", transition: "background 0.1s",
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "white"; }}
-                  >
-                    <span style={{ fontSize: "11px", fontWeight: 600, color: "#334155" }}>{v.label}</span>
-                    <code style={{ fontSize: "9px", fontWeight: 700, color: "#1a7fba", background: "#edf7fd", padding: "2px 5px", borderRadius: "4px" }}>
-                      {v.token}
-                    </code>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
+          <VariableMenu
+            open={showVarMenu}
+            anchorRef={varMenuRef}
+            variables={VARIABLES}
+            onPick={insertAtCursor}
+            onClose={closeVarMenu}
+          />
         </div>
       </div>
       <textarea

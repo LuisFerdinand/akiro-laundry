@@ -28,8 +28,8 @@ export interface ReceiptData {
   /** Name of the logged-in employee printing the receipt — fills {{cashierName}}. */
   cashierName?:   string;
   /**
-   * Pieces counted together with the customer — fills {{clothesCount}}. Pass it
-   * ONLY for orders counted with the customer: a staff count is never printed.
+   * Recorded clothes count — fills {{clothesCount}}. The first receipt of a new
+   * order passes it only when counted with the customer; a reprint passes any count.
    */
   clothesCount?:  { name: string; quantity: number }[] | null;
   settings?:      ReceiptSettings | null;
