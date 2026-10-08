@@ -1,7 +1,7 @@
 // components/admin/ReceiptTemplateEditor.tsx
 "use client";
 
-import { useState, useTransition, useCallback, useEffect, useRef } from "react";
+import { useState, useTransition, useCallback, useRef } from "react";
 import {
   Save, CheckCircle2, Loader2, Receipt,
   Settings, ChevronDown, Bold, Variable, Eye, EyeOff,
@@ -9,6 +9,7 @@ import {
 import { updateReceiptSettings } from "@/lib/actions/receipt-settings";
 import { buildReceiptContent, charsPerLineFor, type ReceiptData, type ReceiptLine } from "@/lib/utils/receipt-lines";
 import type { ReceiptSettings } from "@/lib/db/schema/receipt";
+import { VariableMenu, type TemplateVariable } from "./VariableMenu";
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    CONSTANTS
@@ -32,7 +33,7 @@ const DIVIDER_CHARS = [
   { value: "_", label: "_ (underline)" },
 ];
 
-const MAIN_VARIABLES: { token: string; label: string }[] = [
+const MAIN_VARIABLES: TemplateVariable[] = [
   { token: "{{shopName}}",        label: "Shop Name" },
   { token: "{{shopTagline}}",     label: "Shop Tagline" },
   { token: "{{orderNumber}}",     label: "Order Number" },
@@ -40,26 +41,26 @@ const MAIN_VARIABLES: { token: string; label: string }[] = [
   { token: "{{customerName}}",    label: "Customer Name" },
   { token: "{{customerPhone}}",   label: "Customer Phone" },
   { token: "{{customerAddress}}", label: "Customer Address" },
-  { token: "{{items}}",           label: "Items (auto-built list)" },
+  { token: "{{items}}",           label: "Items",         hint: "Auto-built list of services" },
+  { token: "{{clothesCount}}",    label: "Clothes Count", hint: "Only when counted with customer · auto-added after Items" },
   { token: "{{totalPrice}}",      label: "Total Price" },
-  { token: "{{paymentLine}}",     label: "Payment Line (paid/unpaid)" },
+  { token: "{{paymentLine}}",     label: "Payment Line",  hint: "Paid or unpaid line, set below" },
   { token: "{{paymentMethod}}",   label: "Payment Method" },
   { token: "{{amountPaid}}",      label: "Amount Paid" },
   { token: "{{change}}",          label: "Change" },
   { token: "{{notes}}",           label: "Order Notes" },
-  { token: "{{cashierName}}",     label: "Cashier (logged-in employee)" },
-  { token: "{{clothesCount}}",    label: "Clothes count (only when counted with customer; auto-added after items if missing)" },
+  { token: "{{cashierName}}",     label: "Cashier",       hint: "Logged-in employee printing the receipt" },
   { token: "{{footerContact}}",   label: "Footer Contact" },
   { token: "{{divider}}",         label: "Divider Line" },
 ];
 
-const PAID_LINE_VARIABLES = [
+const PAID_LINE_VARIABLES: TemplateVariable[] = [
   { token: "{{paymentMethod}}", label: "Payment Method" },
   { token: "{{amountPaid}}",    label: "Amount Paid" },
   { token: "{{change}}",        label: "Change" },
 ];
 
-const UNPAID_LINE_VARIABLES = [
+const UNPAID_LINE_VARIABLES: TemplateVariable[] = [
   { token: "{{totalPrice}}", label: "Total Price" },
 ];
 
@@ -265,19 +266,12 @@ function FormattableField({
   onChange: (v: string) => void;
   rows?: number;
   placeholder?: string;
-  variables: { token: string; label: string }[];
+  variables: TemplateVariable[];
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [showVarMenu, setShowVarMenu] = useState(false);
   const varMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (varMenuRef.current && !varMenuRef.current.contains(e.target as Node)) setShowVarMenu(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  const closeVarMenu = useCallback(() => setShowVarMenu(false), []);
 
   const wrapSelection = (before: string, after: string) => {
     const ta = ref.current;
@@ -340,40 +334,16 @@ function FormattableField({
         </span>
         <div style={{ display: "flex", alignItems: "center", gap: 1 }}>
           <ToolBtn icon={Bold} label="Bold (*text*) — Ctrl+B" onClick={() => wrapSelection("*", "*")} />
-          <div style={{ position: "relative" }} ref={varMenuRef}>
+          <div ref={varMenuRef}>
             <ToolBtn icon={Variable} label="Insert variable" active={showVarMenu} onClick={() => setShowVarMenu((v) => !v)} />
-            {showVarMenu && (
-              <div
-                style={{
-                  position: "absolute", top: "100%", right: 0, zIndex: 50, marginTop: 4,
-                  minWidth: 230, background: "white", borderRadius: 8,
-                  border: "1.5px solid #e2e8f0", boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-                  overflow: "hidden", maxHeight: 300, overflowY: "auto",
-                }}
-              >
-                {variables.map((v) => (
-                  <button
-                    key={v.token}
-                    type="button"
-                    onClick={() => { insertAtCursor(v.token); setShowVarMenu(false); }}
-                    style={{
-                      width: "100%", padding: "7px 10px",
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      border: "none", background: "white", cursor: "pointer",
-                      borderBottom: "1px solid #f1f5f9",
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "white"; }}
-                  >
-                    <span style={{ fontSize: "11px", fontWeight: 600, color: "#334155" }}>{v.label}</span>
-                    <code style={{ fontSize: "9px", fontWeight: 700, color: "#1a7fba", background: "#edf7fd", padding: "2px 5px", borderRadius: 4 }}>
-                      {v.token}
-                    </code>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
+          <VariableMenu
+            open={showVarMenu}
+            anchorRef={varMenuRef}
+            variables={variables}
+            onPick={insertAtCursor}
+            onClose={closeVarMenu}
+          />
         </div>
       </div>
       <textarea

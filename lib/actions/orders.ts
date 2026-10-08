@@ -103,7 +103,7 @@ export interface OrderWithDetails extends Order {
   customerAddress: string | null;
   items:           OrderItemWithDetails[];
   specialRequests: OrderSpecialRequest[];
-  /** Clothes count lines — loaded by getOrderById only (not the list query). */
+  /** Clothes count lines — loaded by getOrders and getOrderById. */
   clothesCounts?:  OrderClothingCount[];
 }
 
@@ -200,6 +200,19 @@ export async function getOrders(filters: EmployeeOrderFilters = {}): Promise<Ord
     requestsByOrder.set(r.orderId, list);
   }
 
+  // For the WA notify button's {{clothesCount}} / {{clothesTotal}}.
+  const allClothesCounts = await db
+    .select()
+    .from(orderClothingCounts)
+    .where(inArray(orderClothingCounts.orderId, orderIds))
+    .orderBy(asc(orderClothingCounts.id));
+  const countsByOrder = new Map<number, OrderClothingCount[]>();
+  for (const c of allClothesCounts) {
+    const list = countsByOrder.get(c.orderId) ?? [];
+    list.push(c);
+    countsByOrder.set(c.orderId, list);
+  }
+
   return orderRows.map((r) => ({
     ...r.order,
     customerName:    r.customerName    ?? "Unknown",
@@ -207,6 +220,7 @@ export async function getOrders(filters: EmployeeOrderFilters = {}): Promise<Ord
     customerAddress: r.customerAddress ?? null,
     items:           itemsByOrder.get(r.order.id) ?? [],
     specialRequests: requestsByOrder.get(r.order.id) ?? [],
+    clothesCounts:   countsByOrder.get(r.order.id) ?? [],
   }));
 }
 

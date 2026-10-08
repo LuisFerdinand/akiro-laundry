@@ -284,6 +284,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
         serviceName={firstServiceName}
         paymentStatus={order.paymentStatus}
         notes={order.notes}
+        clothesCounts={order.clothesCounts}
         templateData={waTemplateData}
       />
 

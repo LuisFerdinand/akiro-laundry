@@ -80,6 +80,8 @@ interface OrderStatusUpdaterProps {
   amountPaid?:    string | number | null;
   serviceName:    string;
   notes?:         string | null;
+  /** Recorded clothes count — for the WA message's {{clothesCount}} / {{clothesTotal}}. */
+  clothesCounts?: { name: string; quantity: number }[] | null;
   templateData?:  WaTemplateData | null;
 }
 
@@ -94,6 +96,7 @@ export function OrderStatusUpdater({
   amountPaid: initialAmountPaid,
   serviceName,
   notes,
+  clothesCounts,
   templateData,
 }: OrderStatusUpdaterProps) {
   const [status,         setStatus]         = useState(currentStatus);
@@ -368,6 +371,7 @@ export function OrderStatusUpdater({
             balanceDue={balanceDue}
             totalPrice={totalPriceNum}
             notes={notes}
+            clothesCounts={clothesCounts}
             templateData={templateData}
             compact
           />

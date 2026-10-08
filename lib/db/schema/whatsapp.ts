@@ -14,6 +14,9 @@
 //   {{reviewUrl}}       — link to the review page
 //   {{notes}}           — order notes (only rendered if present)
 //   {{cashierName}}     — name of the logged-in employee sending the message
+//   {{clothesCount}}    — recorded clothes count, one line per item + total
+//   {{clothesTotal}}    — total pieces counted, e.g. "13 pcs"
+//                         (lines using either are dropped when nothing was counted)
 //   {{businessName}}    — from settings
 //   {{businessPhone}}   — from settings
 //   {{businessUrl}}     — from settings

@@ -336,6 +336,7 @@ export default function NewOrderPage() {
               balanceDue={balanceDue}
               totalPrice={success.total}
               notes={formData.notes}
+              clothesCounts={countedWithCustomer ? countedLines(formData.clothesCount?.lines ?? []) : null}
               templateData={waTemplateData}
               className="w-full"
             />

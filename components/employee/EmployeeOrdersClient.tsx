@@ -153,6 +153,7 @@ function OrderRow({
             paymentStatus={order.paymentStatus}
             totalPrice={parseFloat(order.totalPrice)}
             notes={order.notes}
+            clothesCounts={order.clothesCounts}
             templateData={templateData}
             compact
           />
