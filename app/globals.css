@@ -519,6 +519,172 @@ body {
   to   { opacity: 1; transform: translateY(0);    }
 }
 
+/* ════════════════════════════════════════════════════════
+   EMPLOYEE POS — dashboard, orders & cash register
+   ════════════════════════════════════════════════════════ */
+
+/* ── Dashboard hero — colours follow the time of day ─── */
+.akiro-hero {
+  background: linear-gradient(135deg, #1a7fba 0%, #2496d6 55%, #0f5a85 100%);
+  box-shadow: 0 20px 44px -18px rgba(15, 90, 133, 0.6);
+  isolation: isolate;
+}
+.akiro-hero::before {
+  content: "";
+  position: absolute;
+  top: -140px;
+  right: -90px;
+  width: 360px;
+  height: 360px;
+  border-radius: 9999px;
+  pointer-events: none;
+}
+.akiro-hero--morning           { background: linear-gradient(135deg, #0ea5e9 0%, #1a7fba 52%, #0f5a85 100%); }
+.akiro-hero--morning::before   { background: radial-gradient(circle, rgba(255, 214, 90, 0.55) 0%, transparent 65%); }
+.akiro-hero--afternoon         { background: linear-gradient(135deg, #1a7fba 0%, #2496d6 50%, #0e7490 100%); }
+.akiro-hero--afternoon::before { background: radial-gradient(circle, rgba(62, 203, 154, 0.45) 0%, transparent 65%); }
+.akiro-hero--evening           { background: linear-gradient(135deg, #312e81 0%, #3b3fa8 42%, #0f5a85 100%); }
+.akiro-hero--evening::before   { background: radial-gradient(circle, rgba(255, 117, 88, 0.42) 0%, transparent 65%); }
+
+/* Soap bubbles drifting up through the hero */
+.akiro-bubble {
+  position: absolute;
+  bottom: -36px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0.18) 38%, rgba(255, 255, 255, 0.05) 70%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  opacity: 0;
+  animation: akiro-bubble-rise linear infinite;
+}
+@keyframes akiro-bubble-rise {
+  0%   { transform: translate3d(0, 0, 0) scale(0.7);         opacity: 0; }
+  12%  { opacity: 0.9; }
+  50%  { transform: translate3d(10px, -130px, 0) scale(1); }
+  85%  { opacity: 0.7; }
+  100% { transform: translate3d(-8px, -280px, 0) scale(1.08); opacity: 0; }
+}
+
+/* 👋 waves twice when the dashboard opens */
+.akiro-wave {
+  transform-origin: 70% 80%;
+  animation: akiro-wave 2.2s ease-in-out 0.5s 2;
+}
+@keyframes akiro-wave {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  10%, 30%      { transform: rotate(16deg); }
+  20%           { transform: rotate(-8deg); }
+  40%           { transform: rotate(-4deg); }
+  50%           { transform: rotate(10deg); }
+}
+
+/* Washing-machine drum */
+.akiro-drum {
+  transform-box: view-box;
+  transform-origin: 32px 39px;
+  animation: akiro-spin 1.4s linear infinite;
+}
+@keyframes akiro-spin { to { transform: rotate(360deg); } }
+
+/* Sunny "New order" tile */
+.akiro-cta-tile {
+  background: linear-gradient(135deg, #ffe066 0%, #ffc53d 48%, #ffa94d 100%);
+  box-shadow: 0 18px 36px -16px rgba(255, 159, 67, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.akiro-cta-tile::before,
+.akiro-cta-tile::after {
+  content: "";
+  position: absolute;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.28);
+  pointer-events: none;
+}
+.akiro-cta-tile::before { width: 160px; height: 160px; right: -40px; top: -60px; }
+.akiro-cta-tile::after  { width: 90px;  height: 90px;  right: 80px;  bottom: -50px; }
+.akiro-cta-tile:hover   {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 40px -16px rgba(255, 159, 67, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.akiro-cta-tile:active  { transform: scale(0.98); }
+
+/* Mission ring fills up on open, then follows the numbers */
+.akiro-ring {
+  transition: stroke-dashoffset 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: akiro-ring-fill 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes akiro-ring-fill { from { stroke-dashoffset: var(--ring-c); } }
+
+/* Unlocked badges pop in */
+.akiro-badge-pop {
+  display: inline-block;
+  animation: akiro-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes akiro-pop { from { transform: scale(0.4); } to { transform: scale(1); } }
+
+/* Thin loading bar along the top of a card */
+.akiro-progress {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 3px;
+  overflow: hidden;
+  background: rgba(26, 127, 186, 0.12);
+  z-index: 30;
+}
+.akiro-progress::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 35%;
+  background: linear-gradient(90deg, transparent, #1a7fba, transparent);
+  animation: akiro-progress 0.9s ease-in-out infinite;
+}
+@keyframes akiro-progress {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(300%); }
+}
+
+/* Cash drawer balance card */
+.akiro-wallet-card {
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(56, 189, 248, 0.35) 0%, transparent 55%),
+    radial-gradient(90% 80% at 0% 100%, rgba(62, 203, 154, 0.22) 0%, transparent 60%),
+    linear-gradient(140deg, #0b2a45 0%, #0f4c75 55%, #13689c 100%);
+  box-shadow: 0 24px 48px -20px rgba(11, 42, 69, 0.75);
+  isolation: isolate;
+}
+.akiro-wallet-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 22px 22px;
+  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 75%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 75%);
+  pointer-events: none;
+}
+
+/* Horizontally scrolling chip rows — swipeable, without a scrollbar track */
+.akiro-no-scrollbar {
+  scrollbar-width: none;
+}
+.akiro-no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .akiro-bubble { display: none; }
+  .akiro-drum,
+  .akiro-wave,
+  .akiro-ring,
+  .akiro-badge-pop,
+  .akiro-progress::after { animation: none; }
+}
+
 /* ── Mobile tap targets ──────────────────────────────── */
 @media (max-width: 768px) {
   button, select, input, textarea {

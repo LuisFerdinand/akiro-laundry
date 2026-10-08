@@ -23,11 +23,27 @@ import type {
   OrderSpecialRequest,
   OrderClothingCount,
 } from "@/lib/db/schema";
-import { eq, ilike, desc, asc, and, or, sql } from "drizzle-orm";
+import { eq, ilike, desc, asc, and, or, sql, gte, lte, inArray, count, type SQL } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { startOfDayBiz } from "@/lib/utils/business-time";
+import {
+  startOfDayBiz,
+  subDaysBiz,
+  bizDayStart,
+  bizDayEnd,
+  hourBiz,
+  isoDayBiz,
+} from "@/lib/utils/business-time";
 import { sumRevenue } from "@/lib/utils/revenue";
 import { paymentAfterTotalChange, paymentBalance } from "@/lib/utils/order-payment";
+import {
+  ACTIVE_ORDER_STATUSES,
+  ORDER_LIST_PAGE_SIZE,
+  type OrderListQuery,
+  type OrderSortKey,
+  type OrderStatusFilter,
+  type PaymentFilter,
+  type SortDir,
+} from "@/lib/utils/order-query";
 import { isClothesCountMode } from "@/lib/utils/clothes-count";
 import { cleanCountLines, writeOrderClothesCounts } from "@/lib/db/clothes-counts";
 import {
@@ -107,107 +123,238 @@ export interface OrderWithDetails extends Order {
   clothesCounts?:  OrderClothingCount[];
 }
 
-// ── Shared item select shape ───────────────────────────────────────────────────
-const itemSelect = {
-  item:        orderItems,
-  serviceName: servicePricing.name,
-  pricingUnit: servicePricing.pricingUnit,
-  soapName:    soaps.name,
-  pewangiName: pewangi.name,
-} as const;
+// ── Employee orders list ───────────────────────────────────────────────────────
+// Server-side search / filter / sort / pagination for /employee/orders. The
+// query comes from the URL (lib/utils/order-query.ts).
 
-function buildItemJoins<T extends typeof db.select>(q: ReturnType<T>) {
-  // Helper type — not called directly; joins are inlined below for type safety
+/** Lightweight service line for list rows — just enough for a one-line summary. */
+export interface OrderListItem {
+  id:          number;
+  serviceName: string;
+  pricingUnit: string;
+  weightKg:    string | null;
+  quantity:    number | null;
 }
 
-export interface EmployeeOrderFilters {
-  search?: string;
-  status?: string;
-  limit?:  number;
+export interface OrderListRow extends Order {
+  customerName:  string;
+  customerPhone: string;
+  items:         OrderListItem[];
 }
 
-export async function getOrders(filters: EmployeeOrderFilters = {}): Promise<OrderWithDetails[]> {
-  const { search, status, limit = 100 } = filters;
+export interface OrderListResult {
+  rows:       OrderListRow[];
+  total:      number;
+  page:       number;
+  pageSize:   number;
+  totalPages: number;
+  /** Matches per status / payment chip — each counted with every *other* filter applied. */
+  statusCounts:  Record<OrderStatusFilter, number>;
+  paymentCounts: Record<PaymentFilter, number>;
+  /** Still owed (unpaid totals + DP balances) across every matching order. */
+  toCollect: { amount: number; orders: number };
+}
 
-  const conditions = [];
-  if (search?.trim()) {
-    conditions.push(
-      or(
-        ilike(orders.orderNumber, `%${search.trim()}%`),
-        ilike(customers.name,    `%${search.trim()}%`),
-        ilike(customers.phone,   `%${search.trim()}%`),
-      ),
-    );
-  }
-  if (status && status !== "all") {
-    conditions.push(eq(orders.status, status as Order["status"]));
-  }
-  const where = conditions.length > 0 ? and(...conditions) : undefined;
+/** Balance still owed on an order, as SQL — mirrors paymentBalance() for unpaid / DP orders. */
+const balanceDueSql = sql<string>`case ${orders.paymentStatus}
+  when 'unpaid'  then ${orders.totalPrice}
+  when 'partial' then greatest(${orders.totalPrice} - coalesce(${orders.amountPaid}, 0), 0)
+  else 0 end`;
 
-  const orderRows = await db
+function orderSearchCondition(raw: string): SQL | undefined {
+  const term = raw.trim();
+  if (!term) return undefined;
+  const like = `%${term}%`;
+  const conditions: SQL[] = [
+    ilike(orders.orderNumber, like),
+    ilike(customers.name,     like),
+    ilike(customers.phone,    like),
+    // Any service line on the order ("sepatu", "setrika", …)
+    sql`exists (
+      select 1 from ${orderItems}
+      join ${servicePricing} on ${servicePricing.id} = ${orderItems.servicePricingId}
+      where ${orderItems.orderId} = ${orders.id} and ${servicePricing.name} ilike ${like}
+    )`,
+  ];
+  // Phones are stored as E.164 (+670…) — still match a number typed the local way ("0767…").
+  const localDigits = stripTrunkPrefix(term);
+  if (localDigits.length >= 3 && localDigits !== term) {
+    conditions.push(ilike(customers.phone, `%${localDigits}%`));
+  }
+  return or(...conditions);
+}
+
+function orderDateCondition(q: OrderListQuery): SQL | undefined {
+  const today = startOfDayBiz(new Date());
+  switch (q.range) {
+    case "today": return gte(orders.createdAt, today);
+    case "7d":    return gte(orders.createdAt, subDaysBiz(today, 6));
+    case "30d":   return gte(orders.createdAt, subDaysBiz(today, 29));
+    case "custom": {
+      const bounds: SQL[] = [];
+      if (q.from) bounds.push(gte(orders.createdAt, bizDayStart(q.from)));
+      if (q.to)   bounds.push(lte(orders.createdAt, bizDayEnd(q.to)));
+      return bounds.length > 0 ? and(...bounds) : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+function orderStatusCondition(status: OrderStatusFilter): SQL | undefined {
+  if (status === "all")    return undefined;
+  if (status === "active") return inArray(orders.status, ACTIVE_ORDER_STATUSES);
+  return eq(orders.status, status);
+}
+
+function orderListSort(sort: OrderSortKey, dir: SortDir): SQL[] {
+  const by = dir === "asc" ? asc : desc;
+  switch (sort) {
+    case "customer": return [by(sql`lower(${customers.name})`), desc(orders.createdAt)];
+    case "total":    return [by(orders.totalPrice), desc(orders.createdAt)];
+    // Enum order: unpaid → partial → paid / pending → processing → done → picked_up
+    case "payment":  return [by(orders.paymentStatus), desc(orders.createdAt)];
+    case "status":   return [by(orders.status), desc(orders.createdAt)];
+    default:         return [by(orders.createdAt)];
+  }
+}
+
+/** One page of list rows — the order, its customer and a light summary of its service lines. */
+async function loadOrderListRows(
+  where:   SQL | undefined,
+  orderBy: SQL[],
+  limit:   number,
+  offset = 0,
+): Promise<OrderListRow[]> {
+  const rows = await db
     .select({
-      order:           orders,
-      customerName:    customers.name,
-      customerPhone:   customers.phone,
-      customerAddress: customers.address,
+      order:         orders,
+      customerName:  customers.name,
+      customerPhone: customers.phone,
     })
     .from(orders)
     .leftJoin(customers, eq(orders.customerId, customers.id))
     .where(where)
-    .orderBy(desc(orders.createdAt))
-    .limit(limit);
+    .orderBy(...orderBy, desc(orders.id))
+    .limit(limit)
+    .offset(offset);
 
-  if (orderRows.length === 0) return [];
+  if (rows.length === 0) return [];
 
-  const orderIds = orderRows.map((r) => r.order.id);
-
-  const { inArray } = await import("drizzle-orm");
-  const allItems = await db
+  const items = await db
     .select({
-      item:        orderItems,
+      orderId:     orderItems.orderId,
+      id:          orderItems.id,
+      weightKg:    orderItems.weightKg,
+      quantity:    orderItems.quantity,
       serviceName: servicePricing.name,
       pricingUnit: servicePricing.pricingUnit,
-      soapName:    soaps.name,
-      pewangiName: pewangi.name,
     })
     .from(orderItems)
     .leftJoin(servicePricing, eq(orderItems.servicePricingId, servicePricing.id))
-    .leftJoin(soaps,    eq(orderItems.soapId,    soaps.id))
-    .leftJoin(pewangi,  eq(orderItems.pewangiId, pewangi.id))
-    .where(inArray(orderItems.orderId, orderIds));
+    .where(inArray(orderItems.orderId, rows.map((r) => r.order.id)))
+    .orderBy(asc(orderItems.id));
 
-  const itemsByOrder = new Map<number, OrderItemWithDetails[]>();
-  for (const row of allItems) {
-    const list = itemsByOrder.get(row.item.orderId) ?? [];
+  const itemsByOrder = new Map<number, OrderListItem[]>();
+  for (const it of items) {
+    const list = itemsByOrder.get(it.orderId) ?? [];
     list.push({
-      ...row.item,
-      serviceName: row.serviceName ?? "—",
-      pricingUnit: row.pricingUnit ?? "per_kg",
-      soapName:    row.soapName    ?? null,
-      pewangiName: row.pewangiName ?? null,
+      id:          it.id,
+      serviceName: it.serviceName ?? "—",
+      pricingUnit: it.pricingUnit ?? "per_kg",
+      weightKg:    it.weightKg,
+      quantity:    it.quantity,
     });
-    itemsByOrder.set(row.item.orderId, list);
+    itemsByOrder.set(it.orderId, list);
   }
 
-  const allSpecialRequests = await db
-    .select()
-    .from(orderSpecialRequests)
-    .where(inArray(orderSpecialRequests.orderId, orderIds));
-  const requestsByOrder = new Map<number, OrderSpecialRequest[]>();
-  for (const r of allSpecialRequests) {
-    const list = requestsByOrder.get(r.orderId) ?? [];
-    list.push(r);
-    requestsByOrder.set(r.orderId, list);
-  }
-
-  return orderRows.map((r) => ({
+  return rows.map((r) => ({
     ...r.order,
-    customerName:    r.customerName    ?? "Unknown",
-    customerPhone:   r.customerPhone   ?? "—",
-    customerAddress: r.customerAddress ?? null,
-    items:           itemsByOrder.get(r.order.id) ?? [],
-    specialRequests: requestsByOrder.get(r.order.id) ?? [],
+    customerName:  r.customerName  ?? "Unknown",
+    customerPhone: r.customerPhone ?? "—",
+    items:         itemsByOrder.get(r.order.id) ?? [],
   }));
+}
+
+export async function getOrderList(
+  query:    OrderListQuery,
+  pageSize: number = ORDER_LIST_PAGE_SIZE,
+): Promise<OrderListResult> {
+  const searchCond  = orderSearchCondition(query.search);
+  const dateCond    = orderDateCondition(query);
+  const statusCond  = orderStatusCondition(query.status);
+  const paymentCond = query.payment === "all" ? undefined : eq(orders.paymentStatus, query.payment);
+  const where       = and(searchCond, dateCond, statusCond, paymentCond);
+  const orderBy     = orderListSort(query.sort, query.dir);
+
+  // One grouped query feeds every chip count + the totals: the search and date
+  // filters apply to all of it; status and payment are cross-filtered in JS.
+  const groupsQuery = db
+    .select({
+      status:  orders.status,
+      payment: orders.paymentStatus,
+      n:       count(),
+      due:     sql<string>`coalesce(sum(${balanceDueSql}), 0)`,
+    })
+    .from(orders)
+    .leftJoin(customers, eq(orders.customerId, customers.id))
+    .where(and(searchCond, dateCond))
+    .groupBy(orders.status, orders.paymentStatus);
+
+  const requestedPage = Math.max(1, query.page);
+  const [groups, firstTry] = await Promise.all([
+    groupsQuery,
+    loadOrderListRows(where, orderBy, pageSize, (requestedPage - 1) * pageSize),
+  ]);
+
+  const statusMatches  = (s: Order["status"]) =>
+    query.status === "all" ||
+    (query.status === "active" ? ACTIVE_ORDER_STATUSES.includes(s) : s === query.status);
+  const paymentMatches = (p: Order["paymentStatus"]) => query.payment === "all" || p === query.payment;
+
+  const statusCounts: Record<OrderStatusFilter, number> =
+    { all: 0, active: 0, pending: 0, processing: 0, done: 0, picked_up: 0 };
+  const paymentCounts: Record<PaymentFilter, number> = { all: 0, unpaid: 0, partial: 0, paid: 0 };
+  let total = 0;
+  const toCollect = { amount: 0, orders: 0 };
+
+  for (const g of groups) {
+    const n = Number(g.n);
+    if (paymentMatches(g.payment)) {
+      statusCounts.all      += n;
+      statusCounts[g.status] += n;
+      if (ACTIVE_ORDER_STATUSES.includes(g.status)) statusCounts.active += n;
+    }
+    if (statusMatches(g.status)) {
+      paymentCounts.all       += n;
+      paymentCounts[g.payment] += n;
+    }
+    if (statusMatches(g.status) && paymentMatches(g.payment)) {
+      total += n;
+      if (g.payment !== "paid") {
+        toCollect.amount += parseFloat(g.due);
+        toCollect.orders += n;
+      }
+    }
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page       = Math.min(requestedPage, totalPages);
+  // A page past the end (e.g. after other orders were picked up) falls back to the last one.
+  const rows = page === requestedPage
+    ? firstTry
+    : await loadOrderListRows(where, orderBy, pageSize, (page - 1) * pageSize);
+
+  return {
+    rows,
+    total,
+    page,
+    pageSize,
+    totalPages,
+    statusCounts,
+    paymentCounts,
+    toCollect: { amount: Math.round(toCollect.amount * 100) / 100, orders: toCollect.orders },
+  };
 }
 
 export async function getOrderById(id: number): Promise<OrderWithDetails | null> {
@@ -641,37 +788,117 @@ export async function searchCustomersByPhone(query: string): Promise<Customer[]>
     .limit(5);
 }
 
-// ─── Dashboard Stats ──────────────────────────────────────────────────────────
+// ─── Employee Dashboard ───────────────────────────────────────────────────────
 
-export interface DashboardStats {
-  todayOrders:    number;
-  activeOrders:   number;
-  doneOrders:     number;
-  todayRevenue:   number;
-  pendingRevenue: number;
+export interface EmployeeDashboardData {
+  today: {
+    orders:              number;
+    /** Orders created yesterday up to this same time of day — for a fair "vs yesterday". */
+    ordersYesterdaySoFar: number;
+    /** Money in today — includes DP payments (see lib/utils/revenue.ts). */
+    collected:              number;
+    collectedYesterdaySoFar: number;
+    /** Orders created today per business-local hour (24 slots). */
+    hourly:              number[];
+  };
+  /** Still owed across all unpaid + DP orders. */
+  toCollect: { amount: number; orders: number };
+  flow: { pending: number; processing: number; done: number; pickedUpToday: number };
+  /**
+   * target — today's goal: the recent average day (last 7 days that had orders), at least 5.
+   * record — the most orders ever taken in one day before today.
+   */
+  goal: { target: number; record: number };
+  /** Orders taken today per staff member (orders.createdByName), busiest first. */
+  team: { name: string; orders: number }[];
+  /** Oldest "done" orders first — they have waited longest. */
+  readyForPickup: OrderListRow[];
+  latest:         OrderListRow[];
 }
 
-export async function getDashboardStats(): Promise<DashboardStats> {
-  const todayStart = startOfDayBiz(new Date());
+export async function getEmployeeDashboard(): Promise<EmployeeDashboardData> {
+  const now          = new Date();
+  const todayStart   = startOfDayBiz(now);
+  const yesterday    = subDaysBiz(todayStart, 1);
+  const sameTimeYday = subDaysBiz(now, 1);
 
-  const allOrders = await db.select().from(orders);
+  const [all, readyForPickup, latest] = await Promise.all([
+    db
+      .select({
+        status:               orders.status,
+        paymentStatus:        orders.paymentStatus,
+        totalPrice:           orders.totalPrice,
+        amountPaid:           orders.amountPaid,
+        paidAt:               orders.paidAt,
+        editedAfterPaymentAt: orders.editedAfterPaymentAt,
+        createdAt:            orders.createdAt,
+        updatedAt:            orders.updatedAt,
+        createdByName:        orders.createdByName,
+      })
+      .from(orders),
+    loadOrderListRows(eq(orders.status, "done"), [asc(orders.createdAt)], 6),
+    loadOrderListRows(undefined, [desc(orders.createdAt)], 6),
+  ]);
 
-  const todayOrders  = allOrders.filter((o) => new Date(o.createdAt) >= todayStart);
-  const activeOrders = allOrders.filter((o) => o.status === "pending" || o.status === "processing");
-  const doneOrders   = allOrders.filter((o) => o.status === "done");
+  const hourly   = Array<number>(24).fill(0);
+  const team     = new Map<string, number>();
+  const perDay   = new Map<string, number>();
+  const flow     = { pending: 0, processing: 0, done: 0, pickedUpToday: 0 };
+  const toCollect = { amount: 0, orders: 0 };
+  let ordersToday = 0;
+  let ordersYesterdaySoFar = 0;
 
-  // Includes partial (DP) payments, not just fully paid orders.
-  const todayRevenue = sumRevenue(allOrders, todayStart);
+  for (const o of all) {
+    if (o.createdAt >= todayStart) {
+      ordersToday++;
+      hourly[hourBiz(o.createdAt)]++;
+      const name = o.createdByName?.trim();
+      if (name) team.set(name, (team.get(name) ?? 0) + 1);
+    } else {
+      const day = isoDayBiz(o.createdAt);
+      perDay.set(day, (perDay.get(day) ?? 0) + 1);
+      if (o.createdAt >= yesterday && o.createdAt <= sameTimeYday) ordersYesterdaySoFar++;
+    }
 
-  const pendingRevenue = allOrders
-    .filter((o) => o.paymentStatus === "unpaid")
-    .reduce((sum, o) => sum + parseFloat(o.totalPrice ?? "0"), 0);
+    if (o.status === "picked_up") {
+      // No dedicated picked-up timestamp — the status change is the order's last update.
+      if (o.updatedAt >= todayStart) flow.pickedUpToday++;
+    } else {
+      flow[o.status]++;
+    }
+
+    if (o.paymentStatus !== "paid") {
+      const due = paymentBalance(o).balanceDue;
+      if (due > 0) {
+        toCollect.amount += due;
+        toCollect.orders++;
+      }
+    }
+  }
+
+  // Recent average day → today's goal; best day so far → the record to beat.
+  const days    = [...perDay.entries()].sort(([a], [b]) => (a < b ? 1 : -1));
+  const recent  = days.slice(0, 7).map(([, n]) => n);
+  const average = recent.length > 0 ? recent.reduce((a, b) => a + b, 0) / recent.length : 0;
 
   return {
-    todayOrders:    todayOrders.length,
-    activeOrders:   activeOrders.length,
-    doneOrders:     doneOrders.length,
-    todayRevenue,
-    pendingRevenue,
+    today: {
+      orders:                  ordersToday,
+      ordersYesterdaySoFar,
+      collected:               sumRevenue(all, todayStart),
+      collectedYesterdaySoFar: sumRevenue(all, yesterday, sameTimeYday),
+      hourly,
+    },
+    toCollect: { amount: Math.round(toCollect.amount * 100) / 100, orders: toCollect.orders },
+    flow,
+    goal: {
+      target: Math.max(5, Math.ceil(average)),
+      record: days.reduce((best, [, n]) => Math.max(best, n), 0),
+    },
+    team: [...team.entries()]
+      .map(([name, n]) => ({ name, orders: n }))
+      .sort((a, b) => b.orders - a.orders || a.name.localeCompare(b.name)),
+    readyForPickup,
+    latest,
   };
 }

@@ -97,7 +97,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
   const firstServiceName = order.items[0]?.serviceName ?? "—";
 
   return (
-    <div className="space-y-4 pb-8 pt-2">
+    <div className="mx-auto max-w-3xl space-y-4 pb-8 pt-2">
 
       {/* Back link */}
       <Link href="/employee/orders"

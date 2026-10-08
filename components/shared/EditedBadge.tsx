@@ -8,6 +8,8 @@ interface Props {
   editedAfterPaymentAt?: Date | string | null;
   /** Use the smaller table-row sizing instead of the default detail-page sizing. */
   compact?: boolean;
+  /** Just a pencil + count (details in the tooltip) — for tight list cells. */
+  iconOnly?: boolean;
 }
 
 /**
@@ -15,7 +17,7 @@ interface Props {
  * nothing when editCount is 0. Orders changed after they were paid get an amber
  * "after payment" variant so they stand out when reconciling cash.
  */
-export function EditedBadge({ editCount, editedAfterPaymentAt, compact = false }: Props) {
+export function EditedBadge({ editCount, editedAfterPaymentAt, compact = false, iconOnly = false }: Props) {
   if (!editCount) return null;
 
   const afterPayment = !!editedAfterPaymentAt;
@@ -23,6 +25,25 @@ export function EditedBadge({ editCount, editedAfterPaymentAt, compact = false }
   const title = afterPayment
     ? `Edited ${times} — last changed after payment on ${formatDateTimeBiz(editedAfterPaymentAt)}. The cash register was not changed.`
     : `Edited ${times} since it was created`;
+
+  if (iconOnly) {
+    return (
+      <span
+        title={title}
+        aria-label={title}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0,
+          fontSize: "10px", fontWeight: 800, lineHeight: 1,
+          color:      afterPayment ? "#b45309" : "#7c3aed",
+          background: afterPayment ? "#fffbeb" : "#f5f3ff",
+          border:     `1px solid ${afterPayment ? "#fcd34d" : "#c4b5fd"}`,
+          padding: "2px 5px", borderRadius: "999px",
+        }}
+      >
+        <Pencil size={8} />×{editCount}
+      </span>
+    );
+  }
 
   return (
     <span

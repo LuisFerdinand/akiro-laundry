@@ -3,30 +3,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { type LucideIcon, LayoutDashboard, PlusCircle, ClipboardList, Wallet } from "lucide-react";
+import { NAV_ITEMS, isNavActive } from "./nav-items";
 
-type NavItem = {
-  href: string; label: string; icon: LucideIcon; exact: boolean; isCTA?: boolean;
-  exclude?: string;
-};
-
-const NAV_ITEMS: NavItem[] = [
-  { href: "/employee",               label: "Home",   icon: LayoutDashboard, exact: true  },
-  { href: "/employee/orders/new",    label: "New",    icon: PlusCircle,      exact: false, isCTA: true },
-  { href: "/employee/orders",        label: "Orders", icon: ClipboardList,   exact: false, exclude: "/employee/orders/new" },
-  { href: "/employee/cash-register", label: "Cash",   icon: Wallet,          exact: false },
-];
-
+/** Phone navigation — tablets (md+) use the SideRail instead. */
 export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-50 bg-white/95 backdrop-blur-md border-t border-blue-100/50">
-      <div className="flex items-end h-[68px] max-w-lg sm:max-w-2xl lg:max-w-3xl mx-auto px-3 sm:px-6 pb-3">
-        {NAV_ITEMS.map(({ href, label, icon: Icon, exact, isCTA, exclude }) => {
-          const isActive = exact
-            ? pathname === href
-            : pathname.startsWith(href) && (!exclude || !pathname.startsWith(exclude));
+    <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-white/95 backdrop-blur-md border-t border-blue-100/50">
+      <div className="flex items-end h-[68px] max-w-lg sm:max-w-2xl mx-auto px-3 sm:px-6 pb-3">
+        {NAV_ITEMS.map((item) => {
+          const { href, label, icon: Icon, isCTA } = item;
+          const isActive = isNavActive(item, pathname);
 
           if (isCTA) {
             return (

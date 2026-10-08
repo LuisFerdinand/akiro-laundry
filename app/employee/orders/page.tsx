@@ -1,25 +1,26 @@
 // app/employee/orders/page.tsx
-import { getOrders } from "@/lib/actions/orders";
+import { getOrderList } from "@/lib/actions/orders";
 import { getWaTemplateData } from "@/lib/actions/wa-templates";
+import { parseOrderListQuery } from "@/lib/utils/order-query";
 import { EmployeeOrdersClient } from "@/components/employee/EmployeeOrdersClient";
 
 export default async function OrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string; status?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const sp = await searchParams;
-  const filters = { search: sp.search, status: sp.status };
+  const query = parseOrderListQuery(await searchParams);
 
-  const [orders, templateData] = await Promise.all([
-    getOrders(filters),
+  const [result, templateData] = await Promise.all([
+    getOrderList(query),
     getWaTemplateData(),
   ]);
 
   return (
     <EmployeeOrdersClient
-      orders={orders}
-      initialFilters={filters}
+      result={result}
+      query={query}
+      now={new Date().toISOString()}
       templateData={templateData}
     />
   );

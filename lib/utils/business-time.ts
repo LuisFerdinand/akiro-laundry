@@ -97,6 +97,45 @@ export function formatDateBiz(value: Date | string | number): string {
   return formatBiz(new Date(value), { year: "numeric", month: "numeric", day: "numeric" });
 }
 
+/** "Today" / "Yesterday" / "Mon, Oct 6" for a business-local YYYY-MM-DD day, relative to `now`. */
+export function formatDayLabelBiz(iso: string, now: Date = new Date()): string {
+  const today = isoDayBiz(now);
+  if (iso === today) return "Today";
+  if (iso === addDaysISO(today, -1)) return "Yesterday";
+  const sameYear = iso.slice(0, 4) === today.slice(0, 4);
+  return formatBiz(bizDayStart(iso), sameYear
+    ? { weekday: "short", month: "short", day: "numeric" }
+    : { year: "numeric", month: "short", day: "numeric" });
+}
+
+/** "Today, 3:42 PM" / "Yesterday, 9:05 AM" / "Oct 3, 3:42 PM" in Timor-Leste time, relative to `now`. */
+export function formatDayTimeBiz(value: Date | string | number, now: Date = new Date()): string {
+  const date  = new Date(value);
+  const time  = formatBiz(date, { hour: "numeric", minute: "2-digit" });
+  const day   = isoDayBiz(date);
+  const today = isoDayBiz(now);
+  if (day === today) return `Today, ${time}`;
+  if (day === addDaysISO(today, -1)) return `Yesterday, ${time}`;
+  const sameYear = day.slice(0, 4) === today.slice(0, 4);
+  const dayPart  = formatBiz(date, sameYear
+    ? { month: "short", day: "numeric" }
+    : { year: "numeric", month: "short", day: "numeric" });
+  return `${dayPart}, ${time}`;
+}
+
+/** Compact elapsed time since `value`: "just now", "5m", "3h", "2d", "3w", "4mo". */
+export function timeAgoShort(value: Date | string | number, now: Date = new Date()): string {
+  const minutes = Math.max(0, now.getTime() - new Date(value).getTime()) / 60_000;
+  if (minutes < 1)  return "just now";
+  if (minutes < 60) return `${Math.floor(minutes)}m`;
+  const hours = minutes / 60;
+  if (hours < 24)   return `${Math.floor(hours)}h`;
+  const days = hours / 24;
+  if (days < 14)    return `${Math.floor(days)}d`;
+  if (days < 60)    return `${Math.floor(days / 7)}w`;
+  return `${Math.floor(days / 30)}mo`;
+}
+
 // ─── Finance period presets ──────────────────────────────────────────────────
 // Pure helper (no "use server") shared by the Buku Besar / Buku Kecil pages and
 // their clients. Boundaries follow the same plain-Date convention as

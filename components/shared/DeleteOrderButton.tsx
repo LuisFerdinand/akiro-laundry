@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Trash2, Loader2, AlertTriangle } from "lucide-react";
 import { deleteOrder } from "@/lib/actions/admin-orders";
@@ -46,12 +47,12 @@ export function DeleteOrderButton({ orderId, orderNumber, redirectTo, compact = 
           title="Delete order"
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
-            width: 30, height: 30, borderRadius: "8px",
-            border: "1.5px solid #fda4af", background: "#fff1f2",
+            width: 44, height: 44, borderRadius: "7px",
+            border: "1.5px solid #fecdd3", background: "#fff1f2",
             color: "#be123c", cursor: "pointer", flexShrink: 0,
           }}
         >
-          <Trash2 size={13} />
+          <Trash2 size={15} />
         </button>
       ) : fullWidth ? (
         <button
@@ -81,14 +82,22 @@ export function DeleteOrderButton({ orderId, orderNumber, redirectTo, compact = 
         </button>
       )}
 
-      {showConfirm && (
+      {/* Portalled to <body>: a transformed ancestor (the employee <main>'s
+          page-enter animation) would otherwise turn "fixed" into "relative to
+          that ancestor" — on a long scrolled list the dialog could open
+          off-screen. Clicks are stopped at the overlay so they don't bubble
+          (through the React tree) into a clickable parent such as a table row. */}
+      {showConfirm && createPortal(
         <div
           style={{
             position: "fixed", inset: 0, zIndex: 100,
             background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)",
             display: "flex", alignItems: "center", justifyContent: "center", padding: "16px",
           }}
-          onClick={(e) => { if (e.target === e.currentTarget && !isPending) setShowConfirm(false); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (e.target === e.currentTarget && !isPending) setShowConfirm(false);
+          }}
         >
           <div style={{
             background: "white", borderRadius: "14px", border: "1.5px solid #fda4af",
@@ -147,7 +156,8 @@ export function DeleteOrderButton({ orderId, orderNumber, redirectTo, compact = 
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

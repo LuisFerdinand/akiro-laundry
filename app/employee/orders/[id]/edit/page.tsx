@@ -18,23 +18,25 @@ export default async function EditOrderPage({ params }: PageProps) {
   // Paid / DP orders stay editable — the edit never touches the cash register;
   // the form shows how the new total compares with what was received.
   return (
-    <EditOrderForm
-      order={{
-        id:              order.id,
-        orderNumber:     order.orderNumber,
-        customerName:    order.customerName,
-        customerPhone:   order.customerPhone,
-        customerAddress: order.customerAddress,
-        notes:           order.notes,
-        items:           order.items,
-        specialRequests: order.specialRequests,
-        payment: order.paymentStatus === "unpaid" ? null : {
-          status:   order.paymentStatus,
-          received: amountReceived(order),
-          method:   order.paymentMethod,
-        },
-      }}
-      backHref={`/employee/orders/${id}`}
-    />
+    <div className="mx-auto max-w-3xl">
+      <EditOrderForm
+        order={{
+          id:              order.id,
+          orderNumber:     order.orderNumber,
+          customerName:    order.customerName,
+          customerPhone:   order.customerPhone,
+          customerAddress: order.customerAddress,
+          notes:           order.notes,
+          items:           order.items,
+          specialRequests: order.specialRequests,
+          payment: order.paymentStatus === "unpaid" ? null : {
+            status:   order.paymentStatus,
+            received: amountReceived(order),
+            method:   order.paymentMethod,
+          },
+        }}
+        backHref={`/employee/orders/${id}`}
+      />
+    </div>
   );
 }

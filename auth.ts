@@ -24,6 +24,23 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     updateAge: 60 * 60, // refresh the token once per hour if the user is active
   },
 
+  // Browsers share cookies across ports on the same host, so every Auth.js app
+  // run on localhost (this one, other projects on :3000, …) would send each
+  // other the default `authjs.session-token`. Each app can't decrypt the
+  // other's token and logs "JWTSessionError: no matching decryption secret"
+  // on every request. A name unique to Akiro keeps its session to itself.
+  cookies: {
+    sessionToken: {
+      name: "akiro.session-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path:     "/",
+        secure:   process.env.NODE_ENV === "production",
+      },
+    },
+  },
+
   pages: { signIn: "/login" },
 
   providers: [

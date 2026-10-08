@@ -16,8 +16,9 @@ import type {
   CashRegisterTransaction,
   ExpenseCategory,
 } from "@/lib/db/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, asc, gte, lt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { startOfDayBiz } from "@/lib/utils/business-time";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -88,7 +89,7 @@ async function getOrCreateRegister(): Promise<CashRegister> {
 
 // ─── Get Cash Register State ──────────────────────────────────────────────────
 
-export async function getCashRegisterState(): Promise<CashRegisterState> {
+export async function getCashRegisterState(limit = 30): Promise<CashRegisterState> {
   const register = await getOrCreateRegister();
 
   const recentTransactions = await db
@@ -105,7 +106,7 @@ export async function getCashRegisterState(): Promise<CashRegisterState> {
     .leftJoin(orders, eq(cashRegisterTransactions.orderId, orders.id))
     .leftJoin(customers, eq(orders.customerId, customers.id))
     .orderBy(desc(cashRegisterTransactions.createdAt))
-    .limit(30);
+    .limit(Math.min(Math.max(1, limit), 200));
 
   return {
     balance:       parseFloat(register.balance),
@@ -115,6 +116,79 @@ export async function getCashRegisterState(): Promise<CashRegisterState> {
       categoryName: r.categoryName ?? null,
       displayDescription: describeWithCustomer(r.tx.description, r.customerName),
     })),
+  };
+}
+
+// ─── Today's drawer movement ──────────────────────────────────────────────────
+
+export interface CashDrawerToday {
+  /** Balance when the business day began, from the ledger — null when there is no history yet. */
+  openingBalance: number | null;
+  moneyIn:  number;
+  moneyOut: number;
+  count:    number;
+  /** Today's total and count per transaction type (payment_in, change_out, …). */
+  byType: { type: string; direction: "income" | "outcome"; amount: number; count: number }[];
+  /** Drawer balance after each of today's transactions, oldest first. */
+  balanceTrail: { at: Date; balance: number }[];
+}
+
+export async function getCashDrawerToday(): Promise<CashDrawerToday> {
+  const todayStart = startOfDayBiz(new Date());
+
+  const [[lastBeforeToday], todays] = await Promise.all([
+    db
+      .select({ balanceAfter: cashRegisterTransactions.balanceAfter })
+      .from(cashRegisterTransactions)
+      .where(lt(cashRegisterTransactions.createdAt, todayStart))
+      .orderBy(desc(cashRegisterTransactions.createdAt), desc(cashRegisterTransactions.id))
+      .limit(1),
+    db
+      .select({
+        type:         cashRegisterTransactions.type,
+        direction:    cashRegisterTransactions.direction,
+        amount:       cashRegisterTransactions.amount,
+        balanceAfter: cashRegisterTransactions.balanceAfter,
+        createdAt:    cashRegisterTransactions.createdAt,
+      })
+      .from(cashRegisterTransactions)
+      .where(gte(cashRegisterTransactions.createdAt, todayStart))
+      .orderBy(asc(cashRegisterTransactions.createdAt), asc(cashRegisterTransactions.id)),
+  ]);
+
+  let moneyIn  = 0;
+  let moneyOut = 0;
+  const byType = new Map<string, CashDrawerToday["byType"][number]>();
+  for (const tx of todays) {
+    const amount = parseFloat(tx.amount);
+    if (tx.direction === "income") moneyIn += amount;
+    else moneyOut += amount;
+    const key   = `${tx.type}:${tx.direction}`;
+    const entry = byType.get(key) ?? { type: tx.type, direction: tx.direction, amount: 0, count: 0 };
+    entry.amount += amount;
+    entry.count++;
+    byType.set(key, entry);
+  }
+
+  // Opening balance: the last balance before midnight, or — on the ledger's very
+  // first day — the first transaction of today with its own movement undone.
+  const first = todays[0];
+  const openingBalance = lastBeforeToday
+    ? parseFloat(lastBeforeToday.balanceAfter)
+    : first
+      ? parseFloat(first.balanceAfter) - (first.direction === "income" ? 1 : -1) * parseFloat(first.amount)
+      : null;
+
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  return {
+    openingBalance: openingBalance === null ? null : round2(openingBalance),
+    moneyIn:  round2(moneyIn),
+    moneyOut: round2(moneyOut),
+    count:    todays.length,
+    byType:   [...byType.values()]
+      .map((t) => ({ ...t, amount: round2(t.amount) }))
+      .sort((a, b) => b.amount - a.amount),
+    balanceTrail: todays.map((tx) => ({ at: tx.createdAt, balance: parseFloat(tx.balanceAfter) })),
   };
 }
 

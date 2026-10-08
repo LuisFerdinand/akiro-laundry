@@ -384,7 +384,7 @@ export default function NewOrderPage() {
   const { title, subtitle, Icon, iconBg, iconColor } = STEP_TITLES[step];
 
   return (
-    <div>
+    <div className="mx-auto max-w-3xl">
       <StepProgress current={step} />
 
       <div className="px-2 pb-36 space-y-5">

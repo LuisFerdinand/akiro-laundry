@@ -6,7 +6,8 @@ import { Printer, PrinterCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { usePrinterStatus } from "@/hooks/usePrinterStatus";
 
-export function PrinterStatusButton() {
+/** `rail` — the square, labelled-icon form used in the tablet SideRail. */
+export function PrinterStatusButton({ variant = "pill" }: { variant?: "pill" | "rail" }) {
   const { supported, isConnected, deviceName, connecting, connect, disconnect } = usePrinterStatus();
   const [busy, setBusy] = useState(false);
 
@@ -33,13 +34,50 @@ export function PrinterStatusButton() {
   };
 
   const busyNow = connecting || busy;
+  const title   = isConnected
+    ? `Connected${deviceName ? ` — ${deviceName}` : ""}. Tap to disconnect.`
+    : "Tap to connect the receipt printer";
+
+  if (variant === "rail") {
+    return (
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={busyNow}
+        title={title}
+        className="flex flex-col items-center gap-1 transition-transform active:scale-95 disabled:opacity-70"
+      >
+        <span
+          className={`relative w-11 h-11 rounded-2xl flex items-center justify-center border-[1.5px] ${
+            isConnected ? "bg-emerald-50 border-emerald-200" : "bg-slate-50 border-slate-200"
+          }`}
+        >
+          {busyNow ? (
+            <Loader2 size={18} className="animate-spin text-slate-500" />
+          ) : isConnected ? (
+            <PrinterCheck size={18} className="text-emerald-600" />
+          ) : (
+            <Printer size={18} className="text-slate-400" />
+          )}
+          <span
+            className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${
+              isConnected ? "bg-emerald-500 ring-2 ring-emerald-200" : "bg-slate-300"
+            }`}
+          />
+        </span>
+        <span className={`text-[10px] font-black tracking-wide ${isConnected ? "text-emerald-600" : "text-slate-400"}`}>
+          {busyNow ? "…" : isConnected ? "Printer" : "No printer"}
+        </span>
+      </button>
+    );
+  }
 
   return (
     <button
       type="button"
       onClick={handleClick}
       disabled={busyNow}
-      title={isConnected ? `Connected${deviceName ? ` — ${deviceName}` : ""}. Tap to disconnect.` : "Tap to connect the receipt printer"}
+      title={title}
       className="flex items-center gap-1.5 shrink-0 transition-all active:scale-95"
       style={{
         padding: "6px 10px",
