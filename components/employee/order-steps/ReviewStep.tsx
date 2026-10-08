@@ -28,7 +28,7 @@ function ClothesCountReview({ formData }: { formData: OrderFormData }) {
           </p>
           <span className="flex items-center gap-1 text-[10px] font-bold" style={{ color: withCustomer ? "#047857" : "#64748b" }}>
             {withCustomer ? <Printer size={11} /> : <EyeOff size={11} />}
-            {withCustomer ? "On receipt" : "Not on receipt"}
+            {withCustomer ? "On receipt" : "Not on first receipt"}
           </span>
         </div>
         {withCustomer && (

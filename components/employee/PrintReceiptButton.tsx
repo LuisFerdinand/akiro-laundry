@@ -108,10 +108,9 @@ export function PrintReceiptButton({ order, receiptSettings }: Props) {
       amountPaid:    order.amountPaid     ? parseFloat(order.amountPaid)  : undefined,
       changeGiven:   order.changeGiven    ? parseFloat(order.changeGiven) : undefined,
       cashierName:   session?.user?.name ?? undefined,
-      // Only a count made with the customer goes on the receipt — never a staff count.
-      clothesCount:  order.clothesCountMode === "customer"
-        ? (order.clothesCounts ?? []).map((c) => ({ name: c.name, quantity: c.quantity }))
-        : undefined,
+      // Any recorded count prints on a reprint — including a staff count entered
+      // after the first receipt went out. Nothing counted yet → the block is dropped.
+      clothesCount:  (order.clothesCounts ?? []).map((c) => ({ name: c.name, quantity: c.quantity })),
       // ← DB settings forwarded; PrintReceipt falls back to DEFAULTS if null
       settings: receiptSettings,
     });

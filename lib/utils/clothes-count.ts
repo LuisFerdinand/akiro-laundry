@@ -7,7 +7,8 @@
 //   • "customer" — counted together with the customer, in front of them. The
 //                  count is printed on the receipt.
 //   • "staff"    — the customer leaves the clothes with us and staff count them
-//                  afterwards. Never printed on the receipt.
+//                  afterwards. Not on the first receipt; once recorded it
+//                  prints when the receipt is reprinted.
 
 export type ClothesCountMode = "customer" | "staff";
 
