@@ -10,6 +10,7 @@ import {
 } from "@/lib/db/schema";
 import { eq, gte, lte, and, inArray } from "drizzle-orm";
 import { formatUSD, REFERRAL_SOURCES } from "@/lib/utils/order-form";
+import { collectedAmount, outstandingAmount } from "@/lib/utils/revenue";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -21,6 +22,8 @@ export interface OrderExportRow extends Record<string, unknown> {
   Services:         string;
   "Weight / Qty":   string;
   "Total Price":    string;
+  "Amount Paid":    string;
+  "Balance Due":    string;
   "Payment Status": string;
   "Payment Method": string;
   Status:           string;
@@ -61,6 +64,7 @@ export async function getOrdersForExport(
       id:            orders.id,
       orderNumber:   orders.orderNumber,
       totalPrice:    orders.totalPrice,
+      amountPaid:    orders.amountPaid,
       paymentStatus: orders.paymentStatus,
       paymentMethod: orders.paymentMethod,
       status:        orders.status,
@@ -136,6 +140,9 @@ export async function getOrdersForExport(
       Services:         serviceNames,
       "Weight / Qty":   weightQty,
       "Total Price":    formatUSD(parseFloat(String(o.totalPrice))),
+      // Same definition as every other revenue figure (lib/utils/revenue.ts).
+      "Amount Paid":    formatUSD(collectedAmount(o)),
+      "Balance Due":    formatUSD(outstandingAmount(o)),
       "Payment Status": o.paymentStatus === "paid" ? "Paid" : o.paymentStatus === "partial" ? "Partial (DP)" : "Unpaid",
       "Payment Method": methodLabel,
       Status:           statusLabel,
@@ -170,9 +177,11 @@ export async function getCustomersForExport(
 
   const orderRows = await db
     .select({
-      customerId: orders.customerId,
-      totalPrice: orders.totalPrice,
-      createdAt:  orders.createdAt,
+      customerId:    orders.customerId,
+      totalPrice:    orders.totalPrice,
+      amountPaid:    orders.amountPaid,
+      paymentStatus: orders.paymentStatus,
+      createdAt:     orders.createdAt,
     })
     .from(orders)
     .where(
@@ -193,10 +202,8 @@ export async function getCustomersForExport(
   return customerRows.map((c) => {
     const cOrders     = ordersByCustomer.get(c.id) ?? [];
     const totalOrders = cOrders.length;
-    const totalSpent  = cOrders.reduce(
-      (sum, o) => sum + parseFloat(String(o.totalPrice)),
-      0,
-    );
+    // "Spent" = money actually collected, matching the Customers page.
+    const totalSpent  = cOrders.reduce((sum, o) => sum + collectedAmount(o), 0);
     const lastOrderDate = cOrders.reduce<Date | null>((latest, o) => {
       const d = new Date(o.createdAt);
       return !latest || d > latest ? d : latest;
@@ -240,8 +247,10 @@ export async function getCustomersBySourceForExport(
   const customerIds = customerRows.map((c) => c.id);
   const orderRows = await db
     .select({
-      customerId: orders.customerId,
-      totalPrice: orders.totalPrice,
+      customerId:    orders.customerId,
+      totalPrice:    orders.totalPrice,
+      amountPaid:    orders.amountPaid,
+      paymentStatus: orders.paymentStatus,
     })
     .from(orders)
     .where(
@@ -250,10 +259,10 @@ export async function getCustomersBySourceForExport(
         : inArray(orders.customerId, customerIds),
     );
 
-  const ordersByCustomer = new Map<number, { totalPrice: string }[]>();
+  const ordersByCustomer = new Map<number, typeof orderRows>();
   for (const o of orderRows) {
     const list = ordersByCustomer.get(o.customerId) ?? [];
-    list.push({ totalPrice: o.totalPrice });
+    list.push(o);
     ordersByCustomer.set(o.customerId, list);
   }
 
@@ -268,7 +277,7 @@ export async function getCustomersBySourceForExport(
       for (const c of inBucket) {
         const cOrders = ordersByCustomer.get(c.id) ?? [];
         totalOrders += cOrders.length;
-        totalSpent  += cOrders.reduce((s, o) => s + parseFloat(String(o.totalPrice)), 0);
+        totalSpent  += cOrders.reduce((s, o) => s + collectedAmount(o), 0);
       }
       return {
         Source:          label,

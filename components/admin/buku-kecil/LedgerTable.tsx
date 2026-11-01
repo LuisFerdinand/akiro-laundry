@@ -196,14 +196,14 @@ export function LedgerTable({ entries }: { entries: LedgerEntry[] }) {
           </div>
 
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => setShowFilters((v) => !v)} className={showFilters ? iconBtnOn : iconBtnOff} aria-pressed={showFilters}>
+            <button type="button" onClick={() => setShowFilters((v) => !v)} className={`${showFilters ? iconBtnOn : iconBtnOff} max-md:hidden`} aria-pressed={showFilters}>
               <Filter size={14} /> Filters
               {activeKeys.length > 0 && <span className="rounded-full bg-sky-600 px-1.5 text-[10px] font-extrabold text-white">{activeKeys.length}</span>}
             </button>
-            <button type="button" onClick={() => setShowInsights((v) => !v)} className={showInsights ? iconBtnOn : iconBtnOff} aria-pressed={showInsights}>
+            <button type="button" onClick={() => setShowInsights((v) => !v)} className={`${showInsights ? iconBtnOn : iconBtnOff} max-md:hidden`} aria-pressed={showInsights}>
               <BarChart3 size={14} /> Insights
             </button>
-            <button type="button" onClick={columnsPop.toggle} className={columnsPop.open ? iconBtnOn : iconBtnOff}>
+            <button type="button" onClick={columnsPop.toggle} className={`${columnsPop.open ? iconBtnOn : iconBtnOff} max-md:hidden`}>
               <Columns3 size={14} /> Columns
             </button>
             {columnsPop.anchor && (
@@ -227,7 +227,7 @@ export function LedgerTable({ entries }: { entries: LedgerEntry[] }) {
               </Popover>
             )}
             <button
-              type="button" onClick={() => setCompact((v) => !v)} className={compact ? iconBtnOn : iconBtnOff}
+              type="button" onClick={() => setCompact((v) => !v)} className={`${compact ? iconBtnOn : iconBtnOff} max-md:hidden`}
               aria-pressed={compact} title={compact ? "Switch to comfortable rows" : "Switch to compact rows"}
             >
               <Rows3 size={14} /> {compact ? "Compact" : "Comfortable"}
@@ -253,7 +253,7 @@ export function LedgerTable({ entries }: { entries: LedgerEntry[] }) {
 
       {/* ── Insights ─────────────────────────────────────────────────── */}
       {showInsights && (
-        <div className={`border-b border-slate-100 transition-opacity ${stale ? "opacity-60" : ""}`}>
+        <div className={`border-b border-slate-100 transition-opacity max-md:hidden ${stale ? "opacity-60" : ""}`}>
           <InsightsPanel rows={sorted} onPick={pickGroup} />
         </div>
       )}
@@ -268,17 +268,17 @@ export function LedgerTable({ entries }: { entries: LedgerEntry[] }) {
         <Stat label="Cash in"  value={formatUSD(summary.cashIn)}  tone="text-emerald-600" />
         <Stat label="Cash out" value={formatUSD(summary.cashOut)} tone="text-rose-600" />
         <Stat label="Net"      value={formatUSD(summary.net)}     tone={summary.net < 0 ? "text-rose-600" : "text-slate-900"} />
-        <Stat label="Orders"   value={String(summary.orders)} />
-        <Stat label="Customers" value={String(summary.customers)} />
-        {summary.largestIn > 0 && <Stat label="Largest in" value={formatUSD(summary.largestIn)} />}
-        {summary.largestOut > 0 && <Stat label="Largest out" value={formatUSD(summary.largestOut)} />}
+        <Stat label="Orders"   value={String(summary.orders)} wide />
+        <Stat label="Customers" value={String(summary.customers)} wide />
+        {summary.largestIn > 0 && <Stat label="Largest in" value={formatUSD(summary.largestIn)} wide />}
+        {summary.largestOut > 0 && <Stat label="Largest out" value={formatUSD(summary.largestOut)} wide />}
         {(sorts.length !== 1 || sorts[0].key !== "date" || sorts[0].dir !== "desc" || visible.length !== DEFAULT_COLUMNS.length || activeCount > 0) && (
           <button type="button" onClick={resetView} className="ml-auto text-[12px] font-bold text-sky-700 hover:underline">Reset view</button>
         )}
       </div>
 
       {/* ── Table ────────────────────────────────────────────────────── */}
-      <div className={`max-h-[72vh] overflow-auto transition-opacity ${stale ? "opacity-60" : ""}`}>
+      <div className={`max-h-[72vh] overflow-auto transition-opacity max-md:hidden ${stale ? "opacity-60" : ""}`}>
         <table className="w-full min-w-max border-separate border-spacing-0 text-[12.5px]">
           <thead>
             <tr>
@@ -373,6 +373,40 @@ export function LedgerTable({ entries }: { entries: LedgerEntry[] }) {
         </table>
       </div>
 
+      {/* ── Phones: one card per entry (the table above is desktop-only) ── */}
+      <ul className={`divide-y divide-slate-100 transition-opacity md:hidden ${stale ? "opacity-60" : ""}`}>
+        {pageRows.length === 0 ? (
+          <li className="px-6 py-12 text-center">
+            <p className="font-display text-[15px] font-extrabold text-slate-700">
+              {allRows.length === 0 ? "No transactions in this period" : "No entries match your search"}
+            </p>
+            {activeCount > 0 && (
+              <button type="button" onClick={clearAll} className="mt-3 h-9 rounded-xl bg-sky-600 px-4 text-[13px] font-bold text-white">Clear all filters</button>
+            )}
+          </li>
+        ) : pageRows.map((r) => (
+          <li key={r.id}>
+            <button type="button" onClick={() => setSelectedId(r.id)} className="flex w-full items-start gap-3 px-4 py-3 text-left active:bg-slate-50">
+              <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${r.direction === "in" ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"}`}>
+                {r.direction === "in" ? <ArrowDown size={15} strokeWidth={2.6} /> : <ArrowUp size={15} strokeWidth={2.6} />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <KindTag kind={r.kind} />
+                  {r.order && <span className="font-mono text-[11.5px] font-bold text-sky-700">{r.order}</span>}
+                </span>
+                <span className="mt-1 block truncate text-[13px] font-bold text-slate-800">{r.customer || r.description}</span>
+                <span className="block truncate text-[11.5px] font-semibold text-slate-400">{dateLabel(r.ts)} · {timeLabel(r.ts)} · {r.category}</span>
+              </span>
+              <span className="shrink-0 text-right">
+                <Money value={r.direction === "in" ? r.cashIn : r.cashOut} tone={r.direction === "in" ? "in" : "out"} />
+                <span className="mt-0.5 block text-[10.5px] font-semibold text-slate-400">bal {formatUSD(r.balance)}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+
       {/* ── Pagination ───────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-3 text-[12.5px] font-semibold text-slate-500">
         <label className="flex items-center gap-2">
@@ -421,9 +455,10 @@ function Chip({ label, onRemove }: { label: string; onRemove: () => void }) {
   );
 }
 
-function Stat({ label, value, tone = "text-slate-900" }: { label: string; value: string; tone?: string }) {
+/** `wide` stats are extras — phones keep just the entry count, cash in / out and net. */
+function Stat({ label, value, tone = "text-slate-900", wide }: { label: string; value: string; tone?: string; wide?: boolean }) {
   return (
-    <p className="flex items-baseline gap-1.5">
+    <p className={`flex items-baseline gap-1.5 ${wide ? "max-md:hidden" : ""}`}>
       <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-400">{label}</span>
       <span className={`font-extrabold tabular-nums ${tone}`}>{value}</span>
     </p>

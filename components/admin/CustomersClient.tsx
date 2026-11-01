@@ -369,7 +369,7 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
       <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
 
         {/* ── Header ── */}
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
+        <div className="ad-wrap" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "12px" }}>
           <div>
             <h1 style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: "26px", color: "#0f172a", letterSpacing: "-0.02em", marginBottom: "4px" }}>Customers</h1>
             <p style={{ fontSize: "13px", color: "#94a3b8" }}>
@@ -381,7 +381,7 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
               </p>
             )}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div className="ad-wrap" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             {/* Export button */}
             <button
               onClick={() => setShowExport(true)}
@@ -417,26 +417,26 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
         </div>
 
         {/* ── Insights Row ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+        <div className="ad-cols-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
           <LeaderboardCard title="Top Spenders" icon={Trophy} iconColor="#d97706" iconBg="linear-gradient(135deg,#fffbeb,#fef3c7)" customers={insights.topSpenders} valueKey="totalSpent" formatValue={formatUSD} />
           <LeaderboardCard title="Most Repeat"  icon={Star}   iconColor="#1a7fba"  iconBg="linear-gradient(135deg,#edf7fd,#c8e9f8)" customers={insights.mostRepeat}  valueKey="totalOrders" formatValue={(v) => `${v} orders`} />
         </div>
 
         {/* ── New customers + retention — two columns on desktop, stacked on narrow ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: "16px", alignItems: "stretch" }}>
+        <div className="ad-cols-fit" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: "16px", alignItems: "stretch" }}>
           <NewCustomersPanel initialData={insights.newByMonth} thisMonthCount={insights.newThisMonth.length} />
           <RetentionPanel initialData={insights.retentionByMonth} />
         </div>
 
         {/* ── Search + Sort — sticks to the top of the scroll area so it stays
              reachable while the table below scrolls ── */}
-        <div style={{
+        <div className="ad-static-mobile ad-pad-sm" style={{
           position: "sticky", top: 0, zIndex: 30,
           background: "white", borderRadius: "12px", border: "1.5px solid #e2e8f0",
           padding: "14px 18px", boxShadow: "0 4px 12px rgba(15,23,42,0.06)",
           display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap",
         }}>
-          <div style={{ position: "relative", flex: "1", minWidth: "200px", maxWidth: "380px" }}>
+          <div className="ad-full" style={{ position: "relative", flex: "1", minWidth: "200px", maxWidth: "380px" }}>
             <Search size={14} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", pointerEvents: "none" }} />
             <input
               value={search}
@@ -467,7 +467,7 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
             )}
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
+          <div className="ad-full" style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
             <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", whiteSpace: "nowrap" }}>
               No order during:
             </span>
@@ -513,7 +513,7 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
           boxShadow: "0 1px 6px rgba(0,0,0,0.04)", overflow: "hidden",
           opacity: isPending ? 0.55 : 1, transition: "opacity 0.2s",
         }}>
-          <div style={{ overflow: "auto", maxHeight: "58vh" }}>
+          <div className="ad-desktop-only" style={{ overflow: "auto", maxHeight: "58vh" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
@@ -595,8 +595,69 @@ export function CustomersClient({ customers, insights, initialSearch, initialSor
               </tbody>
             </table>
           </div>
+
+          <CustomerCards
+            customers={customers}
+            emptyText={search
+              ? `No customers matching "${search}"`
+              : inactive?.from && inactive?.to
+                ? "Every customer placed an order during that period"
+                : "No customers found"}
+          />
         </div>
       </div>
     </>
+  );
+}
+
+// ─── Phone layout ─────────────────────────────────────────────────────────────
+// Below md the wide table is hidden (globals.css .ad-desktop-only); each customer
+// becomes a card with the figures that matter and a tap-to-call number.
+
+function CustomerCards({ customers, emptyText }: { customers: CustomerWithStats[]; emptyText: string }) {
+  if (customers.length === 0) {
+    return (
+      <div className="ad-mobile-only" style={{ padding: "40px 16px", textAlign: "center" }}>
+        <Users size={26} style={{ color: "#cbd5e1", margin: "0 auto 8px", display: "block" }} />
+        <p style={{ fontSize: "13px", fontWeight: 600, color: "#94a3b8" }}>{emptyText}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ad-mobile-only">
+      {customers.map((c) => (
+        <article key={c.id} style={{ padding: "14px 16px", borderBottom: "1px solid #f1f5f9" }}>
+          <Link href={`/admin/customers/${c.id}`} style={{ display: "flex", alignItems: "center", gap: "10px", color: "inherit", textDecoration: "none" }}>
+            <div style={{ width: 38, height: 38, borderRadius: "50%", flexShrink: 0, background: "linear-gradient(135deg,#1a7fba,#2496d6)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <span style={{ fontSize: "13px", fontWeight: 800, color: "white" }}>{c.name[0]?.toUpperCase()}</span>
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p style={{ fontSize: "14px", fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</p>
+              <p style={{ fontSize: "11px", color: "#94a3b8" }}>Since {new Date(c.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" })}</p>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <p style={{ fontSize: "15px", fontWeight: 800, color: "#0f172a", fontFamily: "Sora,sans-serif" }}>{formatUSD(c.totalSpent)}</p>
+              <p style={{ fontSize: "11px", fontWeight: 700, color: "#1a7fba" }}>{c.totalOrders} order{c.totalOrders === 1 ? "" : "s"}</p>
+            </div>
+          </Link>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginTop: "10px" }}>
+            <a href={`tel:${c.phone}`} style={{ fontSize: "12px", fontWeight: 600, color: "#475569", textDecoration: "none" }}>{c.phone}</a>
+            <SourceBadge source={c.referralSource} />
+          </div>
+          <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
+            Last order: {c.lastOrderDate ? new Date(c.lastOrderDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "none yet"}
+          </p>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "12px" }}>
+            <Link href={`/admin/customers/${c.id}`} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "4px", minHeight: 38, fontSize: "12px", fontWeight: 700, color: "#1a7fba", textDecoration: "none", background: "#edf7fd", borderRadius: "8px", border: "1px solid #b6def5" }}>
+              View <ArrowUpRight size={11} />
+            </Link>
+            <DeleteCustomerButton customerId={c.id} customerName={c.name} compact />
+          </div>
+        </article>
+      ))}
+    </div>
   );
 }

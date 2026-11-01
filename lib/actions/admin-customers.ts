@@ -15,6 +15,7 @@ import {
   endOfDayBiz,
   subDaysBiz,
 } from "@/lib/utils/business-time";
+import { collectedAmount } from "@/lib/utils/revenue";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -96,14 +97,8 @@ export async function getAdminCustomers(
     })
     .from(orders);
 
-  // Money actually collected: full price for "paid" orders, amountPaid (the DP)
-  // for "partial" ones.
-  const collected = (o: { totalPrice: string; amountPaid: string | null; paymentStatus: string }) =>
-    o.paymentStatus === "paid"
-      ? parseFloat(o.totalPrice ?? "0")
-      : o.paymentStatus === "partial"
-        ? parseFloat(o.amountPaid ?? "0")
-        : 0;
+  // Money actually collected — the shared definition (lib/utils/revenue.ts).
+  const collected = collectedAmount;
 
   const withStats: CustomerWithStats[] = filtered.map((c) => {
     const customerOrders = allOrders.filter((o) => o.customerId === c.id);
@@ -173,14 +168,8 @@ export async function getCustomerInsights(): Promise<CustomerInsights> {
     })
     .from(orders);
 
-  // Money actually collected: full price for "paid" orders, amountPaid (the DP)
-  // for "partial" ones.
-  const collected = (o: { totalPrice: string; amountPaid: string | null; paymentStatus: string }) =>
-    o.paymentStatus === "paid"
-      ? parseFloat(o.totalPrice ?? "0")
-      : o.paymentStatus === "partial"
-        ? parseFloat(o.amountPaid ?? "0")
-        : 0;
+  // Money actually collected — the shared definition (lib/utils/revenue.ts).
+  const collected = collectedAmount;
 
   const withStats: CustomerWithStats[] = allCustomers.map((c) => {
     const customerOrders = allOrders.filter((o) => o.customerId === c.id);
@@ -455,14 +444,8 @@ export async function getAdminCustomerById(id: number): Promise<CustomerDetail |
     .orderBy(desc(orders.createdAt))
     .limit(10);
 
-  // Money actually collected: full price for "paid" orders, amountPaid (the DP)
-  // for "partial" ones.
-  const collected = (o: { totalPrice: string; amountPaid: string | null; paymentStatus: string }) =>
-    o.paymentStatus === "paid"
-      ? parseFloat(o.totalPrice ?? "0")
-      : o.paymentStatus === "partial"
-        ? parseFloat(o.amountPaid ?? "0")
-        : 0;
+  // Money actually collected — the shared definition (lib/utils/revenue.ts).
+  const collected = collectedAmount;
 
   return {
     ...customer,

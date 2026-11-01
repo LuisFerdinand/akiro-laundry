@@ -5,15 +5,16 @@ import { db } from "@/lib/db";
 import {
   marketingCampaigns,
   customers,
-  orders,
   orderItems,
   servicePricing,
 } from "@/lib/db/schema";
 import type { MarketingCampaign } from "@/lib/db/schema";
-import { and, desc, eq, gte, inArray, lte, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { startOfDayBiz, endOfDayBiz, formatBiz } from "@/lib/utils/business-time";
 import { REFERRAL_SOURCES } from "@/lib/utils/order-form";
+import { outstandingAmount, sumRevenue } from "@/lib/utils/revenue";
+import { fetchRevenueRows } from "@/lib/db/queries/revenue.queries";
 
 const DAY_MS = 86_400_000;
 const parseISO = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
@@ -135,30 +136,21 @@ export async function getPeriodMetrics(fromISO: string, toISO: string): Promise<
   const inRange = (d: Date | null | undefined) => !!d && d >= start && d <= end;
   const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / DAY_MS));
 
-  const orderRows = await db
-    .select({
-      id:            orders.id,
-      totalPrice:    orders.totalPrice,
-      paymentStatus: orders.paymentStatus,
-      paidAt:        orders.paidAt,
-      createdAt:     orders.createdAt,
-    })
-    .from(orders)
-    .where(
-      or(
-        and(gte(orders.createdAt, start), lte(orders.createdAt, end)),
-        and(gte(orders.paidAt, start), lte(orders.paidAt, end)),
-      ),
-    );
+  // Same rows and same revenue definition as the dashboard (lib/utils/revenue.ts):
+  // money received in the window, DPs included.
+  const orderRows = await fetchRevenueRows(start, end);
 
   const createdInRange = orderRows.filter((o) => inRange(new Date(o.createdAt)));
   const paidInRange = orderRows.filter(
     (o) => o.paymentStatus === "paid" && inRange(new Date(o.paidAt ?? o.createdAt)),
   );
-  const revenue = paidInRange.reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0);
+  const revenue = sumRevenue(orderRows, start, end);
   const paidCreated = createdInRange.filter((o) => o.paymentStatus === "paid");
   const unpaidCreated = createdInRange.filter((o) => o.paymentStatus !== "paid");
-  const avgOrderValue = paidInRange.length > 0 ? revenue / paidInRange.length : 0;
+  // Average ticket of the orders settled in the window (a DP isn't a ticket yet).
+  const avgOrderValue = paidInRange.length > 0
+    ? paidInRange.reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0) / paidInRange.length
+    : 0;
 
   // ── New customers + referral breakdown ──
   const custRows = await db
@@ -185,9 +177,7 @@ export async function getPeriodMetrics(fromISO: string, toISO: string): Promise<
     const bIn = (d: Date) => d >= bStartD && d <= bEndD;
     timeSeries.push({
       label: formatBiz(bStartD, { month: "short", day: "numeric" }),
-      revenue: paidInRange
-        .filter((o) => bIn(new Date(o.paidAt ?? o.createdAt)))
-        .reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0),
+      revenue: sumRevenue(orderRows, bStartD, bEndD),
       orders: createdInRange.filter((o) => bIn(new Date(o.createdAt))).length,
       newCustomers: custRows.filter((c) => bIn(new Date(c.createdAt))).length,
     });
@@ -245,7 +235,8 @@ export async function getPeriodMetrics(fromISO: string, toISO: string): Promise<
     avgOrderValue,
     paidOrders: paidCreated.length,
     unpaidOrders: unpaidCreated.length,
-    unpaidValue: unpaidCreated.reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0),
+    // What is still owed (a DP already received is not "unpaid").
+    unpaidValue: unpaidCreated.reduce((s, o) => s + outstandingAmount(o), 0),
     timeSeries,
     topServices,
     revenueByCategory,
@@ -291,15 +282,7 @@ export async function getCampaignComparison(): Promise<CampaignComparison> {
   const maxEnd   = new Date(Math.max(...spans.map((s) => s.end)));
 
   const [orderRows, custRows] = await Promise.all([
-    db
-      .select({
-        totalPrice:    orders.totalPrice,
-        paymentStatus: orders.paymentStatus,
-        paidAt:        orders.paidAt,
-        createdAt:     orders.createdAt,
-      })
-      .from(orders)
-      .where(or(gte(orders.createdAt, minStart), gte(orders.paidAt, minStart))),
+    fetchRevenueRows(minStart),
     db
       .select({ createdAt: customers.createdAt })
       .from(customers)
@@ -310,13 +293,7 @@ export async function getCampaignComparison(): Promise<CampaignComparison> {
     const s = new Date(c.startDate).getTime();
     const e = new Date(c.endDate).getTime();
     const spend = Number(c.spend);
-    const revenue = orderRows
-      .filter((o) => {
-        if (o.paymentStatus !== "paid") return false;
-        const t = new Date(o.paidAt ?? o.createdAt).getTime();
-        return t >= s && t <= e;
-      })
-      .reduce((sum, o) => sum + parseFloat(o.totalPrice ?? "0"), 0);
+    const revenue = sumRevenue(orderRows, new Date(s), new Date(e));
     const ordersInWin = orderRows.filter((o) => {
       const t = new Date(o.createdAt).getTime();
       return t >= s && t <= e;

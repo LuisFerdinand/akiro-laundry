@@ -598,7 +598,7 @@ export function DashboardClient({ stats, social }: Props) {
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
 
       {/* ── Header ── */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+      <div className="ad-wrap" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: "12px" }}>
         <div>
           <h1 style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: "26px", color: "#0f172a", letterSpacing: "-0.02em", marginBottom: "4px" }}>Dashboard</h1>
           <p style={{ fontSize: "13px", color: "#94a3b8" }}>
@@ -606,7 +606,7 @@ export function DashboardClient({ stats, social }: Props) {
           </p>
         </div>
         {/* Cash register pill */}
-        <div style={{ background: "linear-gradient(135deg,#0c1e35,#0f3460)", borderRadius: "12px", padding: "12px 20px", display: "flex", alignItems: "center", gap: "12px", boxShadow: "0 4px 16px rgba(12,30,53,0.2)" }}>
+        <div className="ad-full" style={{ background: "linear-gradient(135deg,#0c1e35,#0f3460)", borderRadius: "12px", padding: "12px 20px", display: "flex", alignItems: "center", gap: "12px", boxShadow: "0 4px 16px rgba(12,30,53,0.2)" }}>
           <Wallet size={16} style={{ color: "rgba(255,255,255,0.5)" }} />
           <div>
             <p style={{ fontSize: "9px", fontWeight: 800, color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Cash Register</p>
@@ -619,7 +619,7 @@ export function DashboardClient({ stats, social }: Props) {
       </div>
 
       {/* ── Stat cards ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px" }}>
+      <div className="ad-cols-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px" }}>
         <StatCard label="This Month Revenue" value={formatUSD(revenue.thisMonth)} sub={`${formatUSD(revenue.today)} today`} icon={TrendingUp} color="#16a34a" bg="linear-gradient(135deg,#f0fdf4,#dcfce7)" border="#86efac" sparkValues={sparkRevenue} trend={revenueTrend} />
         <StatCard label="Orders This Month"  value={orderCounts.thisMonth.toString()} sub={`${orderCounts.today} today · ${orderCounts.thisWeek} this week`} icon={ShoppingBag} color="#1a7fba" bg="linear-gradient(135deg,#edf7fd,#c8e9f8)" border="#b6def5" sparkValues={sparkOrders} trend={orderTrend} />
         <StatCard label="New Customers"      value={newCustomersThisMonth.toString()} sub="joined this month" icon={UserPlus} color="#7c3aed" bg="linear-gradient(135deg,#f5f3ff,#ede9fe)" border="#c4b5fd" />
@@ -707,9 +707,9 @@ export function DashboardClient({ stats, social }: Props) {
       </Card>
 
       {/* ── Revenue charts ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+      <div className="ad-cols-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
         <Card>
-          <SectionHeader title="Revenue — Last 7 Days" sub="Paid orders only" />
+          <SectionHeader title="Revenue — Last 7 Days" sub="Money received" />
           <DailyBarChart data={dailyRevenue} color="#1a7fba" height={110} />
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: "12px", paddingTop: "12px", borderTop: "1px solid #f1f5f9" }}>
             <div>
@@ -746,7 +746,7 @@ export function DashboardClient({ stats, social }: Props) {
       </Card>
 
       {/* ── Status + payment + volume ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
+      <div className="ad-cols-3" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
 
         <Card>
           <SectionHeader title="Order Status" sub="All-time breakdown" />
@@ -821,7 +821,7 @@ export function DashboardClient({ stats, social }: Props) {
       </div>
 
       {/* ── Top customers + services ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+      <div className="ad-cols-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
         <Card>
           <SectionHeader title="Top Customers" sub="By total spend" href="/admin/customers?sort=top_spender" />
           {topCustomers.length === 0 ? (
@@ -898,7 +898,7 @@ export function DashboardClient({ stats, social }: Props) {
         <div style={{ padding: "16px 20px", borderBottom: "1px solid #f1f5f9" }}>
           <SectionHeader title="Recent Orders" sub={`Last ${recentOrders.length} orders`} href="/admin/orders" />
         </div>
-        <div style={{ overflowX: "auto" }}>
+        <div className="ad-desktop-only" style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#f8fafc" }}>
@@ -958,6 +958,41 @@ export function DashboardClient({ stats, social }: Props) {
             </tbody>
           </table>
         </div>
+
+        <div className="ad-mobile-only">
+          {recentOrders.map((o) => {
+            const sc        = STATUS_CONFIG[o.status];
+            const isPaid    = o.paymentStatus === "paid";
+            const isPartial = o.paymentStatus === "partial";
+            return (
+              <Link key={o.id} href={`/admin/orders/${o.id}`} style={{ display: "block", padding: "13px 16px", borderBottom: "1px solid #f1f5f9", color: "inherit", textDecoration: "none" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 800, color: "#1a7fba", fontFamily: "monospace" }}>{o.orderNumber}</span>
+                  <span style={{ fontSize: "10px", fontWeight: 700, padding: "3px 8px", borderRadius: "999px", color: sc.color, background: sc.bg, border: `1px solid ${sc.border}`, display: "inline-flex", alignItems: "center", gap: "3px" }}>
+                    <sc.Icon size={9} />{ORDER_STATUS_LABELS[o.status] ?? o.status}
+                  </span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginTop: "6px" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontSize: "14px", fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.customerName}</p>
+                    <p style={{ fontSize: "11px", color: "#94a3b8" }}>{new Date(o.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</p>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <p style={{ fontSize: "15px", fontWeight: 800, color: "#0f172a", fontFamily: "Sora, sans-serif" }}>{formatUSD(parseFloat(o.totalPrice))}</p>
+                    <span style={{
+                      fontSize: "10px", fontWeight: 700, padding: "2px 7px", borderRadius: "999px",
+                      color:      isPaid ? "#16a34a" : isPartial ? "#b45309" : "#d97706",
+                      background: isPaid ? "#f0fdf4" : isPartial ? "#fffbeb" : "#fff7ed",
+                      border: `1px solid ${isPaid ? "#86efac" : isPartial ? "#fcd34d" : "#fed7aa"}`,
+                    }}>
+                      {isPaid ? "Paid" : isPartial ? "Partial" : "Unpaid"}
+                    </span>
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
       </Card>
 
       {/* ── Social media profiles ── */}
@@ -966,7 +1001,7 @@ export function DashboardClient({ stats, social }: Props) {
           <p style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: "14px", color: "#0f172a" }}>Social Media</p>
           <p style={{ fontSize: "10px", color: "#94a3b8", marginTop: "1px" }}>Our brand presence — click to open profiles</p>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
+        <div className="ad-cols-3" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
           <SocialProfileCard
             platform="TikTok"
             handle={social.tiktokHandle}

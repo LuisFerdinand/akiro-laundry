@@ -144,7 +144,7 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
       <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
 
         {/* ── Header ── */}
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
+        <div className="ad-wrap" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "12px" }}>
           <div>
             <h1 style={{ fontFamily: "Sora,sans-serif", fontWeight: 800, fontSize: "26px", color: "#0f172a", letterSpacing: "-0.02em", marginBottom: "4px" }}>
               Orders
@@ -177,13 +177,13 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
         </div>
 
         {/* ── Filter bar ── */}
-        <div style={{
+        <div className="ad-pad-sm" style={{
           background: "white", borderRadius: "12px", border: "1.5px solid #e2e8f0",
           padding: "14px 18px", display: "flex", gap: "12px", alignItems: "center",
           flexWrap: "wrap", boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
         }}>
 
-          <div style={{ position: "relative", flex: "1 1 220px", minWidth: "180px", maxWidth: "340px" }}>
+          <div className="ad-full" style={{ position: "relative", flex: "1 1 220px", minWidth: "180px", maxWidth: "340px" }}>
             <Search size={14} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", pointerEvents: "none" }} />
             <input
               value={search}
@@ -215,7 +215,7 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
             )}
           </div>
 
-          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+          <div className="ad-scroll-x" style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
             {(["all", "pending", "processing", "done", "picked_up"] as const).map((s) => {
               const active = status === s;
               const cfg    = s !== "all" ? STATUS_CONFIG[s] : null;
@@ -233,7 +233,7 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
             })}
           </div>
 
-          <div style={{ display: "flex", gap: "6px" }}>
+          <div className="ad-scroll-x" style={{ display: "flex", gap: "6px" }}>
             {(["all", "paid", "partial", "unpaid"] as const).map((p) => {
               const active = payment === p;
               const cfg    = p !== "all" ? PAYMENT_CONFIG[p] : null;
@@ -279,7 +279,7 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
           boxShadow: "0 1px 6px rgba(0,0,0,0.04)", overflow: "hidden",
           opacity: isPending ? 0.55 : 1, transition: "opacity 0.2s",
         }}>
-          <div style={{ overflowX: "auto" }}>
+          <div className="ad-desktop-only" style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#f8fafc" }}>
@@ -423,6 +423,11 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
             </table>
           </div>
 
+          <OrderCards
+            rows={rows}
+            emptyText={search ? `No orders matching "${search}"` : "No orders match your filters"}
+          />
+
           {totalPages > 1 && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderTop: "1px solid #f1f5f9" }}>
               <p style={{ fontSize: "12px", color: "#94a3b8" }}>Page {page} of {totalPages}</p>
@@ -443,5 +448,99 @@ export function OrdersClient({ initialData, initialFilters }: Props) {
         </div>
       </div>
     </>
+  );
+}
+
+// ─── Phone layout ─────────────────────────────────────────────────────────────
+// Below md the wide table is hidden (globals.css .ad-desktop-only) and each order
+// becomes a card: what it is, who it's for, what's owed and the three actions.
+
+type OrderRow = PaginatedOrders["rows"][number];
+
+function itemSummary(order: OrderRow): string {
+  if (order.items.length === 0) return "No items";
+  return order.items
+    .map((i) => {
+      const qty = i.weightKg != null ? `${i.weightKg} kg` : i.quantity != null ? `${i.quantity} pcs` : "";
+      return qty ? `${i.serviceName} · ${qty}` : i.serviceName;
+    })
+    .join("  ·  ");
+}
+
+function OrderCards({ rows, emptyText }: { rows: OrderRow[]; emptyText: string }) {
+  if (rows.length === 0) {
+    return (
+      <div className="ad-mobile-only" style={{ padding: "40px 16px", textAlign: "center" }}>
+        <Filter size={26} style={{ color: "#cbd5e1", margin: "0 auto 8px", display: "block" }} />
+        <p style={{ fontSize: "13px", fontWeight: 600, color: "#94a3b8" }}>{emptyText}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ad-mobile-only">
+      {rows.map((order) => {
+        const sc    = STATUS_CONFIG[order.status];
+        const pc    = PAYMENT_CONFIG[order.paymentStatus];
+        const total = parseFloat(order.totalPrice);
+        const due   = order.paymentStatus === "partial"
+          ? total - (order.amountPaid ? parseFloat(order.amountPaid) : 0)
+          : 0;
+
+        return (
+          <article key={order.id} style={{ padding: "14px 16px", borderBottom: "1px solid #f1f5f9" }}>
+            <Link href={`/admin/orders/${order.id}`} style={{ display: "block", color: "inherit", textDecoration: "none" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                  <span style={{ fontSize: "13px", fontWeight: 800, color: "#1a7fba", fontFamily: "monospace" }}>{order.orderNumber}</span>
+                  <EditedBadge editCount={order.editCount} editedAfterPaymentAt={order.editedAfterPaymentAt} compact />
+                </div>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", fontWeight: 700, color: sc.color, background: sc.bg, border: `1px solid ${sc.border}`, padding: "3px 8px", borderRadius: "999px", whiteSpace: "nowrap" }}>
+                  <sc.Icon size={9} /> {sc.label}
+                </span>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px" }}>
+                <div style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, background: "linear-gradient(135deg,#1a7fba,#2496d6)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ fontSize: "11px", fontWeight: 800, color: "white" }}>{order.customerName[0]?.toUpperCase()}</span>
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: "14px", fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{order.customerName}</p>
+                  <p style={{ fontSize: "11px", color: "#94a3b8" }}>{order.customerPhone}</p>
+                </div>
+              </div>
+
+              <p style={{ fontSize: "12px", color: "#64748b", marginTop: "8px", lineHeight: 1.45 }}>{itemSummary(order)}</p>
+
+              <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "8px", marginTop: "10px" }}>
+                <div>
+                  <p style={{ fontSize: "18px", fontWeight: 800, color: "#0f172a", fontFamily: "Sora,sans-serif", letterSpacing: "-0.01em" }}>{formatUSD(total)}</p>
+                  <p style={{ fontSize: "11px", color: "#94a3b8" }}>
+                    {new Date(order.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  </p>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", fontWeight: 700, color: pc.color, background: pc.bg, border: `1px solid ${pc.border}`, padding: "3px 8px", borderRadius: "999px", whiteSpace: "nowrap" }}>
+                    {order.paymentStatus === "paid" ? <CreditCard size={9} /> : <AlertCircle size={9} />}
+                    {pc.label}
+                  </span>
+                  {due > 0 && <p style={{ fontSize: "10px", color: "#b45309", fontWeight: 700, marginTop: "3px" }}>Due {formatUSD(due)}</p>}
+                </div>
+              </div>
+            </Link>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "12px" }}>
+              <Link href={`/admin/orders/${order.id}`} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "4px", minHeight: 38, fontSize: "12px", fontWeight: 700, color: "#1a7fba", textDecoration: "none", background: "#edf7fd", borderRadius: "8px", border: "1px solid #b6def5" }}>
+                View <ArrowUpRight size={11} />
+              </Link>
+              <Link href={`/admin/orders/${order.id}/edit`} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 38, fontSize: "12px", fontWeight: 700, color: "#7c3aed", textDecoration: "none", background: "#f5f3ff", borderRadius: "8px", border: "1px solid #c4b5fd" }}>
+                Edit
+              </Link>
+              <DeleteOrderButton orderId={order.id} orderNumber={order.orderNumber} />
+            </div>
+          </article>
+        );
+      })}
+    </div>
   );
 }

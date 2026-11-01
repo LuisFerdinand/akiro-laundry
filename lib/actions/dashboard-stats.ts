@@ -19,7 +19,7 @@ import {
   hourBiz,
   formatBiz,
 } from "@/lib/utils/business-time";
-import { revenueEvent, sumRevenue } from "@/lib/utils/revenue";
+import { outstandingAmount, revenueEvent, sumRevenue } from "@/lib/utils/revenue";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -242,9 +242,8 @@ export async function getFullDashboardStats(): Promise<FullDashboardStats> {
   const inRange    = (d: Date, from: Date, to?: Date) => d >= from && (!to || d <= to);
   const price      = (o: { totalPrice: string }) => parseFloat(o.totalPrice ?? "0");
   // Outstanding balance still owed — full price when untouched, remainder when a
-  // DP (partial payment) has already been applied.
-  const outstanding = (o: { totalPrice: string; amountPaid?: string | null }) =>
-    price(o) - (o.amountPaid ? parseFloat(o.amountPaid) : 0);
+  // DP (partial payment) has already been applied (shared with the ledgers).
+  const outstanding = outstandingAmount;
   const paidDate  = (o: { paidAt: Date | null; createdAt: Date }) =>
     new Date(o.paidAt ?? o.createdAt);
 

@@ -3,12 +3,16 @@
 
 import { db } from "@/lib/db";
 import {
-  cashRegisterTransactions, expenseCategories, financePieConfigs, orders, customers,
+  cashRegister, cashRegisterTransactions, expenseCategories, financePieConfigs, orders, customers,
 } from "@/lib/db/schema";
 import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { addDaysISO, bizDayEnd, bizDayStart, isoDayBiz } from "@/lib/utils/business-time";
-import { paymentBalance } from "@/lib/utils/order-payment";
+import {
+  balanceAsOf, collectedAmount, outstandingAmount, summarizeRevenue,
+  type RevenueMethod, type RevenueSummary,
+} from "@/lib/utils/revenue";
+import { fetchRevenueRows } from "@/lib/db/queries/revenue.queries";
 
 // ─── Category-key model ───────────────────────────────────────────────────────
 // Every ledger transaction resolves to a stable string key. Keys are used by the
@@ -25,7 +29,7 @@ import { paymentBalance } from "@/lib/utils/order-payment";
 //   initial       → opening balance (shown in the ledger, excluded from recap)
 
 const AUTO_META: Record<string, { label: string; color: string }> = {
-  "inc:orders": { label: "Order Payments",        color: "#16a34a" },
+  "inc:orders": { label: "Laundry Revenue",       color: "#16a34a" },
   "inc:adjust": { label: "Adjustment (In)",       color: "#0891b2" },
   "inc:none":   { label: "Uncategorised Income",  color: "#64748b" },
   "inc:other":  { label: "Other Income",          color: "#94a3b8" },
@@ -565,15 +569,10 @@ export async function getOrderBook(fromISO: string, toISO: string): Promise<Orde
 
   for (const o of rows) {
     const total = parseFloat(o.totalPrice);
-    const { received, balanceDue } = paymentBalance({
-      totalPrice:           o.totalPrice,
-      paymentStatus:        o.paymentStatus,
-      amountPaid:           o.amountPaid,
-      paidAt:               o.paidAt,
-      editedAfterPaymentAt: o.editedAfterPaymentAt,
-    });
-    const got    = r2(Math.min(received, total)); // an overpayment isn't this order's revenue
-    const due    = r2(balanceDue);
+    // Same definition as the dashboard / email / ledgers (lib/utils/revenue.ts);
+    // an overpayment isn't this order's revenue, so `got` never exceeds `total`.
+    const got    = r2(collectedAmount(o));
+    const due    = r2(outstandingAmount(o));
     const day    = isoDayBiz(o.createdAt);
     const paidOn = o.paymentStatus === "paid" && o.paidAt ? isoDayBiz(o.paidAt) : null;
     const method: OrderBookMethod | null = got > 0 ? (o.paymentMethod ?? "other") : null;
@@ -654,18 +653,43 @@ export interface FinanceRecap {
   netCashFlow: number;
 }
 
-export async function getFinanceRecap(fromISO: string, toISO: string): Promise<FinanceRecap> {
-  const txs = netChangeOut(await fetchTransactions(fromISO, toISO));
+/** Revenue for a day range, from the one shared definition (lib/utils/revenue.ts). */
+async function fetchPeriodRevenue(fromISO: string, toISO: string): Promise<RevenueSummary> {
+  const start = bizDayStart(fromISO);
+  const end   = bizDayEnd(toISO);
+  return summarizeRevenue(await fetchRevenueRows(start, end), start, end);
+}
 
+export async function getFinanceRecap(fromISO: string, toISO: string): Promise<FinanceRecap> {
+  const [raw, revenue] = await Promise.all([
+    fetchTransactions(fromISO, toISO),
+    fetchPeriodRevenue(fromISO, toISO),
+  ]);
+  return buildRecap(netChangeOut(raw), revenue);
+}
+
+/**
+ * Income / expense recap of already-netted drawer transactions.
+ *
+ * Order income does NOT come from the drawer: the drawer only sees cash, so a
+ * transfer or QRIS sale — or a payment whose order was later deleted — would
+ * skew it. `inc:orders` is the shared revenue figure instead, the same number
+ * the dashboard and the daily email show. Everything else (manual income,
+ * adjustments, expenses) is a real drawer movement and comes from the ledger.
+ */
+function buildRecap(txs: RawTx[], revenue: RevenueSummary): FinanceRecap {
   const acc = new Map<string, RecapRow>();
   for (const tx of txs) {
     const meta = classify(tx);
-    if (meta.key === "initial") continue;
+    if (meta.key === "initial" || meta.key === "inc:orders") continue;
     const amount = parseFloat(tx.amount);
     const row = acc.get(meta.key) ?? { key: meta.key, label: meta.label, color: meta.color, total: 0, count: 0 };
     row.total += amount;
     row.count += 1;
     acc.set(meta.key, row);
+  }
+  if (revenue.revenue > 0) {
+    acc.set("inc:orders", { key: "inc:orders", ...AUTO_META["inc:orders"], total: revenue.revenue, count: revenue.payments });
   }
 
   const all = [...acc.values()];
@@ -689,6 +713,303 @@ export async function getFinanceRecap(fromISO: string, toISO: string): Promise<F
     operatingExpense,
     netProfit:   totalIncome - operatingExpense,
     netCashFlow: totalIncome - totalExpense,
+  };
+}
+
+// ─── General ledger (Buku Besar) ──────────────────────────────────────────────
+// The CONTROL accounts: one total per account for the period. Detail lives one
+// level down in the subsidiary ledgers (Buku Kecil) — Kas → every cash movement,
+// Piutang Usaha → what each customer owes — and the checks at the bottom prove
+// that detail adds back up to the control total.
+//
+//   Kas               cash drawer        (1-1100)  from the cash register ledger
+//   Piutang Usaha     customer balances  (1-1200)  orders billed − payments received
+//   Pendapatan Jasa   laundry revenue    (4-1000)  money received on orders (shared definition)
+//   Pendapatan Lain   other income       (4-2000)  manual income + drawer corrections in
+//   Beban Operasional expenses           (5-1000)  manual expenses + drawer corrections out
+//
+// Revenue is the SAME number as the dashboard / daily email / marketing: it comes
+// from lib/utils/revenue.ts, not from the drawer (which only ever sees cash).
+
+export interface LedgerAccountLine {
+  key:    string;
+  label:  string;
+  color:  string;
+  /** Always positive — `side` says which column it adds to. */
+  amount: number;
+  count:  number;
+  side:   "debit" | "credit";
+}
+
+export interface LedgerAccount {
+  code:    string;
+  name:    string;
+  caption: string;
+  group:   "asset" | "revenue" | "expense";
+  /** Balance accounts carry a balance across periods; revenue / expense accounts restart at zero. */
+  opening: number | null;
+  debit:   number;
+  credit:  number;
+  closing: number | null;
+  entries: number;
+  lines:   LedgerAccountLine[];
+  /** Where the detail behind this account lives. `{from}` / `{to}` are filled in by the page. */
+  sub:     { label: string; path: string } | null;
+}
+
+/**
+ * ok   — balanced.
+ * note — worth knowing but nothing to fix (timing differences between sources).
+ * warn — the books genuinely disagree; someone should look.
+ */
+export interface LedgerCheck {
+  id:     string;
+  status: "ok" | "note" | "warn";
+  title:  string;
+  detail: string;
+}
+
+export interface GeneralLedger {
+  from: string;
+  to:   string;
+  accounts: LedgerAccount[];
+  /** Laba Rugi: what the period earned. */
+  statement: {
+    revenue:     number;
+    otherIncome: number;
+    totalIncome: number;
+    expenses:    number;
+    netProfit:   number;
+    margin:      number | null;
+    byMethod:    RevenueSummary["byMethod"];
+  };
+  /** The same orders seen "by order": everything placed in the period. */
+  placed: RevenueSummary["placed"];
+  receivables: {
+    opening: number; billed: number; collected: number; adjustments: number; closing: number;
+    customers: number; orders: number;
+  };
+  drawer: {
+    opening: number; cashIn: number; cashOut: number; closing: number;
+    /** Register balance right now — only when the period runs up to today. */
+    registerBalance: number | null;
+    /** Cash taken on orders per the drawer minus cash revenue per the orders. */
+    salesGap: number;
+    /** Part of the gap that belongs to orders deleted since (their cash stays in the drawer). */
+    deletedOrderCash: number;
+  };
+  checks: LedgerCheck[];
+}
+
+const METHOD_LABEL: Record<RevenueMethod, string> = {
+  cash: "Cash", transfer: "Bank transfer", qris: "QRIS", other: "Other / unknown",
+};
+const METHOD_COLOR: Record<RevenueMethod, string> = {
+  cash: "#16a34a", transfer: "#0891b2", qris: "#7c3aed", other: "#94a3b8",
+};
+
+/** Sum a set of lines into account lines, biggest first. */
+function toLines(
+  rows: { key: string; label: string; color: string; amount: number; side: "debit" | "credit" }[],
+): LedgerAccountLine[] {
+  const acc = new Map<string, LedgerAccountLine>();
+  for (const r of rows) {
+    const cur = acc.get(r.key) ?? { ...r, amount: 0, count: 0 };
+    cur.amount += r.amount;
+    cur.count++;
+    acc.set(r.key, cur);
+  }
+  return [...acc.values()]
+    .map((l) => ({ ...l, amount: r2(l.amount) }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
+export async function getGeneralLedger(fromISO: string, toISO: string): Promise<GeneralLedger> {
+  const start = bizDayStart(fromISO);
+  const end   = bizDayEnd(toISO);
+  const today = isoDayBiz(new Date());
+
+  const [book, allOrders, [register]] = await Promise.all([
+    getCashBook(fromISO, toISO),
+    fetchRevenueRows(new Date(0)),
+    db.select({ balance: cashRegister.balance }).from(cashRegister).limit(1),
+  ]);
+  const revenue = summarizeRevenue(allOrders, start, end);
+
+  // ── 1-1100 Kas ──
+  const kasLines = toLines(book.entries.map((e) => {
+    const side = e.direction === "income" ? "debit" : "credit";
+    const label =
+      e.kind === "payment" ? "Cash taken on orders"
+      : e.kind === "change" ? "Change given"
+      : e.kind === "opening" ? "Opening balance entry"
+      : e.categoryLabel;
+    return { key: `${side}:${label}`, label, color: e.categoryColor, amount: e.amount, side } as const;
+  }));
+  const kas: LedgerAccount = {
+    code: "1-1100", name: "Kas", caption: "Cash drawer", group: "asset",
+    opening: book.openingBalance, debit: book.cashIn, credit: book.cashOut, closing: book.closingBalance,
+    entries: book.entries.length, lines: kasLines,
+    sub: { label: "Cash transactions", path: "/admin/buku-kecil?tab=kas&from={from}&to={to}" },
+  };
+
+  // ── 1-1200 Piutang Usaha ──
+  const sumBalances = (asOf: Date) => r2(allOrders.reduce((s, o) => s + balanceAsOf(o, asOf), 0));
+  const openingAr = sumBalances(new Date(start.getTime() - 1));
+  const closingAr = sumBalances(end);
+  const billed    = revenue.placed.value;
+  const received  = revenue.revenue;
+  const adjustments = r2(closingAr - (openingAr + billed - received));
+
+  const owing = new Map<number, number>();
+  let owingOrders = 0;
+  for (const o of allOrders) {
+    const bal = balanceAsOf(o, end);
+    if (bal <= 0) continue;
+    owing.set(o.customerId, (owing.get(o.customerId) ?? 0) + bal);
+    owingOrders++;
+  }
+  const subsidiaryTotal = r2([...owing.values()].reduce((s, v) => s + v, 0));
+
+  const arLines: LedgerAccountLine[] = [
+    { key: "ar:billed", label: "Orders placed", color: "#1a7fba", amount: billed, count: revenue.placed.orders, side: "debit" },
+    { key: "ar:paid", label: "Payments received", color: "#16a34a", amount: received, count: revenue.payments, side: "credit" },
+  ];
+  if (Math.abs(adjustments) >= 0.01) {
+    arLines.push({
+      key: "ar:adjust", label: "Corrections (edited / backdated orders)", color: "#a855f7",
+      amount: Math.abs(adjustments), count: 1, side: adjustments > 0 ? "debit" : "credit",
+    });
+  }
+  const piutang: LedgerAccount = {
+    code: "1-1200", name: "Piutang Usaha", caption: "Customer receivables", group: "asset",
+    opening: openingAr,
+    debit:   r2(billed + Math.max(adjustments, 0)),
+    credit:  r2(received + Math.max(-adjustments, 0)),
+    closing: closingAr,
+    entries: revenue.placed.orders + revenue.payments,
+    lines:   arLines.filter((l) => l.amount > 0),
+    sub:     { label: "Receivables per customer", path: "/admin/buku-kecil?tab=piutang&to={to}" },
+  };
+
+  // ── 4-1000 Pendapatan Jasa Laundry ──
+  const pendapatan: LedgerAccount = {
+    code: "4-1000", name: "Pendapatan Jasa Laundry", caption: "Laundry revenue — money received on orders", group: "revenue",
+    opening: null, debit: 0, credit: revenue.revenue, closing: null,
+    entries: revenue.payments,
+    lines: revenue.byMethod.map((m) => ({
+      key: `rev:${m.method}`, label: METHOD_LABEL[m.method], color: METHOD_COLOR[m.method],
+      amount: m.amount, count: m.count, side: "credit" as const,
+    })),
+    sub: { label: "Orders by date", path: "/admin/daily-cash?view=custom&from={from}&to={to}&basis=orders" },
+  };
+
+  // ── 4-2000 Pendapatan Lain-lain  /  5-1000 Beban Operasional ──
+  const manual = book.entries.filter((e) => e.kind === "manual" || e.kind === "adjustment");
+  const otherLines = toLines(manual.filter((e) => e.direction === "income").map((e) => ({
+    key: `inc:${e.categoryLabel}`, label: e.categoryLabel, color: e.categoryColor, amount: e.amount, side: "credit" as const,
+  })));
+  const expenseLines = toLines(manual.filter((e) => e.direction === "outcome").map((e) => ({
+    key: `exp:${e.categoryLabel}`, label: e.categoryLabel, color: e.categoryColor, amount: e.amount, side: "debit" as const,
+  })));
+  const otherIncome = r2(otherLines.reduce((s, l) => s + l.amount, 0));
+  const expenses    = r2(expenseLines.reduce((s, l) => s + l.amount, 0));
+
+  const lain: LedgerAccount = {
+    code: "4-2000", name: "Pendapatan Lain-lain", caption: "Other income & drawer corrections in", group: "revenue",
+    opening: null, debit: 0, credit: otherIncome, closing: null,
+    entries: otherLines.reduce((s, l) => s + l.count, 0), lines: otherLines,
+    sub: { label: "Cash transactions", path: "/admin/buku-kecil?tab=kas&from={from}&to={to}" },
+  };
+  const beban: LedgerAccount = {
+    code: "5-1000", name: "Beban Operasional", caption: "Operating expenses & drawer corrections out", group: "expense",
+    opening: null, debit: expenses, credit: 0, closing: null,
+    entries: expenseLines.reduce((s, l) => s + l.count, 0), lines: expenseLines,
+    sub: { label: "Cash transactions", path: "/admin/buku-kecil?tab=kas&from={from}&to={to}" },
+  };
+
+  const totalIncome = r2(revenue.revenue + otherIncome);
+  const netProfit   = r2(totalIncome - expenses);
+
+  // ── Sales gap: cash the drawer took on orders vs cash revenue booked from orders ──
+  // Deleting an order detaches its ledger rows (the cash really was received and
+  // stays in the drawer) but removes it from revenue — that is the usual cause.
+  const cashRevenue  = revenue.byMethod.find((m) => m.method === "cash")?.amount ?? 0;
+  const salesGap     = r2(book.orderIncome - cashRevenue);
+  const deletedPays  = book.entries.filter((e) => e.kind === "payment" && e.orderId == null);
+  const deletedCash  = r2(deletedPays.reduce((s, e) => s + e.amount, 0));
+  const unexplained  = r2(salesGap - deletedCash);
+  const registerBalance = toISO >= today && register ? parseFloat(register.balance) : null;
+
+  const money = (n: number) => `$${Math.abs(n).toFixed(2)}`;
+  const checks: LedgerCheck[] = [
+    {
+      id: "drawer-sum", status: Math.abs(book.drift) < 0.01 ? "ok" : "warn",
+      title: "Drawer movements add up",
+      detail: Math.abs(book.drift) < 0.01
+        ? "Opening balance + cash in − cash out equals the recorded balance."
+        : `The recorded balance is ${money(book.drift)} ${book.drift > 0 ? "higher" : "lower"} than the movements add up to.`,
+    },
+  ];
+  if (registerBalance !== null) {
+    const diff = r2(registerBalance - book.closingBalance);
+    checks.push({
+      id: "drawer-register", status: Math.abs(diff) < 0.01 ? "ok" : "warn",
+      title: "Kas matches the cash register",
+      detail: Math.abs(diff) < 0.01
+        ? `Both show ${money(registerBalance)}.`
+        : `The register says ${money(registerBalance)} but the ledger closes at ${money(book.closingBalance)}.`,
+    });
+  }
+  checks.push(
+    {
+      id: "ar-rollforward", status: Math.abs(adjustments) < 0.01 ? "ok" : "warn",
+      title: "Piutang rolls forward",
+      detail: Math.abs(adjustments) < 0.01
+        ? "Opening + orders placed − payments received equals the closing balance."
+        : `Edited or backdated orders moved the balance by ${money(adjustments)} (shown as a correction).`,
+    },
+    {
+      id: "ar-subsidiary", status: Math.abs(subsidiaryTotal - closingAr) < 0.01 ? "ok" : "warn",
+      title: "Customer balances add up to Piutang",
+      detail: Math.abs(subsidiaryTotal - closingAr) < 0.01
+        ? `${owing.size} customer${owing.size === 1 ? "" : "s"} owe ${money(closingAr)} in total — see Buku Kecil › Receivables.`
+        : `Customer balances total ${money(subsidiaryTotal)} but Piutang closes at ${money(closingAr)}.`,
+    },
+    {
+      id: "sales-vs-drawer", status: Math.abs(unexplained) < 0.01 ? "ok" : "note",
+      title: "Cash sales match the drawer",
+      detail: Math.abs(unexplained) >= 0.01
+        ? `The drawer took ${money(book.orderIncome)} on orders but orders show ${money(cashRevenue)} in cash sales — ${money(unexplained)} ${unexplained > 0 ? "more" : "less"} than deleted orders explain. That is a timing difference: an order whose paid date was changed after payment (e.g. it was edited), or a DP settled on another day, lands in a different period in each book.`
+        : deletedPays.length > 0
+          ? `Matches. The drawer also holds ${money(deletedCash)} from ${deletedPays.length} payment${deletedPays.length === 1 ? "" : "s"} on orders that were deleted — received cash that is no longer counted as revenue.`
+          : "Cash received on orders equals what the drawer took.",
+    },
+  );
+
+  return {
+    from: fromISO,
+    to:   toISO,
+    accounts: [kas, piutang, pendapatan, lain, beban],
+    statement: {
+      revenue:     revenue.revenue,
+      otherIncome,
+      totalIncome,
+      expenses,
+      netProfit,
+      margin:      totalIncome > 0 ? netProfit / totalIncome : null,
+      byMethod:    revenue.byMethod,
+    },
+    placed: revenue.placed,
+    receivables: {
+      opening: openingAr, billed, collected: received, adjustments, closing: closingAr,
+      customers: owing.size, orders: owingOrders,
+    },
+    drawer: {
+      opening: book.openingBalance, cashIn: book.cashIn, cashOut: book.cashOut, closing: book.closingBalance,
+      registerBalance, salesGap, deletedOrderCash: deletedCash,
+    },
+    checks,
   };
 }
 

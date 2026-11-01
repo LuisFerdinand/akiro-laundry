@@ -2,9 +2,14 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { orders, orderItems, customers, servicePricing } from "@/lib/db/schema";
-import { eq, gte, lte, and } from "drizzle-orm";
-import { startOfDayBiz, formatBiz } from "@/lib/utils/business-time";
+import { customers, orderItems, servicePricing } from "@/lib/db/schema";
+import { eq, inArray } from "drizzle-orm";
+import { startOfDayBiz, endOfDayBiz, formatBiz } from "@/lib/utils/business-time";
+import {
+  collectedAmount, revenueEvent, summarizeRevenue,
+  type RevenueMethod, type RevenueSummary,
+} from "@/lib/utils/revenue";
+import { fetchRevenueRows } from "@/lib/db/queries/revenue.queries";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,6 +23,32 @@ export interface DailySummaryEmailResult {
   error?: string;
   recipientCount?: number;
   orderCount?: number;
+}
+
+/** An order placed on the day, with what has been received against it so far. */
+interface PlacedOrder {
+  orderNumber:   string;
+  customerName:  string;
+  status:        string;
+  paymentStatus: string;
+  total:         number;
+  received:      number;
+  items:         { serviceName: string; quantity: string }[];
+}
+
+/** A payment received on the day for an order placed on an earlier day. */
+interface EarlierPayment {
+  orderNumber:  string;
+  customerName: string;
+  placedOn:     string;
+  kind:         "paid" | "dp";
+  amount:       number;
+}
+
+interface DayReport {
+  summary:         RevenueSummary;
+  placed:          PlacedOrder[];
+  earlierPayments: EarlierPayment[];
 }
 
 // ─── Email Recipients Config ──────────────────────────────────────────────────
@@ -46,31 +77,21 @@ function getRecipients(): EmailRecipient[] {
 
 // ─── HTML Email Builder ───────────────────────────────────────────────────────
 
-function buildEmailHtml(params: {
-  date: string;
-  orders: {
-    orderNumber: string;
-    customerName: string;
-    status: string;
-    paymentStatus: string;
-    totalPrice: string;
-    amountPaid?: string | null;
-    items: { serviceName: string; quantity: string }[];
-    createdAt: string;
-  }[];
-  totalRevenue: number;
-  paidRevenue: number;
-  unpaidRevenue: number;
-}) {
-  const { date, orders: orderList, totalRevenue, paidRevenue, unpaidRevenue } = params;
+const formatUSD = (n: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
 
-  const formatUSD = (n: number) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(n);
+const METHOD_LABEL: Record<RevenueMethod, string> = {
+  cash: "Cash", transfer: "Transfer", qris: "QRIS", other: "Other",
+};
+
+function buildEmailHtml(params: { date: string; report: DayReport }) {
+  const { date, report } = params;
+  const { summary, placed: orderList, earlierPayments } = report;
 
   const statusBadge = (status: string) => {
     const map: Record<string, { bg: string; color: string; label: string }> = {
@@ -90,6 +111,9 @@ function buildEmailHtml(params: {
         ? `<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">Partial (DP)</span>`
         : `<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">Unpaid</span>`;
 
+  const th = (label: string, align = "left") =>
+    `<th style="padding:8px;text-align:${align};font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;white-space:nowrap;">${label}</th>`;
+
   const rows = orderList.map((o) => `
     <tr style="border-bottom:1px solid #f1f5f9;">
       <td style="padding:10px 8px;font-family:monospace;font-size:12px;color:#1a7fba;font-weight:700;">${o.orderNumber}</td>
@@ -97,9 +121,30 @@ function buildEmailHtml(params: {
       <td style="padding:10px 8px;font-size:12px;color:#64748b;">${o.items.map((i) => i.serviceName + (i.quantity ? ` (${i.quantity})` : "")).join(", ")}</td>
       <td style="padding:10px 8px;">${statusBadge(o.status)}</td>
       <td style="padding:10px 8px;">${payBadge(o.paymentStatus)}</td>
-      <td style="padding:10px 8px;font-size:13px;font-weight:700;color:#1e293b;text-align:right;">${formatUSD(parseFloat(o.totalPrice))}</td>
+      <td style="padding:10px 8px;font-size:13px;font-weight:700;color:#1e293b;text-align:right;">${formatUSD(o.total)}</td>
+      <td style="padding:10px 8px;font-size:13px;font-weight:700;color:${o.received > 0 ? "#16a34a" : "#cbd5e1"};text-align:right;">${formatUSD(o.received)}</td>
     </tr>
   `).join("");
+
+  const earlierRows = earlierPayments.map((p) => `
+    <tr style="border-bottom:1px solid #f1f5f9;">
+      <td style="padding:10px 8px;font-family:monospace;font-size:12px;color:#1a7fba;font-weight:700;">${p.orderNumber}</td>
+      <td style="padding:10px 8px;font-size:13px;color:#1e293b;font-weight:600;">${p.customerName}</td>
+      <td style="padding:10px 8px;font-size:12px;color:#64748b;">${p.placedOn}</td>
+      <td style="padding:10px 8px;">${p.kind === "paid" ? payBadge("paid") : payBadge("partial")}</td>
+      <td style="padding:10px 8px;font-size:13px;font-weight:700;color:#16a34a;text-align:right;">${formatUSD(p.amount)}</td>
+    </tr>
+  `).join("");
+
+  const methodLine = summary.byMethod.length === 0
+    ? "No payments received today."
+    : summary.byMethod.map((m) => `${METHOD_LABEL[m.method]} <b style="color:#1e293b;">${formatUSD(m.amount)}</b>`).join(" &nbsp;·&nbsp; ");
+
+  const stat = (label: string, value: string, color: string, last = false) => `
+        <td class="stat-cell${last ? " br-off" : ""}" width="25%" style="padding:20px 16px;${last ? "" : "border-right:1px solid #f1f5f9;"}border-bottom:1px solid #f1f5f9;text-align:center;">
+          <p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">${label}</p>
+          <p class="stat-value" style="margin:6px 0 0;font-size:22px;font-weight:900;color:${color};">${value}</p>
+        </td>`;
 
   return `<!DOCTYPE html>
 <html>
@@ -134,40 +179,30 @@ function buildEmailHtml(params: {
     <!-- Stats -->
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-bottom:1px solid #f1f5f9;">
       <tr>
-        <td class="stat-cell" width="25%" style="padding:20px 16px;border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;text-align:center;">
-          <p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Total Orders</p>
-          <p class="stat-value" style="margin:6px 0 0;font-size:28px;font-weight:900;color:#1e293b;">${orderList.length}</p>
-        </td>
-        <td class="stat-cell br-off" width="25%" style="padding:20px 16px;border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;text-align:center;">
-          <p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Total Revenue</p>
-          <p class="stat-value" style="margin:6px 0 0;font-size:22px;font-weight:900;color:#1a7fba;">${formatUSD(totalRevenue)}</p>
-        </td>
-        <td class="stat-cell" width="25%" style="padding:20px 16px;border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;text-align:center;">
-          <p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Paid</p>
-          <p class="stat-value" style="margin:6px 0 0;font-size:22px;font-weight:900;color:#16a34a;">${formatUSD(paidRevenue)}</p>
-        </td>
-        <td class="stat-cell br-off" width="25%" style="padding:20px 16px;border-bottom:1px solid #f1f5f9;text-align:center;">
-          <p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Unpaid</p>
-          <p class="stat-value" style="margin:6px 0 0;font-size:22px;font-weight:900;color:#dc2626;">${formatUSD(unpaidRevenue)}</p>
-        </td>
+        ${stat("Revenue", formatUSD(summary.revenue), "#16a34a")}
+        ${stat("Orders Placed", String(summary.placed.orders), "#1e293b")}
+        ${stat("Order Value", formatUSD(summary.placed.value), "#1a7fba")}
+        ${stat("Still Owed", formatUSD(summary.placed.outstanding), "#dc2626", true)}
       </tr>
     </table>
+    <div style="padding:14px 32px;background:#f8fafc;border-bottom:1px solid #f1f5f9;">
+      <p style="margin:0;font-size:12px;color:#64748b;line-height:1.6;">
+        <b style="color:#475569;">Revenue</b> is the money received today (${summary.payments} payment${summary.payments === 1 ? "" : "s"}, including DPs and balances on earlier orders) — the same figure as the dashboard.
+        <b style="color:#475569;">Order Value</b> is everything placed today, and <b style="color:#475569;">Still Owed</b> is what is unpaid on those orders.<br>
+        Received by method: ${methodLine}
+      </p>
+    </div>
 
-    <!-- Table -->
+    <!-- Orders placed today -->
     <div class="content-pad" style="padding:24px 32px;">
-      <h2 style="margin:0 0 14px;font-size:14px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.05em;">Order Details</h2>
+      <h2 style="margin:0 0 14px;font-size:14px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.05em;">Orders Placed Today</h2>
       ${orderList.length === 0
         ? `<p style="color:#94a3b8;font-size:14px;text-align:center;padding:32px 0;">No orders today.</p>`
         : `<div class="table-scroll">
-          <table class="order-table" style="width:100%;min-width:480px;border-collapse:collapse;font-size:13px;">
+          <table class="order-table" style="width:100%;min-width:520px;border-collapse:collapse;font-size:13px;">
             <thead>
               <tr style="background:#f8fafc;">
-                <th style="padding:8px;text-align:left;font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;white-space:nowrap;">Order #</th>
-                <th style="padding:8px;text-align:left;font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Customer</th>
-                <th style="padding:8px;text-align:left;font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Services</th>
-                <th style="padding:8px;text-align:left;font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Status</th>
-                <th style="padding:8px;text-align:left;font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Payment</th>
-                <th style="padding:8px;text-align:right;font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;white-space:nowrap;">Total</th>
+                ${th("Order #")}${th("Customer")}${th("Services")}${th("Status")}${th("Payment")}${th("Total", "right")}${th("Received", "right")}
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -175,6 +210,22 @@ function buildEmailHtml(params: {
         </div>`
       }
     </div>
+
+    ${earlierPayments.length === 0 ? "" : `
+    <!-- Payments on earlier orders -->
+    <div class="content-pad" style="padding:0 32px 24px;">
+      <h2 style="margin:0 0 14px;font-size:14px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.05em;">Payments On Earlier Orders</h2>
+      <div class="table-scroll">
+        <table class="order-table" style="width:100%;min-width:420px;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#f8fafc;">
+              ${th("Order #")}${th("Customer")}${th("Placed")}${th("Payment")}${th("Received", "right")}
+            </tr>
+          </thead>
+          <tbody>${earlierRows}</tbody>
+        </table>
+      </div>
+    </div>`}
 
     <!-- Footer -->
     <div style="background:#f8fafc;padding:16px 32px;text-align:center;border-top:1px solid #f1f5f9;">
@@ -185,68 +236,78 @@ function buildEmailHtml(params: {
 </html>`;
 }
 
-/** Money actually collected: full price for paid orders, the DP for partial ones. */
-function collectedAmount(
-  list: { paymentStatus: string; totalPrice: string; amountPaid?: string | null }[],
-): number {
-  return list.reduce((s, o) => {
-    if (o.paymentStatus === "paid")    return s + parseFloat(o.totalPrice ?? "0");
-    if (o.paymentStatus === "partial") return s + parseFloat(o.amountPaid ?? "0");
-    return s;
-  }, 0);
-}
+// ─── Core: build the day's report ─────────────────────────────────────────────
 
-// ─── Core: Fetch today's orders ───────────────────────────────────────────────
-
-async function fetchTodayOrders(targetDate?: Date) {
+async function buildDayReport(targetDate?: Date): Promise<DayReport> {
   const day   = targetDate ?? new Date();
   const start = startOfDayBiz(day);
-  const end   = new Date(start.getTime() + 86_400_000 - 1); // 23:59:59.999 business-local
+  const end   = endOfDayBiz(day);
 
-  const orderRows = await db
-    .select({
-      order:        orders,
-      customerName: customers.name,
-    })
-    .from(orders)
-    .leftJoin(customers, eq(orders.customerId, customers.id))
-    .where(and(gte(orders.createdAt, start), lte(orders.createdAt, end)));
+  // One shared definition of revenue (lib/utils/revenue.ts) — the same rows and
+  // maths as the dashboard, so today's figure here equals today's figure there.
+  const rows    = await fetchRevenueRows(start, end);
+  const summary = summarizeRevenue(rows, start, end);
 
-  if (orderRows.length === 0) return [];
+  const placedRows = rows
+    .filter((o) => o.createdAt >= start && o.createdAt <= end)
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
-  const { inArray } = await import("drizzle-orm");
-  const orderIds = orderRows.map((r) => r.order.id);
+  const earlierRows = rows.filter((o) => {
+    const ev = revenueEvent(o);
+    return ev && ev.date >= start && ev.date <= end && o.createdAt < start;
+  });
 
-  const allItems = await db
-    .select({ item: orderItems, serviceName: servicePricing.name })
-    .from(orderItems)
-    .leftJoin(servicePricing, eq(orderItems.servicePricingId, servicePricing.id))
-    .where(inArray(orderItems.orderId, orderIds));
-
-  const itemsByOrder = new Map<number, { serviceName: string; quantity: string }[]>();
-  for (const row of allItems) {
-    const list = itemsByOrder.get(row.item.orderId) ?? [];
-    list.push({
-      serviceName: row.serviceName ?? "—",
-      quantity: row.item.weightKg
-        ? `${row.item.weightKg} kg`
-        : row.item.quantity
-          ? `${row.item.quantity} pcs`
-          : "",
-    });
-    itemsByOrder.set(row.item.orderId, list);
+  const customerIds = [...new Set([...placedRows, ...earlierRows].map((o) => o.customerId))];
+  const nameById = new Map<number, string>();
+  if (customerIds.length > 0) {
+    const names = await db
+      .select({ id: customers.id, name: customers.name })
+      .from(customers)
+      .where(inArray(customers.id, customerIds));
+    for (const c of names) nameById.set(c.id, c.name);
   }
 
-  return orderRows.map((r) => ({
-    orderNumber:   r.order.orderNumber,
-    customerName:  r.customerName ?? "Unknown",
-    status:        r.order.status,
-    paymentStatus: r.order.paymentStatus,
-    totalPrice:    r.order.totalPrice,
-    amountPaid:    r.order.amountPaid,
-    createdAt:     r.order.createdAt.toISOString(),
-    items:         itemsByOrder.get(r.order.id) ?? [],
+  const itemsByOrder = new Map<number, { serviceName: string; quantity: string }[]>();
+  if (placedRows.length > 0) {
+    const allItems = await db
+      .select({ item: orderItems, serviceName: servicePricing.name })
+      .from(orderItems)
+      .leftJoin(servicePricing, eq(orderItems.servicePricingId, servicePricing.id))
+      .where(inArray(orderItems.orderId, placedRows.map((o) => o.id)));
+
+    for (const row of allItems) {
+      const list = itemsByOrder.get(row.item.orderId) ?? [];
+      list.push({
+        serviceName: row.serviceName ?? "—",
+        quantity: row.item.weightKg
+          ? `${row.item.weightKg} kg`
+          : row.item.quantity
+            ? `${row.item.quantity} pcs`
+            : "",
+      });
+      itemsByOrder.set(row.item.orderId, list);
+    }
+  }
+
+  const placed: PlacedOrder[] = placedRows.map((o) => ({
+    orderNumber:   o.orderNumber,
+    customerName:  nameById.get(o.customerId) ?? "Unknown",
+    status:        o.status,
+    paymentStatus: o.paymentStatus,
+    total:         parseFloat(o.totalPrice ?? "0"),
+    received:      collectedAmount(o),
+    items:         itemsByOrder.get(o.id) ?? [],
   }));
+
+  const earlierPayments: EarlierPayment[] = earlierRows.map((o) => ({
+    orderNumber:  o.orderNumber,
+    customerName: nameById.get(o.customerId) ?? "Unknown",
+    placedOn:     formatBiz(o.createdAt, { month: "short", day: "numeric" }),
+    kind:         o.paymentStatus === "paid" ? "paid" : "dp",
+    amount:       revenueEvent(o)!.amount,
+  }));
+
+  return { summary, placed, earlierPayments };
 }
 
 // ─── Send via Resend ──────────────────────────────────────────────────────────
@@ -334,26 +395,20 @@ export async function sendDailySummaryEmail(
       return { success: false, error: "No email recipients configured." };
     }
 
-    const day       = targetDate ?? new Date();
-    const orderList = await fetchTodayOrders(day);
+    const day    = targetDate ?? new Date();
+    const report = await buildDayReport(day);
 
     const dateStr = formatBiz(day, {
       weekday: "long", year: "numeric", month: "long", day: "numeric",
     });
 
-    const totalRevenue  = orderList.reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0);
-    const paidRevenue   = collectedAmount(orderList);
-    const unpaidRevenue = totalRevenue - paidRevenue;
-
-    const html = buildEmailHtml({ date: dateStr, orders: orderList, totalRevenue, paidRevenue, unpaidRevenue });
-
     await sendEmail({
       to:      recipients.map((r) => r.email),
-      subject: `Daily Order Summary – ${dateStr} (${orderList.length} orders)`,
-      html,
+      subject: `Daily Order Summary – ${dateStr} (${report.summary.placed.orders} orders · ${formatUSD(report.summary.revenue)} received)`,
+      html:    buildEmailHtml({ date: dateStr, report }),
     });
 
-    return { success: true, recipientCount: recipients.length, orderCount: orderList.length };
+    return { success: true, recipientCount: recipients.length, orderCount: report.summary.placed.orders };
   } catch (err) {
     console.error("[sendDailySummaryEmail]", err);
     return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
@@ -377,32 +432,20 @@ export async function sendTestEmail(
       return { success: false, error: "No recipients configured." };
     }
 
-    const today     = new Date();
-    const orderList = await fetchTodayOrders(today);
+    const today  = new Date();
+    const report = await buildDayReport(today);
 
     const dateStr = formatBiz(today, {
       weekday: "long", year: "numeric", month: "long", day: "numeric",
     });
 
-    const totalRevenue  = orderList.reduce((s, o) => s + parseFloat(o.totalPrice ?? "0"), 0);
-    const paidRevenue   = collectedAmount(orderList);
-    const unpaidRevenue = totalRevenue - paidRevenue;
-
-    const html = buildEmailHtml({
-      date:   `[TEST] ${dateStr}`,
-      orders: orderList,
-      totalRevenue,
-      paidRevenue,
-      unpaidRevenue,
-    });
-
     await sendEmail({
       to:      targets.map((r) => r.email),
-      subject: `[TEST] Daily Order Summary – ${dateStr} (${orderList.length} orders)`,
-      html,
+      subject: `[TEST] Daily Order Summary – ${dateStr} (${report.summary.placed.orders} orders · ${formatUSD(report.summary.revenue)} received)`,
+      html:    buildEmailHtml({ date: `[TEST] ${dateStr}`, report }),
     });
 
-    return { success: true, recipientCount: targets.length, orderCount: orderList.length };
+    return { success: true, recipientCount: targets.length, orderCount: report.summary.placed.orders };
   } catch (err) {
     console.error("[sendTestEmail]", err);
     return { success: false, error: err instanceof Error ? err.message : "Unknown error" };

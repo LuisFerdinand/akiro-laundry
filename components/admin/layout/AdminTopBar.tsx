@@ -2,6 +2,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { signOut } from "next-auth/react";
 import { useSidebar } from "./SidebarContext";
 import {
@@ -36,6 +37,7 @@ export function AdminTopBar({ userName, userEmail }: Props) {
 
   return (
     <header
+      className="admin-topbar"
       style={{
         height:       "60px",
         flexShrink:   0,
@@ -51,8 +53,15 @@ export function AdminTopBar({ userName, userEmail }: Props) {
         zIndex:       40,
       }}
     >
+      {/* ── Logo (phones — the sidebar is hidden there) ── */}
+      <Link href="/admin" className="flex items-center gap-2 md:hidden" aria-label="Akiro dashboard">
+        <Image src="/logo/2.png" alt="" width={28} height={28} style={{ objectFit: "contain" }} priority />
+        <span style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: "15px", color: "white", letterSpacing: "-0.01em" }}>Akiro</span>
+      </Link>
+
       {/* ── Sidebar toggle ─────────────────────────────── */}
       <button
+        className="admin-hide-mobile"
         onClick={toggle}
         title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         style={{
@@ -130,7 +139,7 @@ export function AdminTopBar({ userName, userEmail }: Props) {
           </div>
 
           {/* Name */}
-          <div style={{ textAlign: "left" }}>
+          <div className="admin-hide-mobile" style={{ textAlign: "left" }}>
             <p style={{
               fontSize:     "13px",
               fontWeight:   700,
@@ -148,7 +157,7 @@ export function AdminTopBar({ userName, userEmail }: Props) {
             </p>
           </div>
 
-          <ChevronDown size={13} strokeWidth={2.5} style={{ color: "rgba(255,255,255,0.45)", flexShrink: 0 }} />
+          <ChevronDown className="admin-hide-mobile" size={13} strokeWidth={2.5} style={{ color: "rgba(255,255,255,0.45)", flexShrink: 0 }} />
         </DropdownMenuTrigger>
 
         {/* ── Dropdown panel ── */}

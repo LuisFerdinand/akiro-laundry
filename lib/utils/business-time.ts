@@ -154,8 +154,8 @@ export function timeAgoShort(value: Date | string | number, now: Date = new Date
 
 // ─── Finance period presets ──────────────────────────────────────────────────
 // Pure helper (no "use server") shared by the Buku Besar / Buku Kecil pages and
-// their clients. Boundaries follow the same plain-Date convention as
-// lib/actions/export.ts (`new Date(iso + "T00:00:00")`), not business-tz.
+// their clients. Pure YYYY-MM-DD calendar math anchored on the shop's "today"
+// (Asia/Dili), so the server (UTC on Vercel) and the browser agree on the month.
 
 export type FinancePeriod =
   | "this_month" | "last_month" | "last_3_months" | "this_year" | "all";
@@ -169,30 +169,26 @@ export const FINANCE_PERIODS: { value: FinancePeriod; label: string }[] = [
 ];
 
 export function financePeriodRange(period: FinancePeriod): { from: string; to: string; label: string } {
-  const iso = (d: Date) => {
-    const y  = d.getFullYear();
-    const m  = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${dd}`;
-  };
-  const now   = new Date();
-  const today = iso(now);
+  const today = isoDayBiz(new Date());
+  const year  = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7)) - 1; // 0-based
   const label = FINANCE_PERIODS.find((p) => p.value === period)?.label ?? "This Month";
 
+  /** First day of the month `offset` months from this one. */
+  const firstOfMonth = (offset: number) =>
+    new Date(Date.UTC(year, month + offset, 1)).toISOString().slice(0, 10);
+
   switch (period) {
-    case "last_month": {
-      const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const last  = new Date(now.getFullYear(), now.getMonth(), 0);
-      return { from: iso(first), to: iso(last), label };
-    }
+    case "last_month":
+      return { from: firstOfMonth(-1), to: addDaysISO(firstOfMonth(0), -1), label };
     case "last_3_months":
-      return { from: iso(new Date(now.getFullYear(), now.getMonth() - 2, 1)), to: today, label };
+      return { from: firstOfMonth(-2), to: today, label };
     case "this_year":
-      return { from: iso(new Date(now.getFullYear(), 0, 1)), to: today, label };
+      return { from: `${year}-01-01`, to: today, label };
     case "all":
       return { from: "2000-01-01", to: today, label };
     case "this_month":
     default:
-      return { from: iso(new Date(now.getFullYear(), now.getMonth(), 1)), to: today, label };
+      return { from: firstOfMonth(0), to: today, label };
   }
 }

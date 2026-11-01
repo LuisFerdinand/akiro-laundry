@@ -4,6 +4,7 @@ import { redirect }        from "next/navigation";
 import { SidebarProvider } from "@/components/admin/layout/SidebarContext";
 import { AdminSidebar }    from "@/components/admin/layout/AdminSidebar";
 import { AdminTopBar }     from "@/components/admin/layout/AdminTopBar";
+import { AdminBottomNav }  from "@/components/admin/layout/AdminBottomNav";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -21,7 +22,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         the sidebar stays fixed via position:fixed in AdminSidebar,
         and a width-matching spacer pushes the content column over.
       */}
-      <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "#f8fafc" }}>
+      <div style={{ display: "flex", height: "100dvh", overflow: "hidden", background: "#f8fafc" }}>
 
         {/* AdminSidebar renders a position:fixed <aside> + a width-matched spacer div */}
         <AdminSidebar />
@@ -39,12 +40,19 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             userEmail={session.user?.email ?? ""}
           />
 
-          {/* Only this area scrolls */}
-          <main style={{ flex: 1, overflowY: "auto", padding: "28px" }}>
+          {/* Only this area scrolls. On phones (globals.css) it gets tighter padding
+              and room for the bottom bar. */}
+          <main className="admin-main" style={{ flex: 1, overflowY: "auto", padding: "28px" }}>
             {children}
           </main>
 
         </div>
+
+        {/* Phones only (md:hidden inside): Dashboard · Orders · Customers · Buku Kecil · More */}
+        <AdminBottomNav
+          userName={session.user?.name  ?? "Admin"}
+          userEmail={session.user?.email ?? ""}
+        />
       </div>
     </SidebarProvider>
   );

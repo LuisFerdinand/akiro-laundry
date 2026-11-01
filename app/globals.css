@@ -915,3 +915,56 @@ body {
   pointer-events: none;
 }
 .akiro-cal .rdp-disabled { background-color: transparent !important; }
+
+/* ════════════════════════════════════════════════════════
+   ADMIN CONSOLE — PHONES (< 768px)
+   The admin pages are styled inline, so these classes carry
+   `!important` to win over the desktop values on the element.
+   Desktop is untouched: nothing below applies at md and up.
+   ════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  /* The sidebar gives way to the bottom bar (AdminBottomNav). */
+  .admin-sidebar,
+  .admin-sidebar-spacer,
+  .admin-hide-mobile { display: none !important; }
+
+  .admin-topbar { height: 56px !important; padding: 0 14px !important; }
+
+  /* Tighter gutters + room for the 64px bottom bar and the home indicator. */
+  .admin-main {
+    padding: 14px 14px calc(88px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  /* Finance pages wrap themselves in 32px 40px — the main padding is enough here. */
+  .admin-main > div[style*="32px 40px"] { padding: 0 !important; }
+
+  /* Grid helpers: 4-up → 2-up, 3-up / 2-up → stacked. */
+  .ad-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .ad-cols-3,
+  .ad-cols-2 { grid-template-columns: minmax(0, 1fr) !important; }
+  .ad-cols-fit { grid-template-columns: minmax(0, 1fr) !important; }
+
+  .ad-wrap  { flex-wrap: wrap !important; }
+  .ad-stack { flex-direction: column !important; align-items: stretch !important; }
+  .ad-full  { width: 100% !important; max-width: none !important; min-width: 0 !important; flex: 1 1 100% !important; }
+  .ad-pad-sm { padding: 14px !important; }
+
+  /* Wide tables become cards (see the *Cards components) — hide the table, show the cards. */
+  .ad-desktop-only { display: none !important; }
+
+  /* Horizontal chip rows scroll instead of wrapping into a wall. */
+  .ad-scroll-x {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .ad-scroll-x::-webkit-scrollbar { display: none; }
+  .ad-scroll-x > * { flex-shrink: 0; }
+}
+@media (min-width: 768px) {
+  .ad-mobile-only { display: none !important; }
+}
+
+@media (max-width: 767px) {
+  .ad-static-mobile { position: static !important; }
+}
