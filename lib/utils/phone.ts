@@ -48,6 +48,7 @@ export const COUNTRY_CODES: CountryCode[] = [
   { iso: "ID", name: "Indonesia",    code: "62",  flag: "🇮🇩", localDigits: [9, 12], placeholder: "812 3456 7890"   },
   { iso: "AU", name: "Australia",    code: "61",  flag: "🇦🇺", localDigits: [9, 9],  placeholder: "412 345 678"     },
   { iso: "PT", name: "Portugal",     code: "351", flag: "🇵🇹", localDigits: [9, 9],  placeholder: "912 345 678"     },
+  { iso: "FR", name: "France",       code: "33",  flag: "🇫🇷", localDigits: [9, 9],  placeholder: "6 12 34 56 78"   },
   { iso: "BR", name: "Brazil",       code: "55",  flag: "🇧🇷", localDigits: [10,11], placeholder: "11 91234-5678"   },
   { iso: "MO", name: "Macao",        code: "853", flag: "🇲🇴", localDigits: [8, 8],  placeholder: "6612 3456"       },
   { iso: "SG", name: "Singapore",    code: "65",  flag: "🇸🇬", localDigits: [8, 8],  placeholder: "9123 4567"       },
@@ -163,6 +164,10 @@ export function formatPhone(e164: string): string {
     case "AU":
       // 9 digits: XXX XXX XXX
       if (l.length === 9) return `+61 ${l.slice(0, 3)} ${l.slice(3, 6)} ${l.slice(6)}`;
+      break;
+    case "FR":
+      // 9 digits: X XX XX XX XX
+      if (l.length === 9) return `+33 ${l[0]} ${l.slice(1, 3)} ${l.slice(3, 5)} ${l.slice(5, 7)} ${l.slice(7)}`;
       break;
     case "ID":
       // 9–12 digits: XXX XXXX XXXX (approximate)
