@@ -2,9 +2,9 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { customers, orderItems, servicePricing } from "@/lib/db/schema";
+import { customers, dailyEmailLog, orderItems, servicePricing } from "@/lib/db/schema";
 import { eq, inArray } from "drizzle-orm";
-import { startOfDayBiz, endOfDayBiz, formatBiz } from "@/lib/utils/business-time";
+import { startOfDayBiz, endOfDayBiz, formatBiz, isoDayBiz } from "@/lib/utils/business-time";
 import {
   collectedAmount, revenueEvent, summarizeRevenue,
   type RevenueMethod, type RevenueSummary,
@@ -413,6 +413,45 @@ export async function sendDailySummaryEmail(
     console.error("[sendDailySummaryEmail]", err);
     return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
   }
+}
+
+/**
+ * The cron entry point: send today's summary at most ONCE per business day.
+ *
+ * The day is claimed by inserting into `daily_email_log` (primary key = day), so
+ * a second deployment, a cron retry or a double-fire skips the send. If sending
+ * fails the claim is released so a retry can still deliver the email.
+ * Manual "Send now" from the settings page deliberately bypasses this guard.
+ */
+export async function sendScheduledDailySummary(): Promise<
+  DailySummaryEmailResult & { skipped?: boolean }
+> {
+  const today = new Date();
+  const day   = isoDayBiz(today);
+
+  let claimed: { day: string }[];
+  try {
+    claimed = await db
+      .insert(dailyEmailLog)
+      .values({ day })
+      .onConflictDoNothing()
+      .returning({ day: dailyEmailLog.day });
+  } catch (err) {
+    // Table missing (migration 0008 not applied yet) or DB down: fail loudly
+    // rather than silently sending unguarded duplicates.
+    console.error("[sendScheduledDailySummary] could not claim the day", err);
+    return { success: false, error: err instanceof Error ? err.message : "Could not claim the day" };
+  }
+
+  if (claimed.length === 0) {
+    return { success: true, skipped: true };
+  }
+
+  const result = await sendDailySummaryEmail(today);
+  if (!result.success) {
+    await db.delete(dailyEmailLog).where(eq(dailyEmailLog.day, day)).catch(() => {});
+  }
+  return result;
 }
 
 /**

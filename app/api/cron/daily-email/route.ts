@@ -1,6 +1,6 @@
 // app/api/cron/daily-email/route.ts
 import { NextResponse } from "next/server";
-import { sendDailySummaryEmail } from "@/lib/actions/daily-email";
+import { sendScheduledDailySummary } from "@/lib/actions/daily-email";
 
 export async function GET(req: Request) {
   const authHeader = req.headers.get("authorization");
@@ -8,6 +8,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await sendDailySummaryEmail();
+  // At most one email per business day, even if several deployments fire.
+  const result = await sendScheduledDailySummary();
   return NextResponse.json(result);
 }

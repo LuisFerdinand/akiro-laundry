@@ -399,4 +399,5 @@ export type OrderClothingCount   = typeof orderClothingCounts.$inferSelect;
 
 export * from "./cms";
 export * from "./whatsapp";
+export * from "./email";
 export * from "./receipt";
